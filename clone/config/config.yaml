@@ -1,0 +1,52 @@
+output_directory: /Users/florian/Desktop/clone
+stages:
+  - name: preprocessing
+    operations:
+      - type: crop
+        workdir: postop/ct
+        files: ["${name}_CT_Bone", "${name}_CT_Bone_C"]
+      - type: move
+        workdir: postop/ct
+        files: ["${name}_CT_Bone_C", "${subj_dir}/processed_tmp"]
+      - type: crop
+        workdir: postop/ct
+        files: ["${name}_CT_Electrodes", "${name}_CT_Electrodes_C"]
+      - type: move
+        workdir: postop/ct
+        files: ["${name}_CT_Electrodes_C", "${subj_dir}/processed_tmp"]
+      - type: crop
+        workdir: preop/mri
+        files: ["${name}_T1", "${name}_T1_C"]
+      - type: move
+        workdir: preop/mri
+        files: ["${name}_T1_C", "${subj_dir}/processed_tmp"]
+  - name: coregisteration
+    operations:
+      - type: coregister
+        workdir: processed_tmp
+        files: ["${name}_CT_Bone_C", "${name}_CT_Electrodes_C", "v_${name}_bone_mask"]
+      - type: coregister
+        workdir: processed_tmp
+        files: ["${name}_T1_C", "${name}_CT_Electrodes_C", "v_${name}_ref"]
+      - type: coregister
+        workdir: processed_tmp
+        files: ["${name}_CT_Electrodes_C", "${name}_CT_Bone_C", "b_${name}_postimplant_ct"]
+  - name: extract_electrodes
+    operations:
+      - type: subtract
+        workdir: processed_tmp
+        files: ["b_${name}_postimplant_ct", "${name}_CT_Bone_C", "b_${name}_postimplant_ct_sub"]
+      - type: threshold
+        workdir: processed_tmp
+        files: ["b_${name}_postimplant_ct_sub", "b_${name}_seeg"]
+      - type: apply_transformation
+        workdir: processed_tmp
+        files: ["b_${name}_seeg", "v_${name}_bone_mask.mat", "${name}_CT_Electrodes_C", "r_${name}_seeg"]
+  - name: apply_mask
+    operations:
+      - type: extract_brain
+        workdir: processed_tmp
+        files: ["v_${name}_bone_mask", "${name}_stripped"]
+      - type: mask
+        workdir: processed_tmp
+        files: ["r_${name}_seeg", "${name}_stripped_mask", "r_${name}_seeg_masked"]

@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "clone"
+version = "0.1.0"
+description = "Cico's Localization Of Neuro-electrodes"
+authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
+license = "Apache 2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+pyyaml = "^6.0"
+
+[tool.poetry.scripts]
+clone = "clone.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,12 @@
+output_directory: /path/to/output/folder
+stages:
+  - name: stage1_name
+    operations:
+      - type: crop
+        workdir: postop/ct
+        files: ["${name}_CT_Bone", "${name}_CT_Bone_C"]
+  - name: stage2_name
+    operations:
+      - type: crop
+        workdir: postop/ct
+        files: ["${name}_CT_Bone", "${name}_CT_Bone_C"]
