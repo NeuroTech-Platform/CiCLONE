@@ -1,7 +1,7 @@
 import os
 import argparse
 from pathlib import Path
-from clone.operations import crop_image, move_image, coregister_images, subtract_image, threshold_image, apply_transformation2image, extract_brain, mask_image
+from clone.operations import crop_image, move_image, coregister_images, subtract_image, threshold_image, apply_transformation2image, extract_brain, mask_image, cortical_reconstruction
 from clone.utility import read_config_file
 from clone.subject import Subject
 
@@ -30,6 +30,8 @@ def run_operation(operation, subject: Subject):
         extract_brain(*files)
     elif operation['type'] == 'mask':
         mask_image(*files)
+    elif operation['type'] == 'reconstruct':
+        cortical_reconstruction(*files)
 
 def run_stage(stage, subject):
     print(f"Running stage: {stage['name']}")
@@ -40,7 +42,7 @@ def main():
     argsparser = argparse.ArgumentParser(description='Process some medical imaging data.')
     argsparser.add_argument('--subjects', nargs='+', help='List of subjects.')
     argsparser.add_argument('--create-folder', action='store_true', help='Create folder for the subject(s) provided in the list.')
-    argsparser.add_argument('--stage', help='Name of the stage to run. If not provided, all stages will be run.')
+    argsparser.add_argument('--stages', nargs='+', help='Name of the stage to run. If not provided, all stages will be run.')
 
     args = argsparser.parse_args()
     config_data = read_config_file("config/config.yaml")
@@ -66,12 +68,13 @@ def main():
             subject = Subject(subject_folder)
 
             stages = config_data['stages']
-            if args.stage:
-                stage = next((stage for stage in stages if stage['name'] == args.stage), None)
-                if stage:
-                    run_stage(stage, subject)
-                else:
-                    print(f"Stage {args.stage} not found.")
+            if args.stages:
+                for stage_name in args.stages:
+                    stage = next((stage for stage in stages if stage['name'] == stage_name), None)
+                    if stage:
+                        run_stage(stage, subject)
+                    else:
+                        print(f"Stage {stage_name} not found.")
             else:
                 for stage in stages:
                     run_stage(stage, subject)

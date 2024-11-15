@@ -50,3 +50,8 @@ stages:
       - type: mask
         workdir: processed_tmp
         files: ["r_${name}_seeg", "${name}_stripped_mask", "r_${name}_seeg_masked"]
+  - name: cortical_extraction
+    operations:
+      - type: reconstruct
+        workdir: processed_tmp
+        files: ["v_${name}_ref", "${subj_dir}/processed_tmp/freesurfer_${name}"]
