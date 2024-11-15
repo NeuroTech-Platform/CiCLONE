@@ -124,3 +124,15 @@ def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
     execute_command([
         "fslmaths", input_file.stem, "-mas", mask_file.stem, output_file_name
     ])
+
+def cortical_reconstruction(input_file: Path, fs_output_dir: str):
+    input_file = Path(input_file)
+    if not input_file:
+        print(f"Input file {input_file} does not exist.")
+        return    
+    fs_subject_dir = Path(fs_output_dir)
+
+    print(f"Reconstructing {input_file.stem} using FreeSurfer => {fs_subject_dir.stem}")
+    execute_command([
+        "recon-all", "-sd", fs_subject_dir.parent, "-s", fs_subject_dir.stem, "-i", input_file, "-all"
+    ])
