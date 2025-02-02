@@ -7,8 +7,9 @@ license = "Apache 2.0"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.10,<3.14"
 pyyaml = "^6.0"
+numpy = "^2.2.0"
 
 [tool.poetry.scripts]
 clone = "clone.main:main"
