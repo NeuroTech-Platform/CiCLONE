@@ -55,9 +55,6 @@ stages:
       - type: register_mri_to_mni
         workdir: processed_tmp
         files: ["${name}_T1_C", "MNI_${name}_T1"]
-      - type: register_ct_to_mni
-        workdir: processed_tmp
-        files: ["${name}_CT_Electrodes_C", "MNI_${name}_CT"]
   - name: cortical_extraction
     operations:
       - type: reconstruct
