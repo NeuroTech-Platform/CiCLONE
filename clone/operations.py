@@ -213,7 +213,7 @@ def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
             - {output_file_name}: Final registered image
     """
     input_file = Path(input_file)
-    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_0.5mm.nii.gz")
+    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_1mm.nii.gz")
 
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
@@ -257,7 +257,7 @@ def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:
     """
     Register a CT image to MNI space using FSL FLIRT.
     
-    This function performs affine registration (12 DOF) of a CT image to the MNI152 T1 0.5mm template,
+    This function performs affine registration (12 DOF) of a CT image to the MNI152 T1 1mm template,
     using normalized mutual information as the cost function and high quality sinc interpolation.
     The registration allows for full rotation search to handle any initial orientation.
     
@@ -268,7 +268,7 @@ def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:
             - {output_file_name}.mat: Affine transformation matrix from native to MNI space
     """
     input_file = Path(input_file)
-    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_0.5mm.nii.gz")
+    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_1mm.nii.gz")
 
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
