@@ -1,7 +1,21 @@
 import os
 import argparse
 from pathlib import Path
-from clone.operations import crop_image, move_image, coregister_images, subtract_image, threshold_image, apply_transformation2image, extract_brain, extract_brain2, mask_image, cortical_reconstruction, transform_coordinates, register_ct_to_mni, register_mri_to_mni
+from clone.operations import (
+    crop_image,
+    move_image,
+    coregister_images,
+    subtract_image,
+    threshold_image,
+    apply_transformation2image,
+    extract_brain,
+    extract_brain2,
+    mask_image,
+    cortical_reconstruction,
+    transform_coordinates,
+    register_ct_to_mni,
+    register_mri_to_mni
+)
 from clone.utility import read_config_file
 from clone.subject import Subject
 
@@ -61,7 +75,7 @@ def main():
                            help='Path to the JSON file containing coordinates to transform')
 
     args = argsparser.parse_args()
-    config_data = read_config_file("config/config.yaml")
+    config_data = read_config_file("clone/config/config.yaml")
 
     output_directory_path = Path(config_data['output_directory'])
     if not output_directory_path.exists():
@@ -109,8 +123,12 @@ def main():
                     stage = next((stage for stage in stages if stage['name'] == stage_name), None)
                     if stage:
                         run_stage(stage, subject)
+                        print(f"{subject_name}: Finished running stage {stage_name}")
                     else:
-                        print(f"Stage {stage_name} not found.")
+                        print(f"{subject_name}: [ERROR] Stage {stage_name} not found.")
+
+                print(f"{subject_name}: Finished running all stages")
+                print(f"{subject_name}: You can now mark your electrodes using 3D slicer.")
             else:
                 for stage in stages:
                     run_stage(stage, subject)
