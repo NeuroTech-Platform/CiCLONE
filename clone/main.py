@@ -66,6 +66,19 @@ def run_stage(stage, subject):
     for operation in stage['operations']:
         run_operation(operation, subject)
 
+def update_output_directory(config_path, new_output_directory):
+    import yaml
+
+    with open(config_path, 'r') as file:
+        config_data = yaml.safe_load(file)
+
+    config_data['output_directory'] = new_output_directory
+
+    with open(config_path, 'w') as file:
+        yaml.safe_dump(config_data, file)
+
+    print(f"Updated output directory to {new_output_directory}")
+
 def main():
     argsparser = argparse.ArgumentParser(description='Process some medical imaging data.')
     argsparser.add_argument('--subjects', nargs='+', help='List of subjects.')
@@ -73,9 +86,16 @@ def main():
     argsparser.add_argument('--stages', nargs='+', help='Name of the stage to run. If not provided, all stages will be run.')
     argsparser.add_argument('--transform-coordinates', type=str, 
                            help='Path to the JSON file containing coordinates to transform')
+    argsparser.add_argument('--update-output-directory', type=str, 
+                           help='Update the output directory in the config file.')
 
     args = argsparser.parse_args()
-    config_data = read_config_file("clone/config/config.yaml")
+    config_path = os.path.realpath(os.path.join(os.path.dirname(__file__), "config/config.yaml"))
+    config_data = read_config_file(config_path)
+
+    if args.update_output_directory:
+        update_output_directory(config_path, args.update_output_directory)
+        return
 
     output_directory_path = Path(config_data['output_directory'])
     if not output_directory_path.exists():
