@@ -1,12 +1,12 @@
-output_directory: /Users/fl6985/Desktop/clone
+output_directory: /Users/fl6985/Desktop/ciclone
 stages:
   - name: preprocessing
     operations:
       - type: crop
-        workdir: postop/ct
+        workdir: preop/ct
         files: ["${name}_CT_Bone", "${name}_CT_Bone_C"]
       - type: move
-        workdir: postop/ct
+        workdir: preop/ct
         files: ["${name}_CT_Bone_C", "${subj_dir}/processed_tmp"]
       - type: crop
         workdir: postop/ct

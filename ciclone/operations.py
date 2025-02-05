@@ -1,5 +1,5 @@
 from pathlib import Path
-from clone.utility import execute_command
+from ciclone.utility import execute_command
 import json
 import numpy as np
 import os
