@@ -1,7 +1,7 @@
 import os
 import argparse
 from pathlib import Path
-from clone.operations import (
+from ciclone.operations import (
     crop_image,
     move_image,
     coregister_images,
@@ -16,8 +16,8 @@ from clone.operations import (
     register_ct_to_mni,
     register_mri_to_mni
 )
-from clone.utility import read_config_file
-from clone.subject import Subject
+from ciclone.utility import read_config_file
+from ciclone.subject import Subject
 
 def run_operation(operation, subject: Subject):    
     # Store the original working directory
@@ -80,17 +80,16 @@ def update_output_directory(config_path, new_output_directory):
     print(f"Updated output directory to {new_output_directory}")
 
 def main():
-    argsparser = argparse.ArgumentParser(description='Process some medical imaging data.')
-    argsparser.add_argument('--subjects', nargs='+', help='List of subjects.')
+    argsparser = argparse.ArgumentParser(description='CiClone : Cico Cardinale\'s Localization Of Neuro-electrodes')
+    argsparser.add_argument('--update-output-directory', type=str, help='Update the output directory in the config file.')
+    argsparser.add_argument('--subjects', nargs='+', help='List of subject(s) to process for each command.')
     argsparser.add_argument('--create-folder', action='store_true', help='Create folder for the subject(s) provided in the list.')
-    argsparser.add_argument('--stages', nargs='+', help='Name of the stage to run. If not provided, all stages will be run.')
-    argsparser.add_argument('--transform-coordinates', type=str, 
-                           help='Path to the JSON file containing coordinates to transform')
-    argsparser.add_argument('--update-output-directory', type=str, 
-                           help='Update the output directory in the config file.')
+    argsparser.add_argument('--stages', nargs='+', help='Name of the stage(s) to run. If not provided, all stages will be run.')
+    argsparser.add_argument('--transform-coordinates', type=str, help='Path to the 3D SlicerJSON file containing coordinates to transform')
 
     args = argsparser.parse_args()
     config_path = os.path.realpath(os.path.join(os.path.dirname(__file__), "config/config.yaml"))
+    print(f"Using config file: {config_path}")
     config_data = read_config_file(config_path)
 
     if args.update_output_directory:

@@ -1,5 +1,5 @@
 from pathlib import Path
-from clone.utility import execute_command
+from ciclone.utility import execute_command
 import json
 import numpy as np
 import os
@@ -13,7 +13,7 @@ def crop_image(input_file: Path, output_filename: str) -> Path:
         return
 
     print(f"Cropping {input_file} => {output_filename}")
-    execute_command(["robustfov","-v","-i", input_file,"-r", output_filename])
+    execute_command(["/usr/local/fsl/bin/robustfov","-v","-i", input_file,"-r", output_filename])
 
 def move_image(input_file: Path, output_file: str) -> None:
     input_file = Path(input_file)
