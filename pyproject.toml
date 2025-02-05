@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "clone"
+name = "ciclone"
 version = "0.1.0"
-description = "Cico's Localization Of Neuro-electrodes"
+description = "Cico Cardinale's Localization Of Neuro-electrodes"
 authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
 license = "Apache 2.0"
 readme = "README.md"
@@ -12,7 +12,7 @@ pyyaml = "^6.0"
 numpy = "^2.2.0"
 
 [tool.poetry.scripts]
-clone = "clone.main:main"
+ciclone = "ciclone.main:main"
 
 [build-system]
 requires = ["poetry-core"]
