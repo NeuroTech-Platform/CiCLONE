@@ -110,7 +110,7 @@ def extract_brain(input_file: Path, output_file: Path):
 
     # Use BET to preserve screws and enhance visibility of relevant structures
     execute_command([
-        "bet", input_file.stem, output_file.stem, "-f", "0.45", "-g", "0", "-m"
+        "/usr/local/fsl/bin/bet", input_file.stem, output_file.stem, "-f", "0.45", "-g", "0", "-m"
     ])
 
 def extract_brain2(input_file: Path, output_file: Path):
@@ -119,7 +119,7 @@ def extract_brain2(input_file: Path, output_file: Path):
 
     # Use BET to preserve screws and enhance visibility of relevant structures
     execute_command([
-        "bet", input_file.stem, output_file.stem, "-f", "0.25", "-g", "0"
+        "/usr/local/fsl/bin/bet", input_file.stem, output_file.stem, "-f", "0.25", "-g", "0"
     ])
 
 def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
@@ -135,7 +135,7 @@ def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
 
     print(f"Masking {input_file.stem} by {mask_file.stem} => {output_file_name}")
     execute_command([
-        "fslmaths", input_file.stem, "-mas", mask_file.stem, output_file_name
+        "/usr/local/fsl/bin/fslmaths", input_file.stem, "-mas", mask_file.stem, output_file_name
     ])
 
 def cortical_reconstruction(input_file: Path, fs_output_dir: str):
