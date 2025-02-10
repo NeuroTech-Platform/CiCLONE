@@ -80,7 +80,16 @@ def update_output_directory(config_path, new_output_directory):
     print(f"Updated output directory to {new_output_directory}")
 
 def main():
-    argsparser = argparse.ArgumentParser(description='CiClone : Cico Cardinale\'s Localization Of Neuro-electrodes')
+    argsparser = argparse.ArgumentParser(description='''CiClone : Cico Cardinale's Localization Of Neuro-electrodes\n\n
+Quick Start Tutorial\n
+Step 1: Set your output directory where subject(s) data will be stored
+Step 2: Create folders for your subject(s) and put your subject(s) MRI's and CT's in the images folder that have been generated in step 1
+Step 3: Run the processing pipeline (all stages or specific ones)
+Step 4: Transform electrode coordinates to MNI space after having done the manual electrode marking in 3D slicer
+
+Use ciclone -h to see all available commands''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     argsparser.add_argument('--update-output-directory', type=str, help='Update the output directory in the config file.')
     argsparser.add_argument('--subjects', nargs='+', help='List of subject(s) to process for each command.')
     argsparser.add_argument('--create-folder', action='store_true', help='Create folder for the subject(s) provided in the list.')
