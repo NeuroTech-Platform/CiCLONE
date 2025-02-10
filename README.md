@@ -1,9 +1,10 @@
 # CiCLONE : Cico Cardinale's Localization Of Neuro-electrodes
 
+![CiCLONE Logo](docs/images/ciclone_banner.png)
+
 ## Develop
 
 Use `poetry` (installed via `pipx`) to setup the virtual env and run it nicely for you.
-
 ```console
 # Pick a valid Python3 version, e.g. 3.11 or 3.12
 
@@ -28,6 +29,7 @@ The pipeline consists of multiple stages that can be run independently or all at
 - `apply_transformation` - Apply a transformation matrix [Input_File, Transformation_File, Reference_File, Output_File]
 - `extract_brain` - Extract brain from an image [Input_File, Output_File]
 - `mask` - Apply a binary mask to an image [Input_File, Mask_File, Output_File]
+- `register_ct_to_mni` - Register CT to MNI space [Input_File, Output_File]
 - `register_mri_to_mni` - Register MRI to MNI space [Input_File, Output_File]
 - `reconstruct` - Run FreeSurfer reconstruction [Input_File, Output_Dir]
 
@@ -45,31 +47,33 @@ stages:
         files: ["${name}_CT_Bone_C", "${subj_dir}/processed_tmp"]
 ```
 
-## Update the output directory
+## Step 1 : Update the output directory
 
 ```console
 $ ciclone --update-output-directory /path/to/output/directory
 ```
 
-## Create a folder for each subject
+## Step 2 : Create a folder for each subject
 
 ```console
 $ ciclone --subjects subject1 subject<N> --create-folder
 ```
 
-## Run a specific stage
-
-```console
-$ ciclone --subjects subject1 subject<N> --stages <NAME_OF_THE_STAGE>
-```
-
-## Run all stages
+## Step 3 : Run all stages or a specific one
 
 ```console
 $ ciclone --subjects subject1 subject<N>
 ```
+or 
+```console
+$ ciclone --subjects subject1 subject<N> --stages <NAME_OF_THE_STAGE>
+```
 
-## Transform coordinates from Subject space to MNI space
+## Step 4 : Mark your electrodes in 3D Slicer
+
+Here you are on your own. You need to mark your electrodes in 3D Slicer using the **r_SUBJECTID_seeg_masked** file and your subject CT and/ or MRI and save the coordinates in a JSON file.
+
+## Step 5 : Transform coordinates from Subject space to MNI space
 
 ```console
 $ ciclone --subjects subject1 subject<N> --transform-coordinates /path/to/3D-SlicerJSON/file
