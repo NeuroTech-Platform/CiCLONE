@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 from ciclone.utility import execute_command
 import json
 import numpy as np
@@ -154,7 +155,11 @@ def cortical_reconstruction(input_file: Path, fs_output_dir: str):
         print(f"Input file {input_file} does not exist.")
         return    
     fs_subject_dir = Path(fs_output_dir)
-
+    if fs_subject_dir.exists():
+        print(f"Deleting existing FreeSurfer subject directory {fs_subject_dir}.")
+        shutil.rmtree(fs_subject_dir)
+        print(f"FreeSurfer subject directory {fs_subject_dir} deleted.")
+        
     print(f"Reconstructing {input_file.stem} using FreeSurfer => {fs_subject_dir.stem}")
     execute_command([
         "recon-all", "-sd", str(fs_subject_dir.parent), "-s", str(fs_subject_dir.stem), "-i", str(input_file), "-all"
