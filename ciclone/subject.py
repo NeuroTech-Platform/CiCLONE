@@ -1,6 +1,6 @@
 from pathlib import Path
 import re
-
+import shutil
 class Subject:
     def __init__(self, folder_path):
         self.folder_path = Path(folder_path)
@@ -36,3 +36,14 @@ class Subject:
         pattern = re.compile(rf'.*{suffix}$')
         folders = [folder for folder in self.folder_path.rglob('*') if pattern.match(str(folder))]
         return folders[0] if folders else None
+    
+    def clear_processed_tmp(self):
+        """Clear all files in the processed_tmp directory"""
+        if self.processed_tmp.exists():
+            # Check if directory has any contents
+            if any(self.processed_tmp.iterdir()):
+                shutil.rmtree(self.processed_tmp)
+                self.processed_tmp.mkdir(parents=True, exist_ok=True)
+                print(f"Cleared processed_tmp directory for subject {self.get_subject_name()}")
+        else:
+            print(f"Processed tmp directory for subject {self.get_subject_name()} does not exist")

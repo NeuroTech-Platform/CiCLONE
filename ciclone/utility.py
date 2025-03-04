@@ -3,9 +3,12 @@ import subprocess
 from pathlib import Path
 
 # Utility to run commands
-def execute_command(command: list) -> None:
+def execute_command(command: list, silent: bool = False) -> None:
     try:
-        subprocess.run(command, check=True)
+        if silent:
+            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run(command, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Command '{' '.join(command)}' failed with error: {e}")
 

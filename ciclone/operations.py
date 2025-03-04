@@ -5,6 +5,16 @@ import numpy as np
 import os
 import subprocess
 
+def open_fsleyes(input_file: Path):
+    input_file = Path(input_file)
+    print(f"Opening {input_file} with fsleyes")
+    if not input_file.exists():
+        print(f"Input file {input_file} does not exist.")
+        return
+
+    print(f"Opening {input_file} with fsleyes")
+    execute_command(["/usr/local/fsl/bin/fsleyes", input_file])
+
 def crop_image(input_file: Path, output_filename: str) -> Path:
     input_file = Path(input_file)
 
@@ -13,7 +23,7 @@ def crop_image(input_file: Path, output_filename: str) -> Path:
         return
 
     print(f"Cropping {input_file} => {output_filename}")
-    execute_command(["/usr/local/fsl/bin/robustfov","-v","-i", input_file,"-r", output_filename])
+    execute_command(["/usr/local/fsl/bin/robustfov","-v","-i", input_file,"-r", output_filename], silent=True)
 
 def move_image(input_file: Path, output_file: str) -> None:
     input_file = Path(input_file)

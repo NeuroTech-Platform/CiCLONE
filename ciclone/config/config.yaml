@@ -2,18 +2,27 @@ output_directory: /Users/fl6985/Desktop/ciclone
 stages:
   - name: preprocessing
     operations:
+      - type: open_fsleyes
+        workdir: preop/ct
+        files: ["${name}_CT_Bone"]
       - type: crop
         workdir: preop/ct
         files: ["${name}_CT_Bone", "${name}_CT_Bone_C"]
       - type: move
         workdir: preop/ct
         files: ["${name}_CT_Bone_C", "${subj_dir}/processed_tmp"]
+      - type: open_fsleyes
+        workdir: preop/ct
+        files: ["${name}_CT_Electrodes"]
       - type: crop
         workdir: postop/ct
         files: ["${name}_CT_Electrodes", "${name}_CT_Electrodes_C"]
       - type: move
         workdir: postop/ct
         files: ["${name}_CT_Electrodes_C", "${subj_dir}/processed_tmp"]
+      - type: open_fsleyes
+        workdir: preop/mri
+        files: ["${name}_T1"]
       - type: crop
         workdir: preop/mri
         files: ["${name}_T1", "${name}_T1_C"]
