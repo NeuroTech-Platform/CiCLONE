@@ -14,7 +14,8 @@ from ciclone.operations import (
     cortical_reconstruction,
     transform_coordinates,
     register_ct_to_mni,
-    register_mri_to_mni
+    register_mri_to_mni,
+    open_fsleyes
 )
 from ciclone.utility import read_config_file
 from ciclone.subject import Subject
@@ -29,8 +30,11 @@ def run_operation(operation, subject: Subject):
             print(f"Changing directory to {workdir}")
             os.chdir(workdir)
 
-        files = [subject.get_file(f.replace("${name}", subject.get_subject_name())) for f in operation['files'][:-1]] + \
-                [operation['files'][-1].replace("${name}", subject.get_subject_name()).replace("${subj_dir}", str(subject.folder_path))]
+        if len(operation['files']) > 1:
+            files = [subject.get_file(f.replace("${name}", subject.get_subject_name())) for f in operation['files'][:-1]] + \
+                    [operation['files'][-1].replace("${name}", subject.get_subject_name()).replace("${subj_dir}", str(subject.folder_path))]
+        else:
+            files = [subject.get_file(f.replace("${name}", subject.get_subject_name())) for f in operation['files']]
         
         if operation['type'] == 'crop':
             crop_image(*files)
@@ -56,12 +60,15 @@ def run_operation(operation, subject: Subject):
             register_ct_to_mni(*files)
         elif operation['type'] == 'register_mri_to_mni':
             register_mri_to_mni(*files)
+        elif operation['type'] == 'open_fsleyes':
+            open_fsleyes(*files)
 
     finally:
         # Always return to the original directory
         os.chdir(original_dir)
 
 def run_stage(stage, subject):
+    print(f"")
     print(f"Running stage: {stage['name']}")
     for operation in stage['operations']:
         run_operation(operation, subject)
@@ -158,6 +165,7 @@ Use ciclone -h to see all available commands''',
                 print(f"{subject_name}: Finished running all stages")
                 print(f"{subject_name}: You can now mark your electrodes using 3D slicer.")
             else:
+                subject.clear_processed_tmp()
                 for stage in stages:
                     run_stage(stage, subject)
 
