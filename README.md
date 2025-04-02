@@ -56,7 +56,7 @@ $ ciclone --update-output-directory /path/to/output/directory
 ## Step 2 : Create a folder for each subject
 
 ```console
-$ ciclone --subjects subject1 subject<N> --create-folder
+$ ciclone --create-folder subject1 subject<N>
 ```
 
 ## Step 3 : Run all stages or a specific one

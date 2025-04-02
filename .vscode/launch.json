@@ -1,0 +1,48 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run full Ciclone pipeline",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ciclone/main.py",
+            "args": [
+                "--subjects",
+                "subject2"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Run cortical extraction stage",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ciclone/main.py",
+            "args": [
+                "--subjects",
+                "subject2",
+                "--stages",
+                "cortical_extraction"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Launch Ciclone UI",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ciclone/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ]
+} 
