@@ -43,6 +43,20 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
+        },
+        {
+            "name": "Launch ImagesViewer UI",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ciclone/ui/ImagesViewer.py",
+            "args": [
+                "/Users/fl6985/Desktop/ciclone/subject_test_viewer/ct_scan.nii.gz"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 } 

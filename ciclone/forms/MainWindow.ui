@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>618</width>
-    <height>752</height>
+    <height>652</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -67,7 +67,7 @@
     <item row="1" column="2">
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>2</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="tab">
        <attribute name="title">
@@ -399,74 +399,6 @@
              </size>
             </property>
            </spacer>
-          </item>
-         </layout>
-        </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="tab_3">
-       <attribute name="title">
-        <string>Preview</string>
-       </attribute>
-       <layout class="QGridLayout" name="gridLayout_3">
-        <item row="0" column="0">
-         <layout class="QVBoxLayout" name="Axial_verticalLayout">
-          <item>
-           <widget class="QSlider" name="Axial_horizontalSlider">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="Axial_ImagePreview">
-            <property name="text">
-             <string/>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item row="0" column="1">
-         <layout class="QVBoxLayout" name="Coronal_verticalLayout">
-          <item>
-           <widget class="QSlider" name="Coronal_horizontalSlider">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="Coronal_ImagePreview">
-            <property name="text">
-             <string/>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="Fillerl_ImagePreview">
-          <property name="text">
-           <string/>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <layout class="QVBoxLayout" name="Sagittal_verticalLayout">
-          <item>
-           <widget class="QSlider" name="Sagittal_horizontalSlider">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="Sagittal_ImagePreview">
-            <property name="text">
-             <string/>
-            </property>
-           </widget>
           </item>
          </layout>
         </item>
