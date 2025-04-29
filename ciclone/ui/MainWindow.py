@@ -20,6 +20,7 @@ from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap
 from ciclone.core.subject_importer import SubjectImporter
 from ciclone.utility import read_config_file
 from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
+from ciclone.ui.ImagesViewer import ImagesViewer
 
 from ..forms.MainWindow_ui import Ui_MainWindow
 
@@ -62,34 +63,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked)
             self.stages_listWidget.addItem(item)
-
-        # Style the image preview labels
-        for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
-            label.setStyleSheet("""
-                QLabel {
-                    background-color: black;
-                    border: 1px solid #666666;
-                    min-width: 256px;
-                    min-height: 256px;
-                    max-width: 256px;
-                    max-height: 256px;
-                }
-            """)
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Expanding
-            )
-
-        # Add volume data caching
-        self.current_volume_data = None
-        self.current_nifti_path = None
-        self.current_nifti_img = None
-        
-        # Connect slider signals
-        self.Axial_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('axial'))
-        self.Sagittal_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('sagittal'))
-        self.Coronal_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('coronal'))
 
     def create_output_directory(self):
         self.output_directory = QFileDialog.getExistingDirectory(self, "Select Output Directory", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
@@ -266,193 +239,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.textBrowser.ensureCursorVisible()
 
     def on_tree_item_clicked(self, index):
-        """Handle tree item clicks to display NIFTI files when selected"""
-        # Get the file path from the model
+        """Handle tree item clicks to display NIFTI files in ImagesViewer window"""
         file_path = self.subjectModel.filePath(index)
         if file_path.endswith(('.nii', '.nii.gz')):
-            # Only load the file if it's different from the current one
-            if file_path != self.current_nifti_path:
-                self.load_nifti_file(file_path)
-            
-            # Update all views with the loaded data
-            self.update_slice_display('axial')
-            self.update_slice_display('sagittal')
-            self.update_slice_display('coronal')
-            
-            # Update slider ranges
-            self.update_slider_ranges()
-
-    def load_nifti_file(self, nifti_path):
-        """Load NIFTI file and store the data"""
-        try:
-            self.current_nifti_img = nib.load(nifti_path)
-            self.current_volume_data = self.current_nifti_img.get_fdata()
-            self.current_nifti_path = nifti_path
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to load NIFTI file: {str(e)}")
-            self.current_volume_data = None
-            self.current_nifti_path = None
-            self.current_nifti_img = None
-
-    def update_slider_ranges(self):
-        """Update slider ranges based on current volume dimensions"""
-        if self.current_volume_data is not None:
-            self.Axial_horizontalSlider.setRange(0, self.current_volume_data.shape[2] - 1)
-            self.Sagittal_horizontalSlider.setRange(0, self.current_volume_data.shape[0] - 1)
-            self.Coronal_horizontalSlider.setRange(0, self.current_volume_data.shape[1] - 1)
-            
-            # Set initial positions to middle slices
-            self.Axial_horizontalSlider.setValue(self.current_volume_data.shape[2] // 2)
-            self.Sagittal_horizontalSlider.setValue(self.current_volume_data.shape[0] // 2)
-            self.Coronal_horizontalSlider.setValue(self.current_volume_data.shape[1] // 2)
-
-    def update_slice_display(self, orientation):
-        """Update the display for a specific orientation using cached data"""
-        if self.current_volume_data is None:
-            return
-
-        try:
-            # Get the appropriate slice based on orientation and slider value
-            if orientation == 'axial':
-                slice_index = self.Axial_horizontalSlider.value()
-                slice_data = self.current_volume_data[:, :, slice_index]
-                label = self.Axial_ImagePreview
-            elif orientation == 'sagittal':
-                slice_index = self.Sagittal_horizontalSlider.value()
-                slice_data = self.current_volume_data[slice_index, :, :]
-                label = self.Sagittal_ImagePreview
-            elif orientation == 'coronal':
-                slice_index = self.Coronal_horizontalSlider.value()
-                slice_data = self.current_volume_data[:, slice_index, :]
-                label = self.Coronal_ImagePreview
-            
-            # Apply orientation-specific transformations
-            slice_data = np.rot90(slice_data)
-            if orientation == 'sagittal':
-                slice_data = np.fliplr(slice_data)
-            
-            # Normalize the data to 0-255 range for display
-            slice_data = slice_data.astype(float)
-            slice_data = ((slice_data - slice_data.min()) / 
-                         (slice_data.max() - slice_data.min()) * 255).astype(np.uint8)
-            
-            # Create QImage from numpy array
-            height, width = slice_data.shape
-            bytes_per_line = width
-            q_img = QImage(slice_data.tobytes(), width, height, bytes_per_line, 
-                          QImage.Format.Format_Grayscale8)
-            
-            # Get the fixed size of the label
-            label_size = label.width()
-            
-            # Calculate aspect ratio based on voxel dimensions
-            pixdim = self.current_nifti_img.header.get_zooms()
-            if orientation == 'axial':
-                aspect_ratio = pixdim[1] / pixdim[0]
-            elif orientation == 'sagittal':
-                aspect_ratio = pixdim[2] / pixdim[1]
-            else:  # coronal
-                aspect_ratio = pixdim[2] / pixdim[0]
-            
-            # Calculate dimensions that maintain aspect ratio and fit within label
-            if width / height > aspect_ratio:
-                scaled_width = label_size
-                scaled_height = int(label_size / (width / height * 1/aspect_ratio))
+            if not hasattr(self, 'images_viewer') or self.images_viewer is None:
+                self.images_viewer = ImagesViewer(file_path)
             else:
-                scaled_height = label_size
-                scaled_width = int(label_size * (width / height * aspect_ratio))
-            
-            # Ensure dimensions don't exceed label size
-            scaled_width = min(scaled_width, label_size)
-            scaled_height = min(scaled_height, label_size)
-            
-            # Scale the image
-            scaled_pixmap = QPixmap.fromImage(q_img).scaled(
-                scaled_width, scaled_height,
-                Qt.AspectRatioMode.IgnoreAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            
-            label.setPixmap(scaled_pixmap)
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to update display: {str(e)}")
-
-    def display_nifti_slice(self, nifti_path, label, slice_index=None, orientation='axial'):
-        try:
-            # Load the NIFTI file
-            nifti_img = nib.load(nifti_path)
-            volume_data = nifti_img.get_fdata()
-            
-            # Get voxel dimensions
-            pixdim = nifti_img.header.get_zooms()
-            
-            # Choose the slice based on orientation and apply correct orientation
-            if orientation == 'axial':
-                if slice_index is None:
-                    slice_index = volume_data.shape[2] // 2
-                slice_data = volume_data[:, :, slice_index]
-                slice_data = np.rot90(slice_data)
-                
-            elif orientation == 'sagittal':
-                if slice_index is None:
-                    slice_index = volume_data.shape[0] // 2
-                slice_data = volume_data[slice_index, :, :]
-                slice_data = np.rot90(slice_data)
-                slice_data = np.fliplr(slice_data)
-                
-            elif orientation == 'coronal':
-                if slice_index is None:
-                    slice_index = volume_data.shape[1] // 2
-                slice_data = volume_data[:, slice_index, :]
-                slice_data = np.rot90(slice_data)
-            
-            # Normalize the data to 0-255 range for display
-            slice_data = slice_data.astype(float)
-            slice_data = ((slice_data - slice_data.min()) / 
-                         (slice_data.max() - slice_data.min()) * 255).astype(np.uint8)
-            
-            # Create QImage from numpy array
-            height, width = slice_data.shape
-            bytes_per_line = width
-            q_img = QImage(slice_data.tobytes(), width, height, bytes_per_line, 
-                          QImage.Format.Format_Grayscale8)
-            
-            # Get the fixed size of the label (256x256)
-            label_size = label.width()  # Should be 256
-            
-            # Calculate aspect ratio based on voxel dimensions
-            if orientation == 'axial':
-                aspect_ratio = pixdim[1] / pixdim[0]
-            elif orientation == 'sagittal':
-                aspect_ratio = pixdim[2] / pixdim[1]
-            elif orientation == 'coronal':
-                aspect_ratio = pixdim[2] / pixdim[0]
-            
-            # Calculate dimensions that maintain aspect ratio and fit within label
-            if width / height > aspect_ratio:
-                # Image is wider than its natural aspect ratio
-                scaled_width = label_size
-                scaled_height = int(label_size / (width / height * 1/aspect_ratio))
-            else:
-                # Image is taller than its natural aspect ratio
-                scaled_height = label_size
-                scaled_width = int(label_size * (width / height * aspect_ratio))
-            
-            # Ensure dimensions don't exceed label size
-            scaled_width = min(scaled_width, label_size)
-            scaled_height = min(scaled_height, label_size)
-            
-            # Scale the image
-            scaled_pixmap = QPixmap.fromImage(q_img).scaled(
-                scaled_width, scaled_height,
-                Qt.AspectRatioMode.IgnoreAspectRatio,  # We're handling the aspect ratio ourselves
-                Qt.TransformationMode.SmoothTransformation
-            )
-            
-            # Center the pixmap in the label
-            # label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setPixmap(scaled_pixmap)
-            
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to load NIFTI file: {str(e)}")
+                self.images_viewer.load_nifti_file(file_path)
+                self.images_viewer.update_slider_ranges()
+                self.images_viewer.update_slice_display('axial')
+                self.images_viewer.update_slice_display('sagittal')
+                self.images_viewer.update_slice_display('coronal')
+            self.images_viewer.show()
+            self.images_viewer.raise_()  # Bring window to front
