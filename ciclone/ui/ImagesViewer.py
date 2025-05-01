@@ -11,13 +11,16 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QInputDialog,
     QListWidgetItem,
-    QSizePolicy
+    QSizePolicy,
+    QHeaderView,
+    QVBoxLayout
 )
 from PyQt6.QtCore import Qt, QStandardPaths
 
 from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap
 
 from ciclone.core.subject_importer import SubjectImporter
+from ciclone.ui.Viewer3D import Viewer3D
 from ciclone.utility import read_config_file
 from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
 
@@ -30,6 +33,21 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         super(ImagesViewer, self).__init__()
         self.setupUi(self)
 
+        # Set the initial size of the groupbox to 25% of the total width
+        total_width = self.splitter.width()
+        self.splitter.setSizes([int(total_width * 0.25), int(total_width * 0.75)])
+        # Prevent splitter from resetting on double click
+        self.splitter.setChildrenCollapsible(False)
+
+        # Configure column resize behavior
+        self.electrodesTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.electrodesTable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.electrodesTable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.electrodesTable.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        
+        # Set fixed width for the first column
+        self.electrodesTable.setColumnWidth(0, 100)
+        
         # Add volume data caching
         self.current_volume_data = None
         self.current_nifti_path = None
@@ -66,6 +84,13 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         else:
             # Show a default display (e.g., clear labels or show a message)
             self.show_default_display()
+
+        self.Viewer3dButton.clicked.connect(self.viewer3d_button_clicked)
+
+    def viewer3d_button_clicked(self):
+        print("Viewer3D button clicked")
+        self.viewer3d = Viewer3D(nifti_img=self.current_nifti_img, current_volume_data=self.current_volume_data)
+        self.viewer3d.show()
 
     def show_default_display(self):
         """Show a default message or blank image in the labels."""
