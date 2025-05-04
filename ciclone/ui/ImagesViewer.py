@@ -52,12 +52,13 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.current_volume_data = None
         self.current_nifti_path = None
         self.current_nifti_img = None
+        self.affine = None
 
         # Style the image preview labels
         for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
             label.setStyleSheet("""
                 QLabel {
-                    background-color: black;
+                    background-color: red;
                     border: 1px solid #666666;
                 }
             """)
@@ -73,6 +74,11 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.Axial_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('axial'))
         self.Sagittal_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('sagittal'))
         self.Coronal_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('coronal'))
+
+        # Connect clickable image labels to on_image_clicked
+        self.Axial_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('axial', x, y))
+        self.Sagittal_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('sagittal', x, y))
+        self.Coronal_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('coronal', x, y))
 
         # If a file path is provided, load it
         if file_path is not None:
@@ -103,11 +109,12 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.Coronal_horizontalSlider.setEnabled(False)
 
     def load_nifti_file(self, nifti_path):
-        """Load NIFTI file and store the data"""
+        """Load NIFTI file and store the data (no reorientation)"""
         try:
             self.current_nifti_img = nib.load(nifti_path)
             self.current_volume_data = self.current_nifti_img.get_fdata()
             self.current_nifti_path = nifti_path
+            self.affine = self.current_nifti_img.affine
             # Enable sliders
             self.Axial_horizontalSlider.setEnabled(True)
             self.Sagittal_horizontalSlider.setEnabled(True)
@@ -180,49 +187,135 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         slice_data = np.rot90(slice_data)
         if orientation == 'sagittal':
             slice_data = np.fliplr(slice_data)
-
         # Normalize to 0-255 for display
         slice_data = slice_data.astype(float)
         slice_data = ((slice_data - slice_data.min()) /
                       (slice_data.max() - slice_data.min()) * 255).astype(np.uint8)
-
         # Create QImage
         height, width = slice_data.shape
         bytes_per_line = width
         q_img = QImage(slice_data.tobytes(), width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
-
+        
         # Calculate aspect ratio based on voxel dimensions
         pixdim = nifti_img.header.get_zooms()
         if orientation == 'axial':
-            aspect_ratio = pixdim[1] / pixdim[0]
+            aspect_ratio = pixdim[1] / pixdim[0]  # y/x
         elif orientation == 'sagittal':
-            aspect_ratio = pixdim[2] / pixdim[1]
+            aspect_ratio = 1 / (pixdim[2] / pixdim[1])  # z/y
         else:  # coronal
-            aspect_ratio = pixdim[2] / pixdim[0]
-
-        # Calculate dimensions that maintain aspect ratio and fit within label
-        if width / height >= aspect_ratio:
-            # Image is wider than its natural aspect ratio
-            scaled_width = label.height()
-            scaled_height = int(label.height() / (width / height * 1 / aspect_ratio))
+            aspect_ratio = 1 / (pixdim[2] / pixdim[0])  # z/x
+            
+        # Get the label dimensions
+        label_width = label.width()
+        label_height = label.height()
+        
+        # Calculate dimensions to fill the label while maintaining the correct aspect ratio
+        image_aspect = width / height
+        corrected_aspect = image_aspect * aspect_ratio
+        
+        if corrected_aspect >= label_width / label_height:
+            # Width limited by label width
+            scaled_width = label_width
+            scaled_height = int(scaled_width / corrected_aspect)
         else:
-            # Image is taller than its natural aspect ratio
-            scaled_height = label.width()
-            scaled_width = int(label.width() * (width / height * aspect_ratio))
-
-        # Ensure dimensions don't exceed label size
-        scaled_width = min(scaled_width, label.width())
-        scaled_height = min(scaled_height, label.height())
-
+            # Height limited by label height
+            scaled_height = label_height
+            scaled_width = int(scaled_height * corrected_aspect)
+            
         # Scale the image
         scaled_pixmap = QPixmap.fromImage(q_img).scaled(
             scaled_width, scaled_height,
             Qt.AspectRatioMode.IgnoreAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
-
+        
         label.setPixmap(scaled_pixmap)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    def on_image_clicked(self, orientation, x, y):
+        """
+        Handle clicks on any view by determining the 3D coordinates and updating other views.
+
+        Args:
+            orientation: The orientation of the view that was clicked ('axial', 'sagittal', 'coronal')
+            x: The x-coordinate of the click in the label's coordinate system
+            y: The y-coordinate of the click in the label's coordinate system
+        Note:
+            This function handles coordinate transformations between display space and volume
+            data space, accounting for different orientations and scaling factors.
+            
+            Coordinate system differences:
+            - Medical imaging convention: Bottom-left origin coordinate system
+            - Display convention: Top-left origin coordinate system
+            
+            Axis flipping requirements by view:
+            - Axial view: Y-coordinate needs to be flipped
+            - Sagittal view: Both Y and Z coordinates need to be flipped
+            - Coronal view: Z-coordinate needs to be flipped
+        """
+        if self.current_volume_data is None:
+            return
+            
+        # Get the dimensions of the label and current slice
+        label = getattr(self, f"{orientation.capitalize()}_ImagePreview")
+        pixmap = label.pixmap()
+        if pixmap is None:
+            return
+            
+        # Calculate scale factors to convert from label coordinates to image coordinates
+        label_width, label_height = label.width(), label.height()
+        pixmap_width, pixmap_height = pixmap.width(), pixmap.height()
+        
+        # Adjust for the image being centered in the label
+        offset_x = (label_width - pixmap_width) // 2
+        offset_y = (label_height - pixmap_height) // 2
+        
+        # Convert from label coordinates to image coordinates
+        # Check if the click is outside the image area
+        if x < offset_x or y < offset_y or x >= offset_x + pixmap_width or y >= offset_y + pixmap_height:
+            return
+            
+        image_x = x - offset_x
+        image_y = y - offset_y
+        
+        # Convert clicked position (image_x, image_y) to volume coordinates
+        # Medical imaging convention: origin at bottom-left corner
+        # Display convention: origin at top-left corner
+        # We need to scale the coordinates and flip the y/z axes as appropriate
+        if orientation == 'axial':
+            # In axial view, we display [x, y, slice_index]
+            scaled_x = int(image_x * (self.current_volume_data.shape[0] / pixmap_width))
+            scaled_y = int(image_y * (self.current_volume_data.shape[1] / pixmap_height))
+            
+            scaled_y = self.current_volume_data.shape[1] - 1 - scaled_y
+                        
+            # Update sagittal and coronal views
+            self.Sagittal_horizontalSlider.setValue(scaled_x)
+            self.Coronal_horizontalSlider.setValue(scaled_y)
+            
+        elif orientation == 'sagittal':
+            # In sagittal view, we display [slice_index, y, z]
+            scaled_y = int(image_x * (self.current_volume_data.shape[1] / pixmap_width))
+            scaled_z = int(image_y * (self.current_volume_data.shape[2] / pixmap_height))
+            
+            scaled_y = self.current_volume_data.shape[1] - 1 - scaled_y
+            scaled_z = self.current_volume_data.shape[2] - 1 - scaled_z
+                        
+            # Update axial and coronal views
+            self.Axial_horizontalSlider.setValue(scaled_z)
+            self.Coronal_horizontalSlider.setValue(scaled_y)
+            
+        elif orientation == 'coronal':
+            # In coronal view, we display [x, slice_index, z]
+            scaled_x = int(image_x * (self.current_volume_data.shape[0] / pixmap_width))
+            scaled_z = int(image_y * (self.current_volume_data.shape[2] / pixmap_height))
+            
+            scaled_z = self.current_volume_data.shape[2] - 1 - scaled_z
+            
+            # Update axial and sagittal views
+            self.Axial_horizontalSlider.setValue(scaled_z)
+            self.Sagittal_horizontalSlider.setValue(scaled_x)
+
 
 if __name__ == "__main__":
     import sys

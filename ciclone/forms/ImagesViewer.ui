@@ -256,7 +256,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QLabel" name="Axial_ImagePreview">
+           <widget class="ClickableImageLabel" name="Axial_ImagePreview">
             <property name="text">
              <string/>
             </property>
@@ -280,7 +280,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QLabel" name="Coronal_ImagePreview">
+           <widget class="ClickableImageLabel" name="Coronal_ImagePreview">
             <property name="text">
              <string/>
             </property>
@@ -307,7 +307,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QLabel" name="Sagittal_ImagePreview">
+           <widget class="ClickableImageLabel" name="Sagittal_ImagePreview">
             <property name="text">
              <string/>
             </property>
@@ -336,6 +336,13 @@
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ClickableImageLabel</class>
+   <extends>QLabel</extends>
+   <header>ClickableImageLabel.py</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>
