@@ -192,7 +192,7 @@ class Ui_ImagesViewer(object):
         ImagesViewer.setStatusBar(self.statusbar)
 
         self.retranslateUi(ImagesViewer)
-        self.tabWidget.setCurrentIndex(2)
+        self.tabWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(ImagesViewer)
 
     def retranslateUi(self, ImagesViewer):

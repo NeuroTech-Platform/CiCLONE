@@ -38,6 +38,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.splitter.setSizes([int(total_width * 0.25), int(total_width * 0.75)])
         # Prevent splitter from resetting on double click
         self.splitter.setChildrenCollapsible(False)
+        
+        # Make splitter update views when moved
+        self.splitter.splitterMoved.connect(self.update_all_views)
 
         # Configure column resize behavior
         self.electrodesTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
@@ -58,16 +61,15 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
             label.setStyleSheet("""
                 QLabel {
-                    background-color: red;
+                    background-color: black;
                     border: 1px solid #666666;
                 }
             """)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setMinimumSize(256, 256)
-            label.setMaximumSize(512, 512)
             label.setSizePolicy(
-                QSizePolicy.Policy.Ignored,
-                QSizePolicy.Policy.Ignored
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding
             )
 
         # Connect slider signals
@@ -231,6 +233,23 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         label.setPixmap(scaled_pixmap)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    def resizeEvent(self, event):
+        """
+        Handle window resize events to update the display.
+        """
+        super().resizeEvent(event)
+        # Update all views when window is resized
+        self.update_all_views()
+        
+    def update_all_views(self):
+        """
+        Update all three views if data is loaded.
+        """
+        if self.current_volume_data is not None:
+            self.update_slice_display('axial')
+            self.update_slice_display('sagittal')
+            self.update_slice_display('coronal')
 
     def on_image_clicked(self, orientation, x, y):
         """
