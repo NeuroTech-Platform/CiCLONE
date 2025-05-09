@@ -13,7 +13,8 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QSizePolicy,
     QHeaderView,
-    QVBoxLayout
+    QVBoxLayout,
+    QTableWidgetItem
 )
 from PyQt6.QtCore import Qt, QStandardPaths
 
@@ -23,6 +24,7 @@ from ciclone.core.subject_importer import SubjectImporter
 from ciclone.ui.Viewer3D import Viewer3D
 from ciclone.utility import read_config_file
 from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
+from ciclone.utils.electrodes import Electrode
 
 #from ..forms.ImagesViewer_ui import Ui_ImagesViewer
 from ciclone.forms.ImagesViewer_ui import Ui_ImagesViewer
@@ -33,6 +35,16 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         super(ImagesViewer, self).__init__()
         self.setupUi(self)
 
+        # Initialize the electrodes list
+        self.ElectrodesList = []
+
+        # Initialize coordinate setting state
+        self.setting_entry = False
+        self.setting_output = False
+
+        # Connect the table's itemChanged signal to update the combo box
+        self.ElectrodeTableWidget.itemChanged.connect(self.update_electrodes_combo)
+
         # Set the initial size of the groupbox to 25% of the total width
         total_width = self.splitter.width()
         self.splitter.setSizes([int(total_width * 0.25), int(total_width * 0.75)])
@@ -42,14 +54,35 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Make splitter update views when moved
         self.splitter.splitterMoved.connect(self.update_all_views)
 
+        # Load electrodes def files
+        self.electrodes_def_files = {}
+        for file in os.listdir("ciclone/config/electrodes"):
+            if file.endswith(".elecdef"):
+                name = file.replace(".elecdef", "")
+                full_path = os.path.join("ciclone/config/electrodes", file)
+                self.electrodes_def_files[name] = full_path
+                self.ElectrodeTypeComboBox.addItem(name)
+
         # Configure column resize behavior
-        self.electrodesTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self.electrodesTable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.electrodesTable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.electrodesTable.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.ElectrodeTableWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.ElectrodeTableWidget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+
+        # Configure buttons
+        self.SetEntryPushButton.clicked.connect(self.set_entry_button_clicked)
+        self.SetOutputPushButton.clicked.connect(self.set_output_button_clicked)
         
+        # Disable buttons initially since there are no electrodes
+        self.SetEntryPushButton.setEnabled(False)
+        self.SetOutputPushButton.setEnabled(False)
+
+        # Configure column resize behavior
+        self.ElectrodesTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.ElectrodesTable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.ElectrodesTable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.ElectrodesTable.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+
         # Set fixed width for the first column
-        self.electrodesTable.setColumnWidth(0, 100)
+        self.ElectrodesTable.setColumnWidth(0, 100)
         
         # Add volume data caching
         self.current_volume_data = None
@@ -93,6 +126,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             # Show a default display (e.g., clear labels or show a message)
             self.show_default_display()
 
+        self.AddElectrodePushButton.clicked.connect(self.add_electrode_button_clicked)
         self.Viewer3dButton.clicked.connect(self.viewer3d_button_clicked)
 
     def viewer3d_button_clicked(self):
@@ -254,33 +288,17 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
     def on_image_clicked(self, orientation, x, y):
         """
         Handle clicks on any view by determining the 3D coordinates and updating other views.
-
-        Args:
-            orientation: The orientation of the view that was clicked ('axial', 'sagittal', 'coronal')
-            x: The x-coordinate of the click in the label's coordinate system
-            y: The y-coordinate of the click in the label's coordinate system
-        Note:
-            This function handles coordinate transformations between display space and volume
-            data space, accounting for different orientations and scaling factors.
-            
-            Coordinate system differences:
-            - Medical imaging convention: Bottom-left origin coordinate system
-            - Display convention: Top-left origin coordinate system
-            
-            Axis flipping requirements by view:
-            - Axial view: Y-coordinate needs to be flipped
-            - Sagittal view: Both Y and Z coordinates need to be flipped
-            - Coronal view: Z-coordinate needs to be flipped
+        If in coordinate setting mode, also update the corresponding coordinate field.
         """
         if self.current_volume_data is None:
             return
-            
+        
         # Get the dimensions of the label and current slice
         label = getattr(self, f"{orientation.capitalize()}_ImagePreview")
         pixmap = label.pixmap()
         if pixmap is None:
             return
-            
+        
         # Calculate scale factors to convert from label coordinates to image coordinates
         label_width, label_height = label.width(), label.height()
         pixmap_width, pixmap_height = pixmap.width(), pixmap.height()
@@ -293,48 +311,121 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Check if the click is outside the image area
         if x < offset_x or y < offset_y or x >= offset_x + pixmap_width or y >= offset_y + pixmap_height:
             return
-            
+        
         image_x = x - offset_x
         image_y = y - offset_y
         
-        # Convert clicked position (image_x, image_y) to volume coordinates
-        # Medical imaging convention: origin at bottom-left corner
-        # Display convention: origin at top-left corner
-        # We need to scale the coordinates and flip the y/z axes as appropriate
+        # Get the current slice indices
+        axial_slice = self.Axial_horizontalSlider.value()
+        sagittal_slice = self.Sagittal_horizontalSlider.value()
+        coronal_slice = self.Coronal_horizontalSlider.value()
+        
+        # Calculate 3D coordinates based on the view that was clicked
+        # Note: Medical imaging convention uses bottom-left origin, while display uses top-left
         if orientation == 'axial':
             # In axial view, we display [x, y, slice_index]
-            scaled_x = int(image_x * (self.current_volume_data.shape[0] / pixmap_width))
-            scaled_y = int(image_y * (self.current_volume_data.shape[1] / pixmap_height))
-            
-            scaled_y = self.current_volume_data.shape[1] - 1 - scaled_y
-                        
-            # Update sagittal and coronal views
-            self.Sagittal_horizontalSlider.setValue(scaled_x)
-            self.Coronal_horizontalSlider.setValue(scaled_y)
-            
+            x_coord = int(image_x * (self.current_volume_data.shape[0] / pixmap_width))
+            y_coord = self.current_volume_data.shape[1] - 1 - int(image_y * (self.current_volume_data.shape[1] / pixmap_height))
+            z_coord = axial_slice
+            # Update sagittal and coronal views to show the clicked point
+            self.Sagittal_horizontalSlider.setValue(x_coord)
+            self.Coronal_horizontalSlider.setValue(y_coord)
         elif orientation == 'sagittal':
             # In sagittal view, we display [slice_index, y, z]
-            scaled_y = int(image_x * (self.current_volume_data.shape[1] / pixmap_width))
-            scaled_z = int(image_y * (self.current_volume_data.shape[2] / pixmap_height))
-            
-            scaled_y = self.current_volume_data.shape[1] - 1 - scaled_y
-            scaled_z = self.current_volume_data.shape[2] - 1 - scaled_z
-                        
-            # Update axial and coronal views
-            self.Axial_horizontalSlider.setValue(scaled_z)
-            self.Coronal_horizontalSlider.setValue(scaled_y)
-            
-        elif orientation == 'coronal':
+            x_coord = sagittal_slice
+            y_coord = self.current_volume_data.shape[1] - 1 - int(image_x * (self.current_volume_data.shape[1] / pixmap_width))
+            z_coord = self.current_volume_data.shape[2] - 1 - int(image_y * (self.current_volume_data.shape[2] / pixmap_height))
+            # Update axial and coronal views to show the clicked point
+            self.Axial_horizontalSlider.setValue(z_coord)
+            self.Coronal_horizontalSlider.setValue(y_coord)
+        else:  # coronal
             # In coronal view, we display [x, slice_index, z]
-            scaled_x = int(image_x * (self.current_volume_data.shape[0] / pixmap_width))
-            scaled_z = int(image_y * (self.current_volume_data.shape[2] / pixmap_height))
-            
-            scaled_z = self.current_volume_data.shape[2] - 1 - scaled_z
-            
-            # Update axial and sagittal views
-            self.Axial_horizontalSlider.setValue(scaled_z)
-            self.Sagittal_horizontalSlider.setValue(scaled_x)
+            x_coord = int(image_x * (self.current_volume_data.shape[0] / pixmap_width))
+            y_coord = coronal_slice
+            z_coord = self.current_volume_data.shape[2] - 1 - int(image_y * (self.current_volume_data.shape[2] / pixmap_height))
+            # Update axial and sagittal views to show the clicked point
+            self.Axial_horizontalSlider.setValue(z_coord)
+            self.Sagittal_horizontalSlider.setValue(x_coord)
+        
+        # Update the coordinate fields if in setting mode
+        if self.setting_entry:
+            self.EntryCoordinatesLabel.setText(f"Entry Coordinates : ({x_coord}, {y_coord}, {z_coord})")
+        elif self.setting_output:
+            self.OutputCoordinatesLabel.setText(f"Output Coordinates : ({x_coord}, {y_coord}, {z_coord})")
 
+    def set_entry_button_clicked(self):
+        """Toggle entry point setting mode"""
+        self.setting_entry = not self.setting_entry
+        if self.setting_entry:
+            self.setting_output = False
+            self.SetEntryPushButton.setStyleSheet("color: red;")
+            self.SetOutputPushButton.setStyleSheet("")
+            self.SetOutputPushButton.setEnabled(False)
+        else:
+            self.SetEntryPushButton.setStyleSheet("")
+            # Only enable if there are electrodes in the combo box
+            has_electrodes = self.ElectrodesComboBox.count() > 0
+            self.SetOutputPushButton.setEnabled(has_electrodes)
+
+    def set_output_button_clicked(self):
+        """Toggle output point setting mode"""
+        self.setting_output = not self.setting_output
+        if self.setting_output:
+            self.setting_entry = False
+            self.SetOutputPushButton.setStyleSheet("color: red;")
+            self.SetEntryPushButton.setStyleSheet("")
+            self.SetEntryPushButton.setEnabled(False)
+        else:
+            self.SetOutputPushButton.setStyleSheet("")
+            # Only enable if there are electrodes in the combo box
+            has_electrodes = self.ElectrodesComboBox.count() > 0
+            self.SetEntryPushButton.setEnabled(has_electrodes)
+
+    def add_electrode_button_clicked(self):
+        electrode_type = self.ElectrodeTypeComboBox.currentText()
+        
+        # Get electrode name from the UI
+        electrode_name = self.ElectrodeNameLineEdit.text()
+        if not electrode_name:
+            QMessageBox.critical(self, "Input Error", "Please enter an electrode name.")
+            return
+        
+        # Check that there is not an electrode with the same name
+        if any(electrode.name == electrode_name for electrode in self.ElectrodesList):
+            QMessageBox.critical(self, "Input Error", "An electrode with this name already exists.")
+            return
+        
+        # Create electrode with name and type and add to list
+        electrode = Electrode(name=electrode_name, electrode_type=electrode_type)
+        self.ElectrodesList.append(electrode)
+
+        # Add the electrode to the table
+        row_position = self.ElectrodeTableWidget.rowCount()
+        self.ElectrodeTableWidget.insertRow(row_position)
+
+        # Create and add table items with center alignment
+        items = [
+            (electrode.name, 0),
+            (electrode.electrode_type, 1)
+        ]
+        
+        for text, col in items:
+            item = QTableWidgetItem(text)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.ElectrodeTableWidget.setItem(row_position, col, item)
+
+    def update_electrodes_combo(self):
+        """Update the ElectrodesComboBox with current electrode names"""
+        self.ElectrodesComboBox.clear()
+        for row in range(self.ElectrodeTableWidget.rowCount()):
+            name_item = self.ElectrodeTableWidget.item(row, 0)  # Get name from first column
+            if name_item:
+                self.ElectrodesComboBox.addItem(name_item.text())
+        
+        # Enable buttons if there is at least one electrode
+        has_electrodes = self.ElectrodesComboBox.count() > 0
+        self.SetEntryPushButton.setEnabled(has_electrodes)
+        self.SetOutputPushButton.setEnabled(has_electrodes)
 
 if __name__ == "__main__":
     import sys
