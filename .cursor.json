@@ -1,0 +1,55 @@
+{
+  "projectName": "CiCLONE",
+  "rules": [
+    {
+      "pattern": "**/*.py",
+      "instructions": "Provide high-quality, well-documented Python code with the following guidelines:\n1. Follow PEP 8 style guidelines (4 spaces for indentation, 79-character line limit, etc.)\n2. Write comprehensive docstrings using Google-style format\n3. Include type hints for function parameters and return values\n4. Use meaningful variable and function names\n5. Explain complex algorithms or logic patterns with comments\n6. For Qt6-specific code, follow Qt naming conventions (e.g., camelCase for methods)\n7. Create modular, reusable components\n8. Handle errors appropriately with try/except blocks\n9. Never hallucinate or add/remove features without explicit instructions\n10. Provide clear explanations of code functionality and design decisions"
+    },
+    {
+      "pattern": "**/ui/*.py",
+      "instructions": "For Qt6 UI files:\n1. Follow Qt design patterns and best practices\n2. Ensure proper signal-slot connections\n3. Use layouts for responsive design\n4. Separate UI logic from business logic\n5. Include descriptive widget names following Qt conventions\n6. Implement proper resource handling\n7. Ensure proper parent-child relationships for widgets\n8. Consider usability and accessibility in designs"
+    },
+    {
+      "pattern": "**/utils/*.py",
+      "instructions": "For utility functions:\n1. Create focused, single-responsibility functions\n2. Write comprehensive docstrings with examples\n3. Include thorough error handling\n4. Ensure functions are stateless when possible\n5. Optimize for performance when appropriate\n6. Make utilities reusable across the project"
+    },
+    {
+      "pattern": "**/workers/*.py",
+      "instructions": "For worker/thread code:\n1. Ensure thread-safety in implementation\n2. Use proper synchronization mechanisms\n3. Implement clear progress reporting\n4. Handle thread interruptions gracefully\n5. Avoid race conditions and deadlocks\n6. Consider QThreadPool for task management"
+    },
+    {
+      "pattern": "**/core/*.py",
+      "instructions": "For core business logic:\n1. Implement clean separation of concerns\n2. Create clear abstractions and interfaces\n3. Use design patterns appropriately\n4. Write comprehensive unit tests\n5. Document complex algorithms thoroughly\n6. Focus on maintainability and extensibility"
+    },
+    {
+      "pattern": "**/forms/*.py",
+      "instructions": "For form handling code:\n1. Implement proper form validation\n2. Create user-friendly error messages\n3. Follow UI/UX best practices\n4. Ensure proper data binding\n5. Consider accessibility requirements"
+    },
+    {
+      "pattern": "**/config/*.py",
+      "instructions": "For configuration files:\n1. Use appropriate configuration patterns\n2. Document all configuration options\n3. Implement validation for configuration values\n4. Provide sensible defaults\n5. Consider environment-specific configurations"
+    },
+    {
+      "pattern": "**/*.md",
+      "instructions": "For documentation files:\n1. Provide clear, concise explanations\n2. Include code examples when relevant\n3. Structure content with proper headings\n4. Link related documentation sections\n5. Update documentation to match code changes"
+    }
+  ],
+  "explanationDepth": "comprehensive",
+  "codeQuality": "production",
+  "preferredLanguages": ["python"],
+  "libraries": {
+    "python": ["PyQt6", "PySide6"]
+  },
+  "assistantPersonality": {
+    "expertise": "Expert in Python and Qt6 development",
+    "style": "Clear, detailed explanations with educational focus",
+    "cautiousness": "Conservative - don't add or remove functionality without explicit instructions",
+    "thoroughness": "Provide comprehensive implementations and explanations"
+  },
+  "prohibitedBehaviors": [
+    "Adding features without explicit instructions",
+    "Removing code without permission",
+    "Hallucinating about library capabilities",
+    "Leaving implementation details incomplete"
+  ]
+} 
