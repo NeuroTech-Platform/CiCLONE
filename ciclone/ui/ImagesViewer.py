@@ -17,7 +17,8 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QHeaderView,
     QVBoxLayout,
-    QTableWidgetItem
+    QTableWidgetItem,
+    QTreeWidgetItem
 )
 from PyQt6.QtCore import Qt, QStandardPaths
 
@@ -53,9 +54,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Dictionary to store processed contact points for each electrode
         self.processed_contacts = {}
 
-        # Connect the table's itemChanged signal to update the combo box
-        self.ElectrodeTableWidget.itemChanged.connect(self.update_electrodes_combo)
-
         # Set the initial size of the groupbox to 25% of the total width
         total_width = self.splitter.width()
         self.splitter.setSizes([int(total_width * 0.25), int(total_width * 0.75)])
@@ -74,9 +72,17 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 self.electrodes_def_files[name] = full_path
                 self.ElectrodeTypeComboBox.addItem(name)
 
-        # Configure column resize behavior
-        self.ElectrodeTableWidget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self.ElectrodeTableWidget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        # Configure column sizing for ElectrodeTreeWidget
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed) # Name column
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)   # Type column
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)   # X column
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)   # Y column
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)   # Z column
+        self.ElectrodeTreeWidget.setColumnWidth(0, 80)  # Width for Name
+        self.ElectrodeTreeWidget.setColumnWidth(1, 80)  # Width for Type
+        self.ElectrodeTreeWidget.setColumnWidth(2, 70)  # Width for X
+        self.ElectrodeTreeWidget.setColumnWidth(3, 70)  # Width for Y
+        self.ElectrodeTreeWidget.setColumnWidth(4, 70)  # Width for Z
 
         # Configure buttons
         self.SetEntryPushButton.clicked.connect(self.set_entry_button_clicked)
@@ -86,15 +92,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.SetEntryPushButton.setEnabled(False)
         self.SetOutputPushButton.setEnabled(False)
 
-        # Configure column resize behavior
-        self.ElectrodesTable.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self.ElectrodesTable.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.ElectrodesTable.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.ElectrodesTable.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        # Find and store the vertical spacer
+        self.verticalSpacer = self.leftPanelLayout.itemAt(self.leftPanelLayout.count() - 1).spacerItem()
 
-        # Set fixed width for the first column
-        self.ElectrodesTable.setColumnWidth(0, 100)
-        
         # Add volume data caching
         self.current_volume_data = None
         self.current_nifti_path = None
@@ -143,14 +143,24 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Connect the ProcessCoordinatesPushButton
         self.ProcessCoordinatesPushButton.clicked.connect(self.process_coordinates_button_clicked)
         
-        # Connect the ExportCoordinatesPushButton
-        #self.ExportCoordinatesPushButton.clicked.connect(self.export_coordinates_button_clicked)
-        
         # Connect the SaveFilePushButton to save in 3D Slicer format
         self.SaveFilePushButton.clicked.connect(self.save_file_button_clicked)
 
         # Connect the ElectrodesComboBox to update the table when selection changes
         self.ElectrodesComboBox.currentTextChanged.connect(self.on_electrode_selection_changed)
+
+        # Connect the toolBox to adjust tab heights
+        self.toolBox.currentChanged.connect(self.adjust_tab_heights)
+        self.toolBox.setCurrentIndex(1)
+        self.toolBox.setCurrentIndex(0)
+        
+        # Make grid layout cells equal size and square
+        grid = self.layoutWidget.layout()
+        grid.setSpacing(10)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setRowStretch(0, 1)
+        grid.setRowStretch(1, 1)
 
     def viewer3d_button_clicked(self):
         print("Viewer3D button clicked")
@@ -557,30 +567,29 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         electrode = Electrode(name=electrode_name, electrode_type=electrode_type)
         self.ElectrodesList.append(electrode)
 
-        # Add the electrode to the table
-        row_position = self.ElectrodeTableWidget.rowCount()
-        self.ElectrodeTableWidget.insertRow(row_position)
-
-        # Create and add table items with center alignment
-        items = [
-            (electrode.name, 0),
-            (electrode.electrode_type, 1)
-        ]
+        # Add the electrode to the tree
+        item = QTreeWidgetItem(self.ElectrodeTreeWidget)
+        item.setText(0, f"{electrode.name}")  # Column 0: Only name
+        # No need to set column 1 separately anymore
+        # Columns 2 (X), 3 (Y), 4 (Z) are empty for the parent electrode item
+        item.setTextAlignment(0, Qt.AlignmentFlag.AlignCenter)
+        # item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter) # Not needed anymore
         
-        for text, col in items:
-            item = QTableWidgetItem(text)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.ElectrodeTableWidget.setItem(row_position, col, item)
+        # After adding an electrode, update the combo box
+        self.update_electrodes_combo()
 
     def update_electrodes_combo(self):
         """Update the ElectrodesComboBox with current electrode names"""
         current_text = self.ElectrodesComboBox.currentText()
         self.ElectrodesComboBox.blockSignals(True)  # Block signals to prevent triggering selection change
         self.ElectrodesComboBox.clear()
-        for row in range(self.ElectrodeTableWidget.rowCount()):
-            name_item = self.ElectrodeTableWidget.item(row, 0)  # Get name from first column
-            if name_item:
-                self.ElectrodesComboBox.addItem(name_item.text())
+        
+        root = self.ElectrodeTreeWidget.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            name_text = item.text(0)  # Get name from first column
+            if name_text:
+                self.ElectrodesComboBox.addItem(name_text)
         
         # Try to restore the previous selection
         index = self.ElectrodesComboBox.findText(current_text)
@@ -596,13 +605,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         # Update the entry/output labels for the selected electrode
         self.update_coordinate_labels()
-        
-        # Update the contacts table for the selected electrode
-        electrode_name = self.ElectrodesComboBox.currentText()
-        if electrode_name:
-            electrode = next((e for e in self.ElectrodesList if e.name == electrode_name), None)
-            if electrode and electrode.contacts:
-                self.update_contacts_table(electrode)
 
     def update_coordinate_labels(self):
         """Update the coordinate labels based on the selected electrode"""
@@ -721,8 +723,36 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 # Update the display
                 self.update_all_views()
                 
-                # Update the contacts table
-                self.update_contacts_table(electrode)
+                # Update ElectrodeTreeWidget with contacts
+                root = self.ElectrodeTreeWidget.invisibleRootItem()
+                parent_item = None
+                for i in range(root.childCount()):
+                    item = root.child(i)
+                    # Get the text before the first parenthesis or the whole string if no parenthesis
+                    item_text = item.text(0).split(' (')[0]
+                    if item_text == electrode_name:
+                        parent_item = item
+                        break
+                
+                if parent_item:
+                    # Clear existing contact sub-items
+                    parent_item.takeChildren()
+                    
+                    # Add new contact sub-items
+                    for contact_obj in electrode.contacts:
+                        contact_item = QTreeWidgetItem(parent_item)
+                        contact_item.setText(0, contact_obj.label)      # Column 0: Contact Label
+                        # Column 1 is now Stretch and can be used for additional info if needed
+                        contact_item.setText(1, str(int(contact_obj.x))) # Column 1: X
+                        contact_item.setText(2, str(int(contact_obj.y))) # Column 2: Y
+                        contact_item.setText(3, str(int(contact_obj.z))) # Column 3: Z
+                        # Set alignment for contact items
+                        contact_item.setTextAlignment(0, Qt.AlignmentFlag.AlignCenter) # Label
+                        # contact_item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter) # Not used now
+                        contact_item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter) # X
+                        contact_item.setTextAlignment(2, Qt.AlignmentFlag.AlignCenter) # Y
+                        contact_item.setTextAlignment(3, Qt.AlignmentFlag.AlignCenter) # Z
+                    parent_item.setExpanded(True) # Optionally expand the parent item
                 
                 QMessageBox.information(self, "Success", f"Processed {len(contacts)} contacts for electrode {electrode_name}.")
             else:
@@ -731,95 +761,10 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to process coordinates: {str(e)}")
     
-    def update_contacts_table(self, electrode):
-        """Update the ElectrodesTable with contact information for the given electrode"""
-        # Clear the table
-        self.ElectrodesTable.setRowCount(0)
-        
-        # Add each contact to the table
-        for i, contact in enumerate(electrode.contacts):
-            row_position = self.ElectrodesTable.rowCount()
-            self.ElectrodesTable.insertRow(row_position)
-            
-            # Create and add table items with center alignment
-            items = [
-                (contact.label, 0),
-                (str(int(contact.x)), 1),
-                (str(int(contact.y)), 2),
-                (str(int(contact.z)), 3)
-            ]
-            
-            for text, col in items:
-                item = QTableWidgetItem(text)
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.ElectrodesTable.setItem(row_position, col, item)
-
     def on_electrode_selection_changed(self, electrode_name):
         """Handle electrode selection change in the dropdown"""
         # Update coordinate labels
         self.update_coordinate_labels()
-        
-        # Update the contacts table for the selected electrode
-        if electrode_name:
-            electrode = next((e for e in self.ElectrodesList if e.name == electrode_name), None)
-            if electrode and electrode.contacts:
-                self.update_contacts_table(electrode)
-            else:
-                # Clear the table if no contacts for this electrode
-                self.ElectrodesTable.setRowCount(0)
-
-    def export_coordinates_button_clicked(self):
-        """Export all electrode coordinates to a JSON file"""
-        if not self.ElectrodesList:
-            QMessageBox.warning(self, "Warning", "No electrodes to export.")
-            return
-        
-        # Check if we have processed contacts
-        if not any(electrode.contacts for electrode in self.ElectrodesList):
-            QMessageBox.warning(self, "Warning", "No processed electrode contacts to export.")
-            return
-        
-        # Ask for the output file
-        default_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Export Electrode Coordinates", default_dir, "JSON Files (*.json)"
-        )
-        
-        if not file_path:
-            return  # User cancelled
-        
-        try:
-            # Create a dictionary with all electrode data
-            electrodes_data = {}
-            
-            for electrode in self.ElectrodesList:
-                if not electrode.contacts:
-                    continue
-                
-                contacts_data = []
-                for contact in electrode.contacts:
-                    contacts_data.append({
-                        "label": contact.label,
-                        "x": int(contact.x),
-                        "y": int(contact.y),
-                        "z": int(contact.z)
-                    })
-                
-                electrodes_data[electrode.name] = {
-                    "type": electrode.electrode_type,
-                    "contacts": contacts_data,
-                    "entry": self.electrode_points.get(electrode.name, {}).get('entry', None),
-                    "output": self.electrode_points.get(electrode.name, {}).get('output', None)
-                }
-            
-            # Write to JSON file
-            with open(file_path, 'w') as f:
-                json.dump(electrodes_data, f, indent=2)
-            
-            QMessageBox.information(self, "Success", f"Electrode coordinates exported to {file_path}")
-        
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to export coordinates: {str(e)}")
 
     def save_file_button_clicked(self):
         """Save electrode coordinates in 3D Slicer fiducial markup format"""
@@ -975,6 +920,20 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             QMessageBox.critical(self, "Error", f"Failed to save coordinates: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def adjust_tab_heights(self, index):
+        if index == 2: # Coordinates tab
+            # Make the toolbox take up more space when Coordinates tab is active
+            self.toolBox.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+            self.verticalSpacer.changeSize(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        else:
+            # Make the toolbox compact for other tabs
+            self.toolBox.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+            self.verticalSpacer.changeSize(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        
+        # Force layout update
+        self.leftPanelLayout.invalidate()
+        self.leftPanel.updateGeometry()
 
 if __name__ == "__main__":
     import sys
