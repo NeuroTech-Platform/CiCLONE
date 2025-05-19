@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>850</width>
+    <width>900</width>
     <height>751</height>
    </rect>
   </property>
@@ -34,14 +34,14 @@
            </sizepolicy>
           </property>
           <property name="currentIndex">
-           <number>0</number>
+           <number>1</number>
           </property>
           <widget class="QWidget" name="page_5">
            <property name="geometry">
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>498</width>
+             <width>458</width>
              <height>123</height>
             </rect>
            </property>
@@ -122,8 +122,8 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>498</width>
-             <height>215</height>
+             <width>486</width>
+             <height>187</height>
             </rect>
            </property>
            <property name="sizePolicy">
@@ -141,73 +141,69 @@
            <attribute name="label">
             <string>Process Coordinates</string>
            </attribute>
-           <layout class="QVBoxLayout" name="verticalLayout_3">
-            <item>
+           <layout class="QGridLayout" name="gridLayout_4">
+            <item row="0" column="0">
              <widget class="QComboBox" name="ElectrodesComboBox"/>
             </item>
-            <item>
+            <item row="1" column="0">
              <widget class="QGroupBox" name="groupBox">
               <property name="title">
                <string>Calculate Coordinates</string>
               </property>
               <layout class="QGridLayout" name="gridLayout_3">
                <item row="0" column="0">
-                <layout class="QHBoxLayout" name="horizontalLayout_6">
-                 <item>
-                  <widget class="QPushButton" name="SetEntryPushButton">
-                   <property name="minimumSize">
-                    <size>
-                     <width>100</width>
-                     <height>32</height>
-                    </size>
-                   </property>
-                   <property name="maximumSize">
-                    <size>
-                     <width>100</width>
-                     <height>32</height>
-                    </size>
-                   </property>
-                   <property name="text">
-                    <string>Set Entry</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item>
-                  <widget class="QPushButton" name="SetOutputPushButton">
-                   <property name="minimumSize">
-                    <size>
-                     <width>100</width>
-                     <height>32</height>
-                    </size>
-                   </property>
-                   <property name="maximumSize">
-                    <size>
-                     <width>100</width>
-                     <height>32</height>
-                    </size>
-                   </property>
-                   <property name="text">
-                    <string>Set Output</string>
-                   </property>
-                  </widget>
-                 </item>
-                </layout>
+                <widget class="QPushButton" name="SetEntryPushButton">
+                 <property name="minimumSize">
+                  <size>
+                   <width>50</width>
+                   <height>32</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>50</width>
+                   <height>32</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Set</string>
+                 </property>
+                </widget>
                </item>
-               <item row="1" column="0">
+               <item row="0" column="1">
                 <widget class="QLabel" name="EntryCoordinatesLabel">
                  <property name="text">
                   <string>Entry Coordinates : </string>
                  </property>
                 </widget>
                </item>
-               <item row="2" column="0">
+               <item row="1" column="0">
+                <widget class="QPushButton" name="SetOutputPushButton">
+                 <property name="minimumSize">
+                  <size>
+                   <width>50</width>
+                   <height>32</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>50</width>
+                   <height>32</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Set</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
                 <widget class="QLabel" name="OutputCoordinatesLabel">
                  <property name="text">
                   <string>Output Coordinates : </string>
                  </property>
                 </widget>
                </item>
-               <item row="3" column="0">
+               <item row="2" column="0" colspan="2">
                 <widget class="QPushButton" name="ProcessCoordinatesPushButton">
                  <property name="text">
                   <string>Process</string>
@@ -224,8 +220,8 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>498</width>
-             <height>466</height>
+             <width>458</width>
+             <height>366</height>
             </rect>
            </property>
            <property name="sizePolicy">
@@ -246,6 +242,12 @@
            <layout class="QVBoxLayout" name="verticalLayout_4">
             <item>
              <widget class="QScrollArea" name="treeScrollArea">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                <horstretch>0</horstretch>
+                <verstretch>1</verstretch>
+               </sizepolicy>
+              </property>
               <property name="minimumSize">
                <size>
                 <width>0</width>
@@ -255,13 +257,15 @@
               <property name="widgetResizable">
                <bool>true</bool>
               </property>
-              <property name="sizePolicy">
-               <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-                <horstretch>0</horstretch>
-                <verstretch>1</verstretch>
-               </sizepolicy>
-              </property>
               <widget class="QWidget" name="scrollAreaWidgetContents">
+               <property name="geometry">
+                <rect>
+                 <x>0</x>
+                 <y>0</y>
+                 <width>432</width>
+                 <height>298</height>
+                </rect>
+               </property>
                <layout class="QVBoxLayout" name="scrollLayout">
                 <item>
                  <widget class="QTreeWidget" name="ElectrodeTreeWidget">
@@ -341,7 +345,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>498</width>
+             <width>458</width>
              <height>44</height>
             </rect>
            </property>
@@ -388,15 +392,9 @@
        </layout>
       </widget>
       <widget class="QWidget" name="layoutWidget">
-       <layout class="QGridLayout" name="gridLayout">
+       <layout class="QGridLayout" name="gridLayout" rowstretch="0,0" columnstretch="0,0">
         <property name="spacing">
          <number>10</number>
-        </property>
-        <property name="columnStretch">
-         <number>1,1</number>
-        </property>
-        <property name="rowStretch">
-         <number>1,1</number>
         </property>
         <item row="0" column="0">
          <layout class="QVBoxLayout" name="Axial_verticalLayout">
@@ -487,7 +485,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>850</width>
+     <width>900</width>
      <height>37</height>
     </rect>
    </property>

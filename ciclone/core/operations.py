@@ -1,6 +1,6 @@
 from pathlib import Path
 import shutil
-from ciclone.utility import execute_command
+from ciclone.core.utility import execute_command
 import json
 import numpy as np
 import os

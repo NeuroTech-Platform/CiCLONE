@@ -2,7 +2,7 @@ import os
 import shutil
 
 from ciclone.core.stages import run_stage
-from ciclone.subject import Subject
+from ciclone.core.subject import Subject
 
 def processImagesAnalysis(conn, output_directory: str, subject_list: list, stages: list):
     # Check if output directory exists

@@ -18,7 +18,7 @@ from PyQt6.QtCore import Qt, QStandardPaths
 from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap
 
 from ciclone.core.subject_importer import SubjectImporter
-from ciclone.utility import read_config_file
+from ciclone.core.utility import read_config_file
 from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
 from ciclone.ui.ImagesViewer import ImagesViewer
 

@@ -4,7 +4,7 @@ from pathlib import Path
 import argcomplete
 os.environ['_ARGCOMPLETE'] = '1'
 os.environ['_ARGCOMPLETE_SUPPRESS_SPACE'] = '1'
-from ciclone.operations import (
+from ciclone.core.operations import (
     crop_image,
     move_image,
     coregister_images,
@@ -20,8 +20,8 @@ from ciclone.operations import (
     register_mri_to_mni,
     open_fsleyes
 )
-from ciclone.utility import read_config_file
-from ciclone.subject import Subject
+from ciclone.core.utility import read_config_file
+from ciclone.core.subject import Subject
 
 def run_operation(operation, subject: Subject):    
     # Store the original working directory
