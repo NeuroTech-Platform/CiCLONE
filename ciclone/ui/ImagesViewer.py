@@ -26,11 +26,9 @@ from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap, QPainter, QColor, QBr
 
 from ciclone.core.subject_importer import SubjectImporter
 from ciclone.ui.Viewer3D import Viewer3D
-from ciclone.utility import read_config_file
+from ciclone.core.utility import read_config_file
 from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
-from ciclone.utils.electrodes import Electrode
-
-#from ..forms.ImagesViewer_ui import Ui_ImagesViewer
+from ciclone.core.electrodes import Electrode
 from ciclone.forms.ImagesViewer_ui import Ui_ImagesViewer
 
 class ImagesViewer(QMainWindow, Ui_ImagesViewer):
@@ -53,12 +51,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         # Dictionary to store processed contact points for each electrode
         self.processed_contacts = {}
-
-        # Set the initial size of the groupbox to 25% of the total width
-        total_width = self.splitter.width()
-        self.splitter.setSizes([int(total_width * 0.25), int(total_width * 0.75)])
-        # Prevent splitter from resetting on double click
-        self.splitter.setChildrenCollapsible(False)
         
         # Make splitter update views when moved
         self.splitter.splitterMoved.connect(self.update_all_views)
