@@ -1,9 +1,6 @@
 import os
 import argparse
 from pathlib import Path
-import argcomplete
-os.environ['_ARGCOMPLETE'] = '1'
-os.environ['_ARGCOMPLETE_SUPPRESS_SPACE'] = '1'
 from ciclone.core.operations import (
     crop_image,
     move_image,
@@ -76,19 +73,6 @@ def run_stage(stage, subject):
     for operation in stage['operations']:
         run_operation(operation, subject)
 
-def update_output_directory(config_path, new_output_directory):
-    import yaml
-
-    with open(config_path, 'r') as file:
-        config_data = yaml.safe_load(file)
-
-    config_data['output_directory'] = new_output_directory
-
-    with open(config_path, 'w') as file:
-        yaml.safe_dump(config_data, file)
-
-    print(f"Updated output directory to {new_output_directory}")
-
 def main():
     argsparser = argparse.ArgumentParser(description='''CiClone : Cico Cardinale's Localization Of Neuro-electrodes\n\n
 Quick Start Tutorial\n
@@ -100,25 +84,18 @@ Step 4: Transform electrode coordinates to MNI space after having done the manua
 Use ciclone -h to see all available commands''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    argsparser.add_argument('--update-output-directory', type=str, help='Update the output directory in the config file.')
+    argsparser.add_argument('--directory', type=str, required=True, help='Output directory where subject(s) data will be stored.')
     argsparser.add_argument('--create-folder', nargs='+', help='Create folder for the specified subject(s).')
     argsparser.add_argument('--subjects', nargs='+', help='List of subject(s) to process for each command.')
     argsparser.add_argument('--stages', nargs='+', help='Name of the stage(s) to run. If not provided, all stages will be run.')
     argsparser.add_argument('--transform-coordinates', type=str, help='Path to the 3D SlicerJSON file containing coordinates to transform')
-
-    # Enable bash completion
-    argcomplete.autocomplete(argsparser, always_complete_options=True)
     
     args = argsparser.parse_args()
     config_path = os.path.realpath(os.path.join(os.path.dirname(__file__), "config/config.yaml"))
-    print(f"Using config file: {config_path}")
     config_data = read_config_file(config_path)
+    print(f"Using config file: {config_path}")
 
-    if args.update_output_directory:
-        update_output_directory(config_path, args.update_output_directory)
-        return
-
-    output_directory_path = Path(config_data['output_directory'])
+    output_directory_path = Path(args.directory)
     if not output_directory_path.exists():
         print(f"[ERROR] Output directory {output_directory_path} does not exist.")
         return

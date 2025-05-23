@@ -41,7 +41,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>458</width>
+             <width>503</width>
              <height>123</height>
             </rect>
            </property>
@@ -122,12 +122,12 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>486</width>
-             <height>187</height>
+             <width>503</width>
+             <height>168</height>
             </rect>
            </property>
            <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
              <horstretch>0</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
@@ -141,76 +141,75 @@
            <attribute name="label">
             <string>Process Coordinates</string>
            </attribute>
-           <layout class="QGridLayout" name="gridLayout_4">
+           <layout class="QGridLayout" name="gridLayout_3">
             <item row="0" column="0">
              <widget class="QComboBox" name="ElectrodesComboBox"/>
             </item>
             <item row="1" column="0">
-             <widget class="QGroupBox" name="groupBox">
-              <property name="title">
-               <string>Calculate Coordinates</string>
+             <layout class="QHBoxLayout" name="horizontalLayout_6">
+              <item>
+               <widget class="QPushButton" name="SetEntryPushButton">
+                <property name="minimumSize">
+                 <size>
+                  <width>50</width>
+                  <height>32</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>50</width>
+                  <height>32</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>Set</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="EntryCoordinatesLabel">
+                <property name="text">
+                 <string>Entry Coordinates : </string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="2" column="0">
+             <layout class="QHBoxLayout" name="horizontalLayout_5">
+              <item>
+               <widget class="QPushButton" name="SetOutputPushButton">
+                <property name="minimumSize">
+                 <size>
+                  <width>50</width>
+                  <height>32</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>50</width>
+                  <height>32</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string>Set</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="OutputCoordinatesLabel">
+                <property name="text">
+                 <string>Output Coordinates : </string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item row="3" column="0">
+             <widget class="QPushButton" name="ProcessCoordinatesPushButton">
+              <property name="text">
+               <string>Process</string>
               </property>
-              <layout class="QGridLayout" name="gridLayout_3">
-               <item row="0" column="0">
-                <widget class="QPushButton" name="SetEntryPushButton">
-                 <property name="minimumSize">
-                  <size>
-                   <width>50</width>
-                   <height>32</height>
-                  </size>
-                 </property>
-                 <property name="maximumSize">
-                  <size>
-                   <width>50</width>
-                   <height>32</height>
-                  </size>
-                 </property>
-                 <property name="text">
-                  <string>Set</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="1">
-                <widget class="QLabel" name="EntryCoordinatesLabel">
-                 <property name="text">
-                  <string>Entry Coordinates : </string>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="0">
-                <widget class="QPushButton" name="SetOutputPushButton">
-                 <property name="minimumSize">
-                  <size>
-                   <width>50</width>
-                   <height>32</height>
-                  </size>
-                 </property>
-                 <property name="maximumSize">
-                  <size>
-                   <width>50</width>
-                   <height>32</height>
-                  </size>
-                 </property>
-                 <property name="text">
-                  <string>Set</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="1">
-                <widget class="QLabel" name="OutputCoordinatesLabel">
-                 <property name="text">
-                  <string>Output Coordinates : </string>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="0" colspan="2">
-                <widget class="QPushButton" name="ProcessCoordinatesPushButton">
-                 <property name="text">
-                  <string>Process</string>
-                 </property>
-                </widget>
-               </item>
-              </layout>
              </widget>
             </item>
            </layout>
@@ -220,7 +219,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>458</width>
+             <width>503</width>
              <height>366</height>
             </rect>
            </property>
@@ -262,7 +261,7 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>432</width>
+                 <width>477</width>
                  <height>298</height>
                 </rect>
                </property>
@@ -345,7 +344,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>458</width>
+             <width>503</width>
              <height>44</height>
             </rect>
            </property>

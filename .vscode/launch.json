@@ -5,7 +5,7 @@
             "name": "Run full Ciclone pipeline",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ciclone/main.py",
+            "program": "${workspaceFolder}/ciclone/main_cli.py",
             "args": [
                 "--subjects",
                 "subject2"
@@ -20,7 +20,7 @@
             "name": "Run cortical extraction stage",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ciclone/main.py",
+            "program": "${workspaceFolder}/ciclone/main_cli.py",
             "args": [
                 "--subjects",
                 "subject2",
