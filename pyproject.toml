@@ -8,14 +8,16 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.14"
-pyyaml = "^6.0"
+pyyaml = "^6.0.1"
 numpy = "^2.2.0"
 pyqt6 = "^6.8.1"
 argcomplete = "^3.2.2"
 nibabel = "^5.3.2"
+vtk = "^9.4.2"
 
 [tool.poetry.scripts]
 ciclone = "ciclone.main:main"
+ciclone-cli = "ciclone.main_cli:main"
 
 [build-system]
 requires = ["poetry-core"]

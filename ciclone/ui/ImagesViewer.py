@@ -55,14 +55,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Make splitter update views when moved
         self.splitter.splitterMoved.connect(self.update_all_views)
 
-        # Load electrodes def files
-        self.electrodes_def_files = {}
-        for file in os.listdir("ciclone/config/electrodes"):
-            if file.endswith(".elecdef"):
-                name = file.replace(".elecdef", "")
-                full_path = os.path.join("ciclone/config/electrodes", file)
-                self.electrodes_def_files[name] = full_path
-                self.ElectrodeTypeComboBox.addItem(name)
+        # Load electrodes def files and add to combo box
+        self.electrodes_def_files = self.load_electrode_definitions()
+        self.ElectrodeTypeComboBox.addItems(self.electrodes_def_files.keys())
 
         # Configure column sizing for ElectrodeTreeWidget
         self.ElectrodeTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed) # Name column
@@ -926,6 +921,25 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Force layout update
         self.leftPanelLayout.invalidate()
         self.leftPanel.updateGeometry()
+
+    def load_electrode_definitions(self):
+        """Load electrode definition files from the config directory.
+        
+        Returns:
+            dict: A dictionary mapping electrode names to their definition file paths.
+        """
+        electrode_files = []
+        for file in os.listdir("ciclone/config/electrodes"):
+            if file.endswith(".elecdef"):
+                name = file.replace(".elecdef", "")
+                full_path = os.path.join("ciclone/config/electrodes", file)
+                electrode_files.append((name, full_path))
+        
+        # Sort electrode files alphabetically by name
+        electrode_files.sort(key=lambda x: x[0])
+        
+        # Convert to dictionary
+        return dict(electrode_files)
 
 if __name__ == "__main__":
     import sys
