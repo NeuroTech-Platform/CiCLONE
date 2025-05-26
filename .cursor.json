@@ -18,8 +18,20 @@
       "instructions": "For worker/thread code:\n1. Ensure thread-safety in implementation\n2. Use proper synchronization mechanisms\n3. Implement clear progress reporting\n4. Handle thread interruptions gracefully\n5. Avoid race conditions and deadlocks\n6. Consider QThreadPool for task management"
     },
     {
-      "pattern": "**/core/*.py",
-      "instructions": "For core business logic:\n1. Implement clean separation of concerns\n2. Create clear abstractions and interfaces\n3. Use design patterns appropriately\n4. Write comprehensive unit tests\n5. Document complex algorithms thoroughly\n6. Focus on maintainability and extensibility"
+      "pattern": "**/domain/*.py",
+      "instructions": "For domain entities and value objects:\n1. Implement pure business entities without external dependencies\n2. Focus on domain logic and business rules\n3. Use immutable value objects where appropriate\n4. Avoid technical concerns (UI, database, external services)\n5. Create clear abstractions for business concepts\n6. Write comprehensive unit tests for business logic\n7. Document domain concepts and relationships"
+    },
+    {
+      "pattern": "**/services/*.py",
+      "instructions": "For service layer components:\n1. Implement business logic and application services\n2. Orchestrate domain objects to fulfill use cases\n3. Handle external integrations (FSL, FreeSurfer, file I/O)\n4. Maintain separation between processing and I/O services\n5. Use dependency injection for testability\n6. Implement proper error handling and logging\n7. Focus on single responsibility per service"
+    },
+    {
+      "pattern": "**/models/*.py",
+      "instructions": "For MVC model components:\n1. Manage application state and data\n2. Implement data validation and business rules\n3. Provide clean interfaces for controllers\n4. Handle data persistence and retrieval\n5. Emit signals for state changes when using Qt\n6. Separate data management from presentation logic\n7. Ensure thread-safety for shared models"
+    },
+    {
+      "pattern": "**/controllers/*.py",
+      "instructions": "For MVC controller components:\n1. Coordinate between models and views\n2. Handle user interactions and input validation\n3. Delegate business logic to models and services\n4. Manage UI state and updates\n5. Implement proper error handling with user feedback\n6. Keep controllers focused and avoid business logic\n7. Use dependency injection for testability"
     },
     {
       "pattern": "**/forms/*.py",
@@ -41,7 +53,7 @@
     "python": ["PyQt6", "PySide6"]
   },
   "assistantPersonality": {
-    "expertise": "Expert in Python and Qt6 development",
+    "expertise": "Expert in Python, Qt6 development, and MVC architecture with domain-driven design",
     "style": "Clear, detailed explanations with educational focus",
     "cautiousness": "Conservative - don't add or remove functionality without explicit instructions",
     "thoroughness": "Provide comprehensive implementations and explanations"
