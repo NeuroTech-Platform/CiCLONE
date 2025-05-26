@@ -17,8 +17,8 @@ from PyQt6.QtCore import Qt, QStandardPaths
 
 from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap
 
-from ciclone.core.subject_importer import SubjectImporter
-from ciclone.core.utility import read_config_file
+from ciclone.services.io.subject_importer import SubjectImporter
+from ciclone.utils.utility import read_config_file
 from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
 from ciclone.ui.ImagesViewer import ImagesViewer
 
@@ -30,6 +30,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setupUi(self)
+        
+        # Initialize images_viewer as None
+        self.images_viewer = None
         
         # File menu actions
         self.actionNew_Output_Directory.triggered.connect(self.create_output_directory)
@@ -112,10 +115,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.lineEdit_Schema.setText(file_path)
             elif field_type == "PreCT":
                 self.lineEdit_preCT.setText(file_path)
-                if file_path.endswith(('.nii', '.nii.gz')):
-                    self.display_nifti_slice(file_path, self.Axial_ImagePreview, orientation='axial')
-                    self.display_nifti_slice(file_path, self.Sagittal_ImagePreview, orientation='sagittal')
-                    self.display_nifti_slice(file_path, self.Coronal_ImagePreview, orientation='coronal')
+                # Note: Image preview functionality removed as MainWindow doesn't have image preview labels
+                # Users can click on NIFTI files in the tree view to open them in ImagesViewer
             elif field_type == "PreMRI":
                 self.lineEdit_preMRI.setText(file_path)
             elif field_type == "PostCT":
@@ -242,13 +243,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Handle tree item clicks to display NIFTI files in ImagesViewer window"""
         file_path = self.subjectModel.filePath(index)
         if file_path.endswith(('.nii', '.nii.gz')):
+            # Create new ImagesViewer instance or reuse existing one
             if not hasattr(self, 'images_viewer') or self.images_viewer is None:
                 self.images_viewer = ImagesViewer(file_path)
             else:
-                self.images_viewer.load_nifti_file(file_path)
-                self.images_viewer.update_slider_ranges()
-                self.images_viewer.update_slice_display('axial')
-                self.images_viewer.update_slice_display('sagittal')
-                self.images_viewer.update_slice_display('coronal')
+                # Use the new MVC architecture - load image through image controller
+                self.images_viewer.image_controller.load_image(file_path)
+            
+            # Show and bring to front
             self.images_viewer.show()
             self.images_viewer.raise_()  # Bring window to front
+            self.images_viewer.activateWindow()  # Ensure window gets focus

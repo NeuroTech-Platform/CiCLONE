@@ -18,18 +18,27 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QVBoxLayout,
     QTableWidgetItem,
-    QTreeWidgetItem
+    QTreeWidgetItem,
+    QMenu,
+    QButtonGroup
 )
 from PyQt6.QtCore import Qt, QStandardPaths
 
-from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap, QPainter, QColor, QBrush
+from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent
 
-from ciclone.core.subject_importer import SubjectImporter
+from ciclone.services.io.subject_importer import SubjectImporter
+from ciclone.models.image_model import ImageModel
+from ciclone.utils.utility import read_config_file
+from ciclone.controllers.image_controller import ImageController
+from ciclone.domain.electrodes import Electrode
+from ciclone.controllers.electrode_controller import ElectrodeController
+from ciclone.services.io.slicer_file import SlicerFile
 from ciclone.ui.Viewer3D import Viewer3D
-from ciclone.core.utility import read_config_file
-from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
-from ciclone.core.electrodes import Electrode
 from ciclone.forms.ImagesViewer_ui import Ui_ImagesViewer
+
+# Import new MVC components
+from ciclone.models import ElectrodeModel, CoordinateModel
+from ciclone.controllers import ImageController
 
 class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
@@ -37,56 +46,64 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         super(ImagesViewer, self).__init__()
         self.setupUi(self)
 
-        # Initialize the electrodes list
-        self.ElectrodesList = []
-
-        # Initialize coordinate setting state
+        # Initialize MVC components
+        self._initialize_mvc_components()
+        
+        # Initialize UI state
         self.setting_entry = False
         self.setting_output = False
         
-        # Initialize coordinate storage for visualization
-        # Dictionary to store entry and output points for each electrode
-        self.electrode_points = {}  # Format: {electrode_name: {'entry': (x,y,z), 'output': (x,y,z)}}
-        self.current_electrode_name = None
+        # Setup UI components
+        self._setup_ui_components()
         
-        # Dictionary to store processed contact points for each electrode
-        self.processed_contacts = {}
+        # Connect signals to controllers
+        self._connect_signals()
         
-        # Make splitter update views when moved
-        self.splitter.splitterMoved.connect(self.update_all_views)
+        # Load initial file if provided
+        if file_path is not None:
+            self.image_controller.load_image(file_path)
+        else:
+            self.show_default_display()
 
-        # Load electrodes def files and add to combo box
-        self.electrodes_def_files = self.load_electrode_definitions()
-        self.ElectrodeTypeComboBox.addItems(self.electrodes_def_files.keys())
+    def _initialize_mvc_components(self):
+        """Initialize the MVC architecture components."""
+        # Initialize models
+        self.electrode_model = ElectrodeModel()
+        self.coordinate_model = CoordinateModel()
+        self.image_model = ImageModel()
+        
+        # Initialize controllers
+        self.electrode_controller = ElectrodeController(
+            self.electrode_model, self.coordinate_model
+        )
+        self.image_controller = ImageController(self.image_model)
+        
+        # Set view references in controllers
+        self.electrode_controller.set_view(self)
+        self.image_controller.set_view(self)
+
+    def _setup_ui_components(self):
+        """Setup UI components and styling."""
+        # Load electrode types into combo box
+        self.ElectrodeTypeComboBox.addItems(self.electrode_controller.get_electrode_types())
 
         # Configure column sizing for ElectrodeTreeWidget
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed) # Name column
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)   # Type column
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)   # X column
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)   # Y column
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)   # Z column
-        self.ElectrodeTreeWidget.setColumnWidth(0, 80)  # Width for Name
-        self.ElectrodeTreeWidget.setColumnWidth(1, 80)  # Width for Type
-        self.ElectrodeTreeWidget.setColumnWidth(2, 70)  # Width for X
-        self.ElectrodeTreeWidget.setColumnWidth(3, 70)  # Width for Y
-        self.ElectrodeTreeWidget.setColumnWidth(4, 70)  # Width for Z
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.ElectrodeTreeWidget.setColumnWidth(0, 80)
+        self.ElectrodeTreeWidget.setColumnWidth(1, 80)
+        self.ElectrodeTreeWidget.setColumnWidth(2, 70)
+        self.ElectrodeTreeWidget.setColumnWidth(3, 70)
+        self.ElectrodeTreeWidget.setColumnWidth(4, 70)
 
-        # Configure buttons
-        self.SetEntryPushButton.clicked.connect(self.set_entry_button_clicked)
-        self.SetOutputPushButton.clicked.connect(self.set_output_button_clicked)
-        
-        # Disable buttons initially since there are no electrodes
-        self.SetEntryPushButton.setEnabled(False)
-        self.SetOutputPushButton.setEnabled(False)
+        # Enable context menu for ElectrodeTreeWidget
+        self.ElectrodeTreeWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         # Find and store the vertical spacer
         self.verticalSpacer = self.leftPanelLayout.itemAt(self.leftPanelLayout.count() - 1).spacerItem()
-
-        # Add volume data caching
-        self.current_volume_data = None
-        self.current_nifti_path = None
-        self.current_nifti_img = None
-        self.affine = None
 
         # Style the image preview labels
         for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
@@ -103,44 +120,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 QSizePolicy.Policy.Expanding
             )
 
-        # Connect slider signals
-        self.Axial_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('axial'))
-        self.Sagittal_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('sagittal'))
-        self.Coronal_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('coronal'))
-
-        # Connect clickable image labels to on_image_clicked
-        self.Axial_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('axial', x, y))
-        self.Sagittal_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('sagittal', x, y))
-        self.Coronal_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('coronal', x, y))
-
-        # If a file path is provided, load it
-        if file_path is not None:
-            self.load_nifti_file(file_path)
-            self.update_slider_ranges()
-            self.update_slice_display('axial')
-            self.update_slice_display('sagittal')
-            self.update_slice_display('coronal')
-        else:
-            # Show a default display (e.g., clear labels or show a message)
-            self.show_default_display()
-
-        self.AddElectrodePushButton.clicked.connect(self.add_electrode_button_clicked)
-        self.Viewer3dButton.clicked.connect(self.viewer3d_button_clicked)
-        
-        # Connect the ProcessCoordinatesPushButton
-        self.ProcessCoordinatesPushButton.clicked.connect(self.process_coordinates_button_clicked)
-        
-        # Connect the SaveFilePushButton to save in 3D Slicer format
-        self.SaveFilePushButton.clicked.connect(self.save_file_button_clicked)
-
-        # Connect the ElectrodesComboBox to update the table when selection changes
-        self.ElectrodesComboBox.currentTextChanged.connect(self.on_electrode_selection_changed)
-
-        # Connect the toolBox to adjust tab heights
-        self.toolBox.currentChanged.connect(self.adjust_tab_heights)
-        self.toolBox.setCurrentIndex(1)
-        self.toolBox.setCurrentIndex(0)
-        
         # Make grid layout cells equal size and square
         grid = self.layoutWidget.layout()
         grid.setSpacing(10)
@@ -149,623 +128,190 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
 
-    def viewer3d_button_clicked(self):
-        print("Viewer3D button clicked")
-        self.viewer3d = Viewer3D(nifti_img=self.current_nifti_img, current_volume_data=self.current_volume_data)
-        self.viewer3d.show()
+    def _connect_signals(self):
+        """Connect UI signals to controller methods."""
+        # Radio button signals
+        self.SetEntryRadioButton.clicked.connect(lambda: self.on_coordinate_radio_clicked('entry'))
+        self.SetOutputRadioButton.clicked.connect(lambda: self.on_coordinate_radio_clicked('output'))
 
-    def show_default_display(self):
-        """Show a default message or blank image in the labels."""
-        for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
-            label.clear()
-            label.setText("No image loaded")
-        # Optionally, disable sliders
-        self.Axial_horizontalSlider.setEnabled(False)
-        self.Sagittal_horizontalSlider.setEnabled(False)
-        self.Coronal_horizontalSlider.setEnabled(False)
+        # Splitter signal
+        self.splitter.splitterMoved.connect(self.refresh_all_views)
 
-    def load_nifti_file(self, nifti_path):
-        """Load NIFTI file and store the data (no reorientation)"""
-        try:
-            self.current_nifti_img = nib.load(nifti_path)
-            self.current_volume_data = self.current_nifti_img.get_fdata()
-            self.current_nifti_path = nifti_path
-            self.affine = self.current_nifti_img.affine
-            # Enable sliders
-            self.Axial_horizontalSlider.setEnabled(True)
-            self.Sagittal_horizontalSlider.setEnabled(True)
-            self.Coronal_horizontalSlider.setEnabled(True)
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to load NIFTI file: {str(e)}")
-            self.current_volume_data = None
-            self.current_nifti_path = None
-            self.current_nifti_img = None
-            self.show_default_display()
+        # Slider signals
+        self.Axial_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('axial'))
+        self.Sagittal_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('sagittal'))
+        self.Coronal_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('coronal'))
 
-    def update_slider_ranges(self):
-        """Update slider ranges based on current volume dimensions"""
-        if self.current_volume_data is not None:
-            self.Axial_horizontalSlider.setRange(0, self.current_volume_data.shape[2] - 1)
-            self.Sagittal_horizontalSlider.setRange(0, self.current_volume_data.shape[0] - 1)
-            self.Coronal_horizontalSlider.setRange(0, self.current_volume_data.shape[1] - 1)
-            
-            # Set initial positions to middle slices
-            self.Axial_horizontalSlider.setValue(self.current_volume_data.shape[2] // 2)
-            self.Sagittal_horizontalSlider.setValue(self.current_volume_data.shape[0] // 2)
-            self.Coronal_horizontalSlider.setValue(self.current_volume_data.shape[1] // 2)
+        # Image click signals
+        self.Axial_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('axial', x, y))
+        self.Sagittal_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('sagittal', x, y))
+        self.Coronal_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('coronal', x, y))
 
-    def update_slice_display(self, orientation):
-        if self.current_volume_data is None:
-            return
+        # Button signals
+        self.AddElectrodePushButton.clicked.connect(self.on_add_electrode_clicked)
+        self.Viewer3dButton.clicked.connect(self.on_viewer3d_clicked)
+        self.ProcessCoordinatesPushButton.clicked.connect(self.on_process_coordinates_clicked)
+        self.SaveFilePushButton.clicked.connect(self.on_save_file_clicked)
 
-        try:
-            # Get the appropriate slice and label
-            if orientation == 'axial':
-                slice_index = self.Axial_horizontalSlider.value()
-                slice_data = self.current_volume_data[:, :, slice_index]
-                label = self.Axial_ImagePreview
-            elif orientation == 'sagittal':
-                slice_index = self.Sagittal_horizontalSlider.value()
-                slice_data = self.current_volume_data[slice_index, :, :]
-                label = self.Sagittal_ImagePreview
-            elif orientation == 'coronal':
-                slice_index = self.Coronal_horizontalSlider.value()
-                slice_data = self.current_volume_data[:, slice_index, :]
-                label = self.Coronal_ImagePreview
+        # Combo box signals
+        self.ElectrodesComboBox.currentTextChanged.connect(self.update_coordinate_display)
 
-            self.display_slice_on_label(slice_data, label, orientation, self.current_nifti_img)
+        # Context menu signal
+        self.ElectrodeTreeWidget.customContextMenuRequested.connect(self.on_electrode_context_menu_requested)
 
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to update display: {str(e)}")
+        # ToolBox signal
+        self.toolBox.currentChanged.connect(self.adjust_tab_heights)
+        self.toolBox.setCurrentIndex(1)
+        self.toolBox.setCurrentIndex(0)
 
-    def display_nifti_slice(self, nifti_path, label, slice_index=None, orientation='axial'):
-        try:
-            nifti_img = nib.load(nifti_path)
-            volume_data = nifti_img.get_fdata()
-            if orientation == 'axial':
-                if slice_index is None:
-                    slice_index = volume_data.shape[2] // 2
-                slice_data = volume_data[:, :, slice_index]
-            elif orientation == 'sagittal':
-                if slice_index is None:
-                    slice_index = volume_data.shape[0] // 2
-                slice_data = volume_data[slice_index, :, :]
-            elif orientation == 'coronal':
-                if slice_index is None:
-                    slice_index = volume_data.shape[1] // 2
-                slice_data = volume_data[:, slice_index, :]
-            self.display_slice_on_label(slice_data, label, orientation, nifti_img)
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to load NIFTI file: {str(e)}")
+    # =============================================================================
+    # VIEW INTERFACE METHODS (Called by Controllers)
+    # =============================================================================
 
-    def display_slice_on_label(self, slice_data, label, orientation, nifti_img):
-        # Apply orientation-specific transformations
-        slice_data = np.rot90(slice_data)
-        if orientation == 'sagittal':
-            slice_data = np.fliplr(slice_data)
-        # Normalize to 0-255 for display
-        slice_data = slice_data.astype(float)
-        slice_data = ((slice_data - slice_data.min()) /
-                      (slice_data.max() - slice_data.min()) * 255).astype(np.uint8)
-        # Create QImage
-        height, width = slice_data.shape
-        bytes_per_line = width
-        q_img = QImage(slice_data.tobytes(), width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
-        
-        # Calculate aspect ratio based on voxel dimensions
-        pixdim = nifti_img.header.get_zooms()
-        if orientation == 'axial':
-            aspect_ratio = pixdim[1] / pixdim[0]  # y/x
-        elif orientation == 'sagittal':
-            aspect_ratio = 1 / (pixdim[2] / pixdim[1])  # z/y
-        else:  # coronal
-            aspect_ratio = 1 / (pixdim[2] / pixdim[0])  # z/x
-            
-        # Get the label dimensions
-        label_width = label.width()
-        label_height = label.height()
-        
-        # Calculate dimensions to fill the label while maintaining the correct aspect ratio
-        image_aspect = width / height
-        corrected_aspect = image_aspect * aspect_ratio
-        
-        if corrected_aspect >= label_width / label_height:
-            # Width limited by label width
-            scaled_width = label_width
-            scaled_height = int(scaled_width / corrected_aspect)
-        else:
-            # Height limited by label height
-            scaled_height = label_height
-            scaled_width = int(scaled_height * corrected_aspect)
-            
-        # Scale the image
-        scaled_pixmap = QPixmap.fromImage(q_img).scaled(
-            scaled_width, scaled_height,
-            Qt.AspectRatioMode.IgnoreAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        
-        # Create a painter to draw on the pixmap
-        painter = QPainter(scaled_pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Get current slice indices
-        axial_slice = self.Axial_horizontalSlider.value()
-        sagittal_slice = self.Sagittal_horizontalSlider.value()
-        coronal_slice = self.Coronal_horizontalSlider.value()
-        
-        # Draw entry and output points for all electrodes
-        for electrode_name, points in self.electrode_points.items():
-            # Generate a color based on the electrode name hash
-            hue = abs(hash(electrode_name)) % 360
-            electrode_color = QColor()
-            electrode_color.setHsv(hue, 200, 255, 180)  # Hue, Saturation, Value, Alpha
-            
-            # Draw entry point if it exists
-            if 'entry' in points and points['entry']:
-                self.draw_point_if_visible(painter, points['entry'], orientation, 
-                                          axial_slice, sagittal_slice, coronal_slice, 
-                                          width, height, scaled_width, scaled_height, electrode_color)
-            
-            # Draw output point if it exists
-            if 'output' in points and points['output']:
-                self.draw_point_if_visible(painter, points['output'], orientation, 
-                                          axial_slice, sagittal_slice, coronal_slice, 
-                                          width, height, scaled_width, scaled_height, electrode_color)
-        
-        # Draw all processed electrode contacts
-        for electrode_name, contacts in self.processed_contacts.items():
-            # Use a different color for each electrode
-            # Generate a color based on the electrode name hash
-            hue = abs(hash(electrode_name)) % 360
-            contact_color = QColor()
-            contact_color.setHsv(hue, 200, 255, 180)  # Hue, Saturation, Value, Alpha
-            
-            for i, contact_point in enumerate(contacts):
-                self.draw_point_if_visible(painter, contact_point, orientation, 
-                                          axial_slice, sagittal_slice, coronal_slice, 
-                                          width, height, scaled_width, scaled_height, 
-                                          contact_color)
-        
-        painter.end()
-        
-        label.setPixmap(scaled_pixmap)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    
-    def draw_point_if_visible(self, painter, point, orientation, axial_slice, sagittal_slice, 
-                             coronal_slice, orig_width, orig_height, scaled_width, scaled_height, color):
-        """Draw a point on the current slice if it's visible in this orientation and slice"""
-        x, y, z = point
-        
-        # Check if the point is on the current slice for this orientation
-        is_visible = False
-        pixel_x, pixel_y = 0, 0
-        
-        if orientation == 'axial' and abs(z - axial_slice) <= 1:
-            # For axial view, x and y are the coordinates on the slice
-            is_visible = True
-            pixel_x = int(x * scaled_width / self.current_volume_data.shape[0])
-            pixel_y = int((self.current_volume_data.shape[1] - 1 - y) * scaled_height / self.current_volume_data.shape[1])
-            
-        elif orientation == 'sagittal' and abs(x - sagittal_slice) <= 1:
-            # For sagittal view, y and z are the coordinates on the slice
-            is_visible = True
-            pixel_x = int((self.current_volume_data.shape[1] - 1 - y) * scaled_width / self.current_volume_data.shape[1])
-            pixel_y = int((self.current_volume_data.shape[2] - 1 - z) * scaled_height / self.current_volume_data.shape[2])
-            
-        elif orientation == 'coronal' and abs(y - coronal_slice) <= 1:
-            # For coronal view, x and z are the coordinates on the slice
-            is_visible = True
-            pixel_x = int(x * scaled_width / self.current_volume_data.shape[0])
-            pixel_y = int((self.current_volume_data.shape[2] - 1 - z) * scaled_height / self.current_volume_data.shape[2])
-        
-        # Draw the point if it's visible
-        if is_visible:
-            painter.setBrush(QBrush(color))
-            painter.setPen(Qt.PenStyle.NoPen)  # No outline, just filled circle
-            circle_radius = 5  # Size of the circle in pixels
-            painter.drawEllipse(pixel_x - circle_radius, pixel_y - circle_radius, 
-                               circle_radius * 2, circle_radius * 2)
-
-    def resizeEvent(self, event):
-        """
-        Handle window resize events to update the display.
-        """
-        super().resizeEvent(event)
-        # Update all views when window is resized
-        self.update_all_views()
-        
-    def update_all_views(self):
-        """
-        Update all three views if data is loaded.
-        """
-        if self.current_volume_data is not None:
-            self.update_slice_display('axial')
-            self.update_slice_display('sagittal')
-            self.update_slice_display('coronal')
-
-    def on_image_clicked(self, orientation, x, y):
-        """
-        Handle clicks on any view by determining the 3D coordinates and updating other views.
-        If in coordinate setting mode, also update the corresponding coordinate field.
-        """
-        if self.current_volume_data is None:
-            return
-        
-        # Get the dimensions of the label and current slice
-        label = getattr(self, f"{orientation.capitalize()}_ImagePreview")
-        pixmap = label.pixmap()
-        if pixmap is None:
-            return
-        
-        # Calculate scale factors to convert from label coordinates to image coordinates
-        label_width, label_height = label.width(), label.height()
-        pixmap_width, pixmap_height = pixmap.width(), pixmap.height()
-        
-        # Adjust for the image being centered in the label
-        offset_x = (label_width - pixmap_width) // 2
-        offset_y = (label_height - pixmap_height) // 2
-        
-        # Convert from label coordinates to image coordinates
-        # Check if the click is outside the image area
-        if x < offset_x or y < offset_y or x >= offset_x + pixmap_width or y >= offset_y + pixmap_height:
-            return
-        
-        image_x = x - offset_x
-        image_y = y - offset_y
-        
-        # Get the current slice indices
-        axial_slice = self.Axial_horizontalSlider.value()
-        sagittal_slice = self.Sagittal_horizontalSlider.value()
-        coronal_slice = self.Coronal_horizontalSlider.value()
-        
-        # Calculate 3D coordinates based on the view that was clicked
-        # Note: Medical imaging convention uses bottom-left origin, while display uses top-left
-        if orientation == 'axial':
-            # In axial view, we display [x, y, slice_index]
-            x_coord = int(image_x * (self.current_volume_data.shape[0] / pixmap_width))
-            y_coord = self.current_volume_data.shape[1] - 1 - int(image_y * (self.current_volume_data.shape[1] / pixmap_height))
-            z_coord = axial_slice
-            # Update sagittal and coronal views to show the clicked point
-            self.Sagittal_horizontalSlider.setValue(x_coord)
-            self.Coronal_horizontalSlider.setValue(y_coord)
-        elif orientation == 'sagittal':
-            # In sagittal view, we display [slice_index, y, z]
-            x_coord = sagittal_slice
-            y_coord = self.current_volume_data.shape[1] - 1 - int(image_x * (self.current_volume_data.shape[1] / pixmap_width))
-            z_coord = self.current_volume_data.shape[2] - 1 - int(image_y * (self.current_volume_data.shape[2] / pixmap_height))
-            # Update axial and coronal views to show the clicked point
-            self.Axial_horizontalSlider.setValue(z_coord)
-            self.Coronal_horizontalSlider.setValue(y_coord)
-        else:  # coronal
-            # In coronal view, we display [x, slice_index, z]
-            x_coord = int(image_x * (self.current_volume_data.shape[0] / pixmap_width))
-            y_coord = coronal_slice
-            z_coord = self.current_volume_data.shape[2] - 1 - int(image_y * (self.current_volume_data.shape[2] / pixmap_height))
-            # Update axial and sagittal views to show the clicked point
-            self.Axial_horizontalSlider.setValue(z_coord)
-            self.Sagittal_horizontalSlider.setValue(x_coord)
-        
-        # Update the coordinate fields if in setting mode
-        if self.setting_entry:
-            self.EntryCoordinatesLabel.setText(f"Entry Coordinates : ({x_coord}, {y_coord}, {z_coord})")
-            
-            # Get the current electrode name
-            electrode_name = self.ElectrodesComboBox.currentText()
-            if electrode_name:
-                # Initialize the electrode points dictionary entry if needed
-                if electrode_name not in self.electrode_points:
-                    self.electrode_points[electrode_name] = {}
-                
-                # Store the entry point for this electrode
-                self.electrode_points[electrode_name]['entry'] = (x_coord, y_coord, z_coord)
-                self.current_electrode_name = electrode_name
-                
-                # Update the display to show the marker
-                self.update_all_views()
-        elif self.setting_output:
-            self.OutputCoordinatesLabel.setText(f"Output Coordinates : ({x_coord}, {y_coord}, {z_coord})")
-            
-            # Get the current electrode name
-            electrode_name = self.ElectrodesComboBox.currentText()
-            if electrode_name:
-                # Initialize the electrode points dictionary entry if needed
-                if electrode_name not in self.electrode_points:
-                    self.electrode_points[electrode_name] = {}
-                
-                # Store the output point for this electrode
-                self.electrode_points[electrode_name]['output'] = (x_coord, y_coord, z_coord)
-                self.current_electrode_name = electrode_name
-                
-                # Update the display to show the marker
-                self.update_all_views()
-
-    def set_entry_button_clicked(self):
-        """Toggle entry point setting mode"""
-        # Check if an electrode is selected
-        electrode_name = self.ElectrodesComboBox.currentText()
-        if not electrode_name:
-            QMessageBox.warning(self, "Warning", "Please select an electrode first.")
-            return
-        
-        self.setting_entry = not self.setting_entry
-        if self.setting_entry:
-            self.setting_output = False
-            self.SetEntryPushButton.setStyleSheet("color: red;")
-            self.SetOutputPushButton.setStyleSheet("")
-            self.SetOutputPushButton.setEnabled(False)
-            self.current_electrode_name = electrode_name
-            
-            # Display current entry point if it exists
-            if electrode_name in self.electrode_points and 'entry' in self.electrode_points[electrode_name]:
-                entry = self.electrode_points[electrode_name]['entry']
-                self.EntryCoordinatesLabel.setText(f"Entry Coordinates : ({entry[0]}, {entry[1]}, {entry[2]})")
-            else:
-                self.EntryCoordinatesLabel.setText("Entry Coordinates : ")
-        else:
-            self.SetEntryPushButton.setStyleSheet("")
-            # Only enable if there are electrodes in the combo box
-            has_electrodes = self.ElectrodesComboBox.count() > 0
-            self.SetOutputPushButton.setEnabled(has_electrodes)
-
-    def set_output_button_clicked(self):
-        """Toggle output point setting mode"""
-        # Check if an electrode is selected
-        electrode_name = self.ElectrodesComboBox.currentText()
-        if not electrode_name:
-            QMessageBox.warning(self, "Warning", "Please select an electrode first.")
-            return
-        
-        self.setting_output = not self.setting_output
-        if self.setting_output:
-            self.setting_entry = False
-            self.SetOutputPushButton.setStyleSheet("color: red;")
-            self.SetEntryPushButton.setStyleSheet("")
-            self.SetEntryPushButton.setEnabled(False)
-            self.current_electrode_name = electrode_name
-            
-            # Display current output point if it exists
-            if electrode_name in self.electrode_points and 'output' in self.electrode_points[electrode_name]:
-                output = self.electrode_points[electrode_name]['output']
-                self.OutputCoordinatesLabel.setText(f"Output Coordinates : ({output[0]}, {output[1]}, {output[2]})")
-            else:
-                self.OutputCoordinatesLabel.setText("Output Coordinates : ")
-        else:
-            self.SetOutputPushButton.setStyleSheet("")
-            # Only enable if there are electrodes in the combo box
-            has_electrodes = self.ElectrodesComboBox.count() > 0
-            self.SetEntryPushButton.setEnabled(has_electrodes)
-
-    def add_electrode_button_clicked(self):
-        electrode_type = self.ElectrodeTypeComboBox.currentText()
-        
-        # Get electrode name from the UI
-        electrode_name = self.ElectrodeNameLineEdit.text()
-        if not electrode_name:
-            QMessageBox.critical(self, "Input Error", "Please enter an electrode name.")
-            return
-        
-        # Check that there is not an electrode with the same name
-        if any(electrode.name == electrode_name for electrode in self.ElectrodesList):
-            QMessageBox.critical(self, "Input Error", "An electrode with this name already exists.")
-            return
-        
-        # Create electrode with name and type and add to list
-        electrode = Electrode(name=electrode_name, electrode_type=electrode_type)
-        self.ElectrodesList.append(electrode)
-
-        # Add the electrode to the tree
-        item = QTreeWidgetItem(self.ElectrodeTreeWidget)
-        item.setText(0, f"{electrode.name}")  # Column 0: Only name
-        # No need to set column 1 separately anymore
-        # Columns 2 (X), 3 (Y), 4 (Z) are empty for the parent electrode item
-        item.setTextAlignment(0, Qt.AlignmentFlag.AlignCenter)
-        # item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter) # Not needed anymore
-        
-        # After adding an electrode, update the combo box
-        self.update_electrodes_combo()
-
-    def update_electrodes_combo(self):
-        """Update the ElectrodesComboBox with current electrode names"""
+    def refresh_electrode_list(self):
+        """Refresh the electrode combo box with current electrode names."""
         current_text = self.ElectrodesComboBox.currentText()
-        self.ElectrodesComboBox.blockSignals(True)  # Block signals to prevent triggering selection change
+        self.ElectrodesComboBox.blockSignals(True)
         self.ElectrodesComboBox.clear()
         
-        root = self.ElectrodeTreeWidget.invisibleRootItem()
-        for i in range(root.childCount()):
-            item = root.child(i)
-            name_text = item.text(0)  # Get name from first column
-            if name_text:
-                self.ElectrodesComboBox.addItem(name_text)
+        for name in self.electrode_controller.get_electrode_names():
+            self.ElectrodesComboBox.addItem(name)
         
-        # Try to restore the previous selection
         index = self.ElectrodesComboBox.findText(current_text)
         if index >= 0:
             self.ElectrodesComboBox.setCurrentIndex(index)
         
-        self.ElectrodesComboBox.blockSignals(False)  # Unblock signals
+        self.ElectrodesComboBox.blockSignals(False)
         
-        # Enable buttons if there is at least one electrode
         has_electrodes = self.ElectrodesComboBox.count() > 0
-        self.SetEntryPushButton.setEnabled(has_electrodes)
-        self.SetOutputPushButton.setEnabled(has_electrodes)
+        self.SetEntryRadioButton.setEnabled(has_electrodes)
+        self.SetOutputRadioButton.setEnabled(has_electrodes)
         
-        # Update the entry/output labels for the selected electrode
-        self.update_coordinate_labels()
+        self.update_coordinate_display()
 
-    def update_coordinate_labels(self):
-        """Update the coordinate labels based on the selected electrode"""
-        electrode_name = self.ElectrodesComboBox.currentText()
-        if electrode_name and electrode_name in self.electrode_points:
-            if 'entry' in self.electrode_points[electrode_name]:
-                entry = self.electrode_points[electrode_name]['entry']
-                self.EntryCoordinatesLabel.setText(f"Entry Coordinates : ({entry[0]}, {entry[1]}, {entry[2]})")
-            else:
-                self.EntryCoordinatesLabel.setText("Entry Coordinates : ")
-                
-            if 'output' in self.electrode_points[electrode_name]:
-                output = self.electrode_points[electrode_name]['output']
-                self.OutputCoordinatesLabel.setText(f"Output Coordinates : ({output[0]}, {output[1]}, {output[2]})")
-            else:
-                self.OutputCoordinatesLabel.setText("Output Coordinates : ")
-        else:
-            self.EntryCoordinatesLabel.setText("Entry Coordinates : ")
-            self.OutputCoordinatesLabel.setText("Output Coordinates : ")
-    
-    def process_coordinates_button_clicked(self):
-        """Process coordinates for the selected electrode"""
-        # Get the selected electrode from the combo box
+    def refresh_electrode_tree(self):
+        """Refresh the electrode tree widget."""
         electrode_name = self.ElectrodesComboBox.currentText()
         if not electrode_name:
-            QMessageBox.warning(self, "Warning", "Please select an electrode first.")
             return
-        
-        # Find the electrode in the list
-        electrode = next((e for e in self.ElectrodesList if e.name == electrode_name), None)
-        if not electrode:
-            QMessageBox.warning(self, "Warning", "Selected electrode not found.")
-            return
-        
-        # Check if entry and output points are set for this electrode
-        if (electrode_name not in self.electrode_points or 
-            'entry' not in self.electrode_points[electrode_name] or 
-            'output' not in self.electrode_points[electrode_name]):
-            QMessageBox.warning(self, "Warning", f"Please set both entry and output points for electrode {electrode_name}.")
-            return
-        
-        entry_point = self.electrode_points[electrode_name]['entry']
-        output_point = self.electrode_points[electrode_name]['output']
-        
-        try:
-            # Load the electrode definition file
-            elec_def_path = self.electrodes_def_files.get(electrode.electrode_type)
-            if not elec_def_path or not os.path.exists(elec_def_path):
-                QMessageBox.warning(self, "Warning", f"Electrode definition file for {electrode.electrode_type} not found.")
-                return
-            
-            # Load electrode definition (pickled dictionary)
-            with open(elec_def_path, 'rb') as f:
-                elec_def = pickle.load(f)
-            
-            # Extract plot positions from the electrode definition
-            plot_positions = []
-            for key, value in elec_def.items():
-                if key.startswith('Plot'):
-                    position = value.get('position', [0, 0, 0])
-                    plot_positions.append((key, position))
-            
-            # Sort plots by z-position (assuming they're aligned along the z-axis)
-            plot_positions.sort(key=lambda x: x[1][2])
-            
-            # Calculate the direction vector from entry to output
-            entry_point_np = np.array(entry_point)
-            output_point_np = np.array(output_point)
-            direction = output_point_np - entry_point_np
-            direction_norm = np.linalg.norm(direction)
-            
-            if direction_norm == 0:
-                QMessageBox.warning(self, "Warning", "Entry and output points are the same.")
-                return
-            
-            direction = direction / direction_norm
-            
-            # Calculate the contact positions based on the electrode definition
-            # and the entry/output points
-            contacts = []
-            
-            # Get the z-span of the electrode in the definition file
-            if plot_positions:
-                min_z = min(pos[1][2] for pos in plot_positions)
-                max_z = max(pos[1][2] for pos in plot_positions)
-                z_span = max_z - min_z
-                
-                # If z_span is zero, we can't calculate relative positions
-                if z_span == 0:
-                    QMessageBox.warning(self, "Warning", "Invalid electrode definition: all contacts have the same z-coordinate.")
-                    return
-                
-                # Calculate the distance between entry and output
-                entry_output_distance = np.linalg.norm(output_point_np - entry_point_np)
-                
-                # Calculate the contact positions
-                for plot_name, plot_pos in plot_positions:
-                    # Calculate the relative position of this contact along the electrode
-                    relative_pos = (plot_pos[2] - min_z) / z_span
-                    
-                    # Calculate the position of this contact in the image space
-                    contact_pos = entry_point_np + relative_pos * direction * entry_output_distance
-                    
-                    # Add to contacts list
-                    contacts.append(tuple(np.round(contact_pos).astype(int)))
-                
-                # Store the contacts for this electrode
-                self.processed_contacts[electrode_name] = contacts
-                
-                # Update the electrode object
-                electrode.contacts.clear()
-                for i, contact_pos in enumerate(contacts):
-                    label = f"{electrode_name}{i+1}"
-                    electrode.add_contact(label, contact_pos[0], contact_pos[1], contact_pos[2])
-                
-                # Update the display
-                self.update_all_views()
-                
-                # Update ElectrodeTreeWidget with contacts
-                root = self.ElectrodeTreeWidget.invisibleRootItem()
-                parent_item = None
-                for i in range(root.childCount()):
-                    item = root.child(i)
-                    # Get the text before the first parenthesis or the whole string if no parenthesis
-                    item_text = item.text(0).split(' (')[0]
-                    if item_text == electrode_name:
-                        parent_item = item
-                        break
-                
-                if parent_item:
-                    # Clear existing contact sub-items
-                    parent_item.takeChildren()
-                    
-                    # Add new contact sub-items
-                    for contact_obj in electrode.contacts:
-                        contact_item = QTreeWidgetItem(parent_item)
-                        contact_item.setText(0, contact_obj.label)      # Column 0: Contact Label
-                        # Column 1 is now Stretch and can be used for additional info if needed
-                        contact_item.setText(1, str(int(contact_obj.x))) # Column 1: X
-                        contact_item.setText(2, str(int(contact_obj.y))) # Column 2: Y
-                        contact_item.setText(3, str(int(contact_obj.z))) # Column 3: Z
-                        # Set alignment for contact items
-                        contact_item.setTextAlignment(0, Qt.AlignmentFlag.AlignCenter) # Label
-                        # contact_item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter) # Not used now
-                        contact_item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter) # X
-                        contact_item.setTextAlignment(2, Qt.AlignmentFlag.AlignCenter) # Y
-                        contact_item.setTextAlignment(3, Qt.AlignmentFlag.AlignCenter) # Z
-                    parent_item.setExpanded(True) # Optionally expand the parent item
-                
-                QMessageBox.information(self, "Success", f"Processed {len(contacts)} contacts for electrode {electrode_name}.")
-            else:
-                QMessageBox.warning(self, "Warning", f"No plot positions found in electrode definition for {electrode.electrode_type}.")
-        
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to process coordinates: {str(e)}")
-    
-    def on_electrode_selection_changed(self, electrode_name):
-        """Handle electrode selection change in the dropdown"""
-        # Update coordinate labels
-        self.update_coordinate_labels()
 
-    def save_file_button_clicked(self):
-        """Save electrode coordinates in 3D Slicer fiducial markup format"""
-        if not self.ElectrodesList:
-            QMessageBox.warning(self, "Warning", "No electrodes to save.")
-            return
+        electrode = self.electrode_controller.get_electrode(electrode_name)
+        if electrode:
+            # Find and update the existing item
+            root = self.ElectrodeTreeWidget.invisibleRootItem()
+            for i in range(root.childCount()):
+                item = root.child(i)
+                if item.text(0) == electrode_name:
+                    # Remove old item
+                    root.removeChild(item)
+                    # Add new item with updated contacts
+                    new_item = self.electrode_controller.create_tree_item(electrode)
+                    root.addChild(new_item)
+                    new_item.setExpanded(True)
+                    break
+
+    def refresh_image_display(self):
+        """Refresh all image displays."""
+        self.refresh_all_views()
+
+    def update_coordinate_display(self, electrode_name=None):
+        """Update the coordinate labels based on the selected electrode."""
+        if electrode_name is None:
+            electrode_name = self.ElectrodesComboBox.currentText()
+            
+        coordinates = self.electrode_controller.get_coordinates(electrode_name)
         
-        # Check if we have processed contacts
-        if not any(electrode.contacts for electrode in self.ElectrodesList):
+        if coordinates and 'entry' in coordinates:
+            entry = coordinates['entry']
+            self.EntryCoordinatesLabel.setText(f"Entry Coordinates : ({entry[0]}, {entry[1]}, {entry[2]})")
+        else:
+            self.EntryCoordinatesLabel.setText("Entry Coordinates : ")
+            
+        if coordinates and 'output' in coordinates:
+            output = coordinates['output']
+            self.OutputCoordinatesLabel.setText(f"Output Coordinates : ({output[0]}, {output[1]}, {output[2]})")
+        else:
+            self.OutputCoordinatesLabel.setText("Output Coordinates : ")
+
+    def refresh_coordinate_display(self):
+        """Refresh coordinate display for current electrode."""
+        self.update_coordinate_display()
+
+    def enable_image_controls(self):
+        """Enable image-related controls."""
+        self.Axial_horizontalSlider.setEnabled(True)
+        self.Sagittal_horizontalSlider.setEnabled(True)
+        self.Coronal_horizontalSlider.setEnabled(True)
+
+    def show_default_display(self):
+        """Show default message when no image is loaded."""
+        for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
+            label.clear()
+            label.setText("No image loaded")
+        
+        self.Axial_horizontalSlider.setEnabled(False)
+        self.Sagittal_horizontalSlider.setEnabled(False)
+        self.Coronal_horizontalSlider.setEnabled(False)
+
+    def clear_electrode_input(self):
+        """Clear the electrode input field."""
+        self.ElectrodeNameLineEdit.clear()
+
+    def update_slider_ranges(self):
+        """Update slider ranges based on current volume dimensions."""
+        for orientation, slider in [('axial', self.Axial_horizontalSlider),
+                                  ('sagittal', self.Sagittal_horizontalSlider),
+                                  ('coronal', self.Coronal_horizontalSlider)]:
+            min_val, max_val = self.image_controller.get_slice_range(orientation)
+            slider.setRange(min_val, max_val)
+            slider.setValue(self.image_controller.get_initial_slice(orientation))
+
+    def refresh_all_views(self):
+        """Update all three views if data is loaded."""
+        if self.image_controller.is_image_loaded():
+            self.update_slice_display('axial')
+            self.update_slice_display('sagittal')
+            self.update_slice_display('coronal')
+
+    # =============================================================================
+    # EVENT HANDLERS (Delegate to Controllers)
+    # =============================================================================
+
+    def on_add_electrode_clicked(self):
+        """Handle add electrode button click."""
+        name = self.ElectrodeNameLineEdit.text()
+        electrode_type = self.ElectrodeTypeComboBox.currentText()
+        
+        if self.electrode_controller.create_electrode(name, electrode_type):
+            # Add the electrode to the tree
+            electrode = self.electrode_controller.get_electrode(name)
+            if electrode:
+                item = self.electrode_controller.create_tree_item(electrode)
+                self.ElectrodeTreeWidget.addTopLevelItem(item)
+
+    def on_viewer3d_clicked(self):
+        """Handle 3D viewer button click."""
+        print("Viewer3D button clicked")
+        self.viewer3d = Viewer3D(
+            nifti_img=self.image_controller.get_current_nifti_image(), 
+            current_volume_data=self.image_controller.get_volume_data()
+        )
+        self.viewer3d.show()
+
+    def on_process_coordinates_clicked(self):
+        """Handle process coordinates button click."""
+        electrode_name = self.ElectrodesComboBox.currentText()
+        self.electrode_controller.process_electrode_coordinates(electrode_name)
+
+    def on_save_file_clicked(self):
+        """Handle save file button click."""
+        # Check if we have electrodes with contacts
+        if not self.electrode_model.has_processed_contacts():
             QMessageBox.warning(self, "Warning", "No processed electrode contacts to save.")
             return
             
         # Check if we have a loaded image with affine transform
-        if self.current_nifti_img is None or self.affine is None:
+        if not self.image_controller.is_image_loaded() or self.image_controller.get_affine_transform() is None:
             QMessageBox.warning(self, "Warning", "No image loaded or missing affine transform.")
             return
         
@@ -779,137 +325,181 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             return  # User cancelled
         
         try:
-            # Create the base structure for 3D Slicer fiducial markup
-            slicer_markup = {
-                "@schema": "https://raw.githubusercontent.com/slicer/slicer/master/Modules/Loadable/Markups/Resources/Schema/markups-schema-v1.0.3.json#",
-                "markups": []
-            }
+            # Prepare electrode data for the SlicerFile class
+            electrodes_data = []
+            for electrode in self.electrode_model.get_electrodes_with_contacts():
+                contacts = [(contact.x, contact.y, contact.z) for contact in electrode.contacts]
+                electrodes_data.append({
+                    'name': electrode.name,
+                    'type': electrode.electrode_type,
+                    'contacts': contacts
+                })
             
-            # Create a fiducial markup for each electrode
-            for electrode in self.ElectrodesList:
-                if not electrode.contacts:
-                    continue
-                
-                # Create the fiducial markup structure
-                fiducial = {
-                    "type": "Fiducial",
-                    "coordinateSystem": "RAS",  # Right-Anterior-Superior coordinate system (Slicer's default)
-                    "coordinateUnits": "mm",
-                    "locked": False,
-                    "fixedNumberOfControlPoints": False,
-                    "labelFormat": "%N-%d",
-                    "lastUsedControlPointNumber": len(electrode.contacts),
-                    "controlPoints": [],
-                    "measurements": [],
-                    "display": {
-                        "visibility": True,
-                        "opacity": 1.0,
-                        "color": [0.39, 0.78, 0.78],  # Default color (cyan)
-                        "selectedColor": [0.39, 1.0, 0.39],
-                        "activeColor": [0.4, 1.0, 0.0],
-                        "propertiesLabelVisibility": False,
-                        "pointLabelsVisibility": True,
-                        "textScale": 3.0,
-                        "glyphType": "Sphere3D",
-                        "glyphScale": 3.0,
-                        "glyphSize": 5.0,
-                        "useGlyphScale": True,
-                        "sliceProjection": False,
-                        "sliceProjectionUseFiducialColor": True,
-                        "sliceProjectionOutlinedBehindSlicePlane": False,
-                        "sliceProjectionColor": [1.0, 1.0, 1.0],
-                        "sliceProjectionOpacity": 0.6,
-                        "lineThickness": 0.2,
-                        "lineColorFadingStart": 1.0,
-                        "lineColorFadingEnd": 10.0,
-                        "lineColorFadingSaturation": 1.0,
-                        "lineColorFadingHueOffset": 0.0,
-                        "handlesInteractive": False,
-                        "translationHandleVisibility": True,
-                        "rotationHandleVisibility": True,
-                        "scaleHandleVisibility": True,
-                        "interactionHandleScale": 3.0,
-                        "snapMode": "toVisibleSurface"
-                    }
-                }
-                
-                # Generate a random color for this electrode based on its name
-                hue = abs(hash(electrode.name)) % 360
-                # Convert HSV to RGB (hue: 0-360, saturation: 0-1, value: 0-1)
-                h = hue / 360.0
-                s = 0.8  # Saturation
-                v = 0.8  # Value
-                
-                # HSV to RGB conversion
-                if s == 0.0:
-                    r = g = b = v
-                else:
-                    h *= 6.0
-                    i = int(h)
-                    f = h - i
-                    p = v * (1.0 - s)
-                    q = v * (1.0 - s * f)
-                    t = v * (1.0 - s * (1.0 - f))
-                    
-                    if i == 0:
-                        r, g, b = v, t, p
-                    elif i == 1:
-                        r, g, b = q, v, p
-                    elif i == 2:
-                        r, g, b = p, v, t
-                    elif i == 3:
-                        r, g, b = p, q, v
-                    elif i == 4:
-                        r, g, b = t, p, v
-                    else:
-                        r, g, b = v, p, q
-                
-                # Set the color for this electrode
-                fiducial["display"]["color"] = [r, g, b]
-                
-                # Add control points (contacts) for this electrode
-                for i, contact in enumerate(electrode.contacts):
-                    # Convert voxel coordinates to physical coordinates using the affine transform
-                    voxel_coords = np.array([contact.x, contact.y, contact.z, 1.0])
-                    physical_coords = np.dot(self.affine, voxel_coords)[:3]
-                    
-                    # Note on coordinate systems:
-                    # The physical coordinates from our NIfTI affine transform 
-                    # are already compatible with 3D Slicer's coordinate system.
-                    # We'll use them directly without further conversion.
-                    ras_coords = physical_coords.tolist()
-                    
-                    # Create a control point for each contact
-                    control_point = {
-                        "id": str(i + 1),
-                        "label": f"{electrode.name}{i+1}",
-                        "description": electrode.electrode_type,
-                        "associatedNodeID": "",
-                        "position": ras_coords,  # Use RAS coordinates in mm
-                        "orientation": [-1.0, -0.0, -0.0, -0.0, -1.0, -0.0, 0.0, 0.0, 1.0],
-                        "selected": True,
-                        "locked": True,
-                        "visibility": True,
-                        "positionStatus": "defined"
-                    }
-                    fiducial["controlPoints"].append(control_point)
-                
-                # Add this fiducial to the markups
-                slicer_markup["markups"].append(fiducial)
+            # Create and save the markup file
+            slicer_file = SlicerFile()
+            markup = slicer_file.create_markup(electrodes_data, self.image_controller.get_affine_transform())
             
-            # Write to JSON file
-            with open(file_path, 'w') as f:
-                json.dump(slicer_markup, f, indent=4)
-            
-            QMessageBox.information(self, "Success", f"Electrode coordinates saved to {file_path} in 3D Slicer format")
+            if slicer_file.save_to_file(file_path, markup):
+                QMessageBox.information(self, "Success", f"Electrode coordinates saved to {file_path} in 3D Slicer format")
+            else:
+                raise Exception("Failed to save file")
         
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save coordinates: {str(e)}")
             import traceback
             traceback.print_exc()
 
+    def on_electrode_context_menu_requested(self, position):
+        """Handle electrode context menu request."""
+        item = self.ElectrodeTreeWidget.itemAt(position)
+        if item is None or item.parent() is not None:  # Only show menu for root items (electrodes)
+            return
+
+        menu = QMenu()
+        delete_action = menu.addAction("Delete Electrode")
+        
+        # Show the menu and get the selected action
+        action = menu.exec(self.ElectrodeTreeWidget.viewport().mapToGlobal(position))
+        
+        if action == delete_action:
+            self.delete_electrode(item)
+
+    def delete_electrode(self, item):
+        """Delete an electrode and its associated data."""
+        electrode_name = item.text(0)
+        
+        if self.electrode_controller.delete_electrode(electrode_name):
+            # Remove from tree widget
+            self.ElectrodeTreeWidget.takeTopLevelItem(self.ElectrodeTreeWidget.indexOfTopLevelItem(item))
+
+    def on_coordinate_radio_clicked(self, mode):
+        """Handle radio button clicks for both entry and output modes."""
+        # Check if an electrode is selected
+        electrode_name = self.ElectrodesComboBox.currentText()
+        if not electrode_name:
+            QMessageBox.warning(self, "Warning", "Please select an electrode first.")
+            getattr(self, f"Set{mode.capitalize()}RadioButton").setChecked(False)
+            return
+
+        # Get the other mode
+        other_mode = 'output' if mode == 'entry' else 'entry'
+        
+        # Toggle the state
+        setattr(self, f"setting_{mode}", not getattr(self, f"setting_{mode}"))
+        setattr(self, f"setting_{other_mode}", False)
+        
+        # Update radio buttons
+        getattr(self, f"Set{other_mode.capitalize()}RadioButton").setChecked(False)
+        getattr(self, f"Set{other_mode.capitalize()}RadioButton").setStyleSheet("")
+        
+        # Update UI
+        if getattr(self, f"setting_{mode}"):
+            getattr(self, f"Set{mode.capitalize()}RadioButton").setStyleSheet("color: red;")
+        else:
+            getattr(self, f"Set{mode.capitalize()}RadioButton").setStyleSheet("")
+        
+        # Update coordinate display
+        self.update_coordinate_display(electrode_name)
+
+    def on_image_clicked(self, orientation, x, y):
+        """Handle clicks on any view by determining the 3D coordinates and updating other views."""
+        if not self.image_controller.is_image_loaded():
+            return
+
+        # Get the label and its pixmap
+        label = getattr(self, f"{orientation.capitalize()}_ImagePreview")
+        pixmap = label.pixmap()
+        if pixmap is None:
+            return
+
+        # Get current slice indices
+        current_slices = {
+            'axial': self.Axial_horizontalSlider.value(),
+            'sagittal': self.Sagittal_horizontalSlider.value(),
+            'coronal': self.Coronal_horizontalSlider.value()
+        }
+
+        # Get 3D coordinates from image controller
+        coords = self.image_controller.get_3d_coordinates_from_click(
+            orientation, x, y,
+            label.width(), label.height(),
+            pixmap.width(), pixmap.height(),
+            current_slices
+        )
+
+        if coords is None:
+            return
+
+        x_coord, y_coord, z_coord = coords
+
+        # Update other views to show the clicked point
+        if orientation == 'axial':
+            self.Sagittal_horizontalSlider.setValue(x_coord)
+            self.Coronal_horizontalSlider.setValue(y_coord)
+        elif orientation == 'sagittal':
+            self.Axial_horizontalSlider.setValue(z_coord)
+            self.Coronal_horizontalSlider.setValue(y_coord)
+        else:  # coronal
+            self.Axial_horizontalSlider.setValue(z_coord)
+            self.Sagittal_horizontalSlider.setValue(x_coord)
+
+        # Handle coordinate setting through controllers
+        electrode_name = self.ElectrodesComboBox.currentText()
+        if self.setting_entry:
+            self.electrode_controller.set_entry_coordinate(electrode_name, coords)
+            self.refresh_all_views()
+        elif self.setting_output:
+            self.electrode_controller.set_output_coordinate(electrode_name, coords)
+            self.refresh_all_views()
+
+    # =============================================================================
+    # UI UPDATE METHODS
+    # =============================================================================
+
+    def update_slice_display(self, orientation):
+        """Update the display for a given orientation."""
+        if not self.image_controller.is_image_loaded():
+            return
+
+        try:
+            # Get the appropriate slider and label
+            if orientation == 'axial':
+                slider = self.Axial_horizontalSlider
+                label = self.Axial_ImagePreview
+            elif orientation == 'sagittal':
+                slider = self.Sagittal_horizontalSlider
+                label = self.Sagittal_ImagePreview
+            elif orientation == 'coronal':
+                slider = self.Coronal_horizontalSlider
+                label = self.Coronal_ImagePreview
+
+            # Get current slice indices
+            current_slices = {
+                'axial': self.Axial_horizontalSlider.value(),
+                'sagittal': self.Sagittal_horizontalSlider.value(),
+                'coronal': self.Coronal_horizontalSlider.value()
+            }
+
+            # Create pixmap with points through image controller
+            pixmap = self.image_controller.create_slice_pixmap(
+                orientation, slider.value(),
+                label.width(), label.height(),
+                self.electrode_controller.get_electrode_points_for_display(),
+                self.electrode_controller.get_processed_contacts_for_display(),
+                current_slices
+            )
+
+            if pixmap:
+                # Display the pixmap
+                label.setPixmap(pixmap)
+                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to update display: {str(e)}")
+
     def adjust_tab_heights(self, index):
-        if index == 2: # Coordinates tab
+        """Adjust tab heights based on selected tab."""
+        if index == 2:  # Coordinates tab
             # Make the toolbox take up more space when Coordinates tab is active
             self.toolBox.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
             self.verticalSpacer.changeSize(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
@@ -922,24 +512,23 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.leftPanelLayout.invalidate()
         self.leftPanel.updateGeometry()
 
-    def load_electrode_definitions(self):
-        """Load electrode definition files from the config directory.
-        
-        Returns:
-            dict: A dictionary mapping electrode names to their definition file paths.
-        """
-        electrode_files = []
-        for file in os.listdir("ciclone/config/electrodes"):
-            if file.endswith(".elecdef"):
-                name = file.replace(".elecdef", "")
-                full_path = os.path.join("ciclone/config/electrodes", file)
-                electrode_files.append((name, full_path))
-        
-        # Sort electrode files alphabetically by name
-        electrode_files.sort(key=lambda x: x[0])
-        
-        # Convert to dictionary
-        return dict(electrode_files)
+    def resizeEvent(self, event):
+        """Handle window resize events to update the display."""
+        super().resizeEvent(event)
+        self.refresh_all_views()
+
+    # =============================================================================
+    # LEGACY METHODS (For backward compatibility)
+    # =============================================================================
+
+    def load_nifti_file(self, nifti_path):
+        """Load NIFTI file - delegates to image controller."""
+        self.image_controller.load_image(nifti_path)
+
+    def update_all_views(self):
+        """Legacy method - delegates to refresh_all_views."""
+        self.refresh_all_views()
+
 
 if __name__ == "__main__":
     import sys
