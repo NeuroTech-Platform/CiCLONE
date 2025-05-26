@@ -1,5 +1,5 @@
 import os
-from ciclone.core.operations import (
+from ciclone.services.processing.operations import (
     crop_image,
     move_image,
     coregister_images,
@@ -15,7 +15,7 @@ from ciclone.core.operations import (
     register_mri_to_mni,
     open_fsleyes
 )
-from ciclone.core.subject import Subject
+from ciclone.domain.subject import Subject
 
 def run_operation(operation, subject: Subject):    
     # Store the original working directory

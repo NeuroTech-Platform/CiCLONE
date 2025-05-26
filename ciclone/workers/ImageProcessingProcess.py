@@ -1,8 +1,10 @@
 import os
 import shutil
+import multiprocessing
+from PyQt6.QtCore import QObject, pyqtSignal
 
-from ciclone.core.stages import run_stage
-from ciclone.core.subject import Subject
+from ciclone.services.processing.stages import run_stage
+from ciclone.domain.subject import Subject
 
 def processImagesAnalysis(conn, output_directory: str, subject_list: list, stages: list):
     # Check if output directory exists

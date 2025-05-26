@@ -304,11 +304,6 @@
                <string>CT / CT</string>
               </property>
              </item>
-             <item>
-              <property name="text">
-               <string>CT / MRI</string>
-              </property>
-             </item>
             </widget>
            </item>
            <item>

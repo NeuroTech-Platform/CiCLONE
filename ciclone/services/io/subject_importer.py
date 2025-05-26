@@ -10,7 +10,7 @@
 import os
 import shutil
 from pathlib import Path
-from ciclone.core.subject import Subject
+from ciclone.domain.subject import Subject
 
 class SubjectImporter:
     @staticmethod

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple
 import numpy as np
 
-from ciclone.core.electrode_element import ElectrodeElement
+from ciclone.domain.electrode_element import ElectrodeElement
 
 class ElectrodeReader:
     def __init__(self, file_path: str):
