@@ -19,8 +19,9 @@ class ElectrodeModel:
     def _load_electrode_definitions(self) -> Dict[str, str]:
         """Load electrode definition files from the config directory."""
         electrode_files = []
-        config_path = "ciclone/config/electrodes"
-        
+        config_path = os.path.realpath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "electrodes"))
+        print(f"Loading electrode definitions from {config_path}")
+
         if not os.path.exists(config_path):
             return {}
         
