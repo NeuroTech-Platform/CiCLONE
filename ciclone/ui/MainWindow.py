@@ -68,12 +68,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.stages_listWidget.addItem(item)
 
     def create_output_directory(self):
+        dataset_name = QInputDialog.getText(self, "Folder Name", "Please enter a name")[0]
+        if dataset_name == "":
+            QMessageBox.warning(self, "Folder Name empty", "Please enter a folder name")
+            return
+            
         self.output_directory = QFileDialog.getExistingDirectory(self, "Select Output Directory", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
         if self.output_directory:
-            dataset_name = QInputDialog.getText(self, "Folder Name", "Please enter a name")[0]
-            if dataset_name == "":
-                QMessageBox.warning(self, "Folder Name empty", "Please enter a folder name")
-                return
             self.output_directory = os.path.join(self.output_directory, dataset_name)
             os.makedirs(self.output_directory, exist_ok=True)
             self.lineEdit_outputDirectory.setText(self.output_directory)
@@ -115,8 +116,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.lineEdit_Schema.setText(file_path)
             elif field_type == "PreCT":
                 self.lineEdit_preCT.setText(file_path)
-                # Note: Image preview functionality removed as MainWindow doesn't have image preview labels
-                # Users can click on NIFTI files in the tree view to open them in ImagesViewer
             elif field_type == "PreMRI":
                 self.lineEdit_preMRI.setText(file_path)
             elif field_type == "PostCT":
@@ -151,6 +150,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         SubjectImporter.import_subject(self.output_directory, subject_data)
         # Refresh the tree view
         self.subjectTreeView.setRootIndex(self.subjectModel.index(self.output_directory))
+        self.add_log_message("success", f"Subject '{subject_name}' imported successfully")
 
     def run_all_stages(self):
         # Check if a process is already running

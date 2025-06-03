@@ -101,6 +101,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
         # Enable context menu for ElectrodeTreeWidget
         self.ElectrodeTreeWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        
+        # Enable multi-selection for electrodes (only top-level items)
+        self.ElectrodeTreeWidget.setSelectionMode(self.ElectrodeTreeWidget.SelectionMode.ExtendedSelection)
 
         # Find and store the vertical spacer
         self.verticalSpacer = self.leftPanelLayout.itemAt(self.leftPanelLayout.count() - 1).spacerItem()
@@ -223,15 +226,15 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         if coordinates and 'entry' in coordinates:
             entry = coordinates['entry']
-            self.EntryCoordinatesLabel.setText(f"Entry Coordinates : ({entry[0]}, {entry[1]}, {entry[2]})")
+            self.EntryCoordinatesLabel.setText(f"Tip - proximal part : ({entry[0]}, {entry[1]}, {entry[2]})")
         else:
-            self.EntryCoordinatesLabel.setText("Entry Coordinates : ")
+            self.EntryCoordinatesLabel.setText("Tip - proximal part : ")
             
         if coordinates and 'output' in coordinates:
             output = coordinates['output']
-            self.OutputCoordinatesLabel.setText(f"Output Coordinates : ({output[0]}, {output[1]}, {output[2]})")
+            self.OutputCoordinatesLabel.setText(f"End - distal part : ({output[0]}, {output[1]}, {output[2]})")
         else:
-            self.OutputCoordinatesLabel.setText("Output Coordinates : ")
+            self.OutputCoordinatesLabel.setText("End - distal part : ")
 
     def refresh_coordinate_display(self):
         """Refresh coordinate display for current electrode."""
@@ -288,6 +291,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             if electrode:
                 item = self.electrode_controller.create_tree_item(electrode)
                 self.ElectrodeTreeWidget.addTopLevelItem(item)
+                QMessageBox.information(self, "Success", f"Electrode '{name}' of type '{electrode_type}' created successfully.")
 
     def on_viewer3d_clicked(self):
         """Handle 3D viewer button click."""
@@ -352,25 +356,40 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
     def on_electrode_context_menu_requested(self, position):
         """Handle electrode context menu request."""
         item = self.ElectrodeTreeWidget.itemAt(position)
-        if item is None or item.parent() is not None:  # Only show menu for root items (electrodes)
+        if item is None:
             return
-
+        
+        # Get all selected items
+        selected_items = self.ElectrodeTreeWidget.selectedItems()
+        
+        # Filter to only include top-level electrode items (not contacts)
+        electrode_items = [item for item in selected_items if item.parent() is None]
+        
+        if not electrode_items:
+            return
+        
         menu = QMenu()
-        delete_action = menu.addAction("Delete Electrode")
+        
+        # Show appropriate text based on selection count
+        if len(electrode_items) == 1:
+            delete_action = menu.addAction("Delete Electrode")
+        else:
+            delete_action = menu.addAction(f"Delete {len(electrode_items)} Electrodes")
         
         # Show the menu and get the selected action
         action = menu.exec(self.ElectrodeTreeWidget.viewport().mapToGlobal(position))
         
         if action == delete_action:
-            self.delete_electrode(item)
+            self.delete_electrodes(electrode_items)
 
-    def delete_electrode(self, item):
-        """Delete an electrode and its associated data."""
-        electrode_name = item.text(0)
+    def delete_electrodes(self, items):
+        """Delete multiple electrodes and their associated data."""
+        electrode_names = [item.text(0) for item in items]
         
-        if self.electrode_controller.delete_electrode(electrode_name):
-            # Remove from tree widget
-            self.ElectrodeTreeWidget.takeTopLevelItem(self.ElectrodeTreeWidget.indexOfTopLevelItem(item))
+        if self.electrode_controller.delete_multiple_electrodes(electrode_names):
+            # Remove from tree widget in reverse order to avoid index issues
+            for item in reversed(items):
+                self.ElectrodeTreeWidget.takeTopLevelItem(self.ElectrodeTreeWidget.indexOfTopLevelItem(item))
 
     def on_coordinate_radio_clicked(self, mode):
         """Handle radio button clicks for both entry and output modes."""

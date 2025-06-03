@@ -51,6 +51,27 @@ class ElectrodeController:
         
         return success
     
+    def delete_multiple_electrodes(self, electrode_names: List[str]) -> bool:
+        """Delete multiple electrodes with confirmation."""
+        if not electrode_names:
+            return False
+            
+        if not self._confirm_multiple_deletion(electrode_names):
+            return False
+        
+        success_count = 0
+        for electrode_name in electrode_names:
+            if self.electrode_model.remove_electrode(electrode_name):
+                self.coordinate_model.remove_electrode_coordinates(electrode_name)
+                success_count += 1
+        
+        if success_count > 0 and self._view:
+            self._view.refresh_electrode_list()
+            self._view.refresh_coordinate_display()
+            self._view.refresh_image_display()
+        
+        return success_count == len(electrode_names)
+    
     def set_entry_coordinate(self, electrode_name: str, coordinates: Tuple[int, int, int]) -> bool:
         """Set entry coordinates for an electrode."""
         if not electrode_name:
@@ -160,6 +181,25 @@ class ElectrodeController:
             self._view,
             "Confirm Deletion",
             f"Are you sure you want to delete electrode '{electrode_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        return reply == QMessageBox.StandardButton.Yes
+    
+    def _confirm_multiple_deletion(self, electrode_names: List[str]) -> bool:
+        """Confirm multiple electrode deletion with user."""
+        if not self._view:
+            return False
+        
+        if len(electrode_names) == 1:
+            return self._confirm_deletion(electrode_names[0])
+        
+        electrode_list = '\n'.join([f"  • {name}" for name in electrode_names])
+        reply = QMessageBox.question(
+            self._view,
+            "Confirm Multiple Deletion",
+            f"Are you sure you want to delete the following {len(electrode_names)} electrodes?\n\n{electrode_list}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
