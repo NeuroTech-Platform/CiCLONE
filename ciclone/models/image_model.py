@@ -80,6 +80,59 @@ class ImageModel:
                           processed_contacts: Dict[str, List[Tuple[int, int, int]]],
                           current_slices: Dict[str, int]) -> QPixmap:
         """Create a QPixmap for a slice with electrode points and contacts."""
+        # Create clean pixmap first
+        clean_pixmap = self.create_slice_pixmap_clean(slice_data, orientation, label_width, label_height)
+        
+        # Draw points on the pixmap
+        painter = QPainter(clean_pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Get scale factors for coordinate conversion
+        scaled_width = clean_pixmap.width()
+        scaled_height = clean_pixmap.height()
+        
+        # Apply orientation-specific transformations to get original dimensions
+        transformed_slice = np.rot90(slice_data)
+        if orientation == 'sagittal':
+            transformed_slice = np.fliplr(transformed_slice)
+        orig_height, orig_width = transformed_slice.shape
+
+        # Draw entry and output points
+        for electrode_name, points in electrode_points.items():
+            hue = abs(hash(electrode_name)) % 360
+            electrode_color = QColor()
+            electrode_color.setHsv(hue, 200, 255, 180)
+
+            if 'entry' in points:
+                self._draw_point_if_visible(painter, points['entry'], orientation,
+                                          current_slices, orig_width, orig_height,
+                                          scaled_width, scaled_height, electrode_color)
+
+            if 'output' in points:
+                self._draw_point_if_visible(painter, points['output'], orientation,
+                                          current_slices, orig_width, orig_height,
+                                          scaled_width, scaled_height, electrode_color)
+
+        # Draw processed contacts
+        for electrode_name, contacts in processed_contacts.items():
+            hue = abs(hash(electrode_name)) % 360
+            contact_color = QColor()
+            contact_color.setHsv(hue, 200, 255, 180)
+
+            for contact_point in contacts:
+                self._draw_point_if_visible(painter, contact_point, orientation,
+                                          current_slices, orig_width, orig_height,
+                                          scaled_width, scaled_height, contact_color)
+
+        painter.end()
+        return clean_pixmap
+    
+    def create_slice_pixmap_clean(self, 
+                                slice_data: np.ndarray, 
+                                orientation: str,
+                                label_width: int,
+                                label_height: int) -> QPixmap:
+        """Create a clean QPixmap for a slice without electrode overlays."""
         # Apply orientation-specific transformations
         slice_data = np.rot90(slice_data)
         if orientation == 'sagittal':
@@ -122,38 +175,6 @@ class ImageModel:
             Qt.TransformationMode.SmoothTransformation
         )
 
-        # Draw points on the pixmap
-        painter = QPainter(scaled_pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Draw entry and output points
-        for electrode_name, points in electrode_points.items():
-            hue = abs(hash(electrode_name)) % 360
-            electrode_color = QColor()
-            electrode_color.setHsv(hue, 200, 255, 180)
-
-            if 'entry' in points:
-                self._draw_point_if_visible(painter, points['entry'], orientation,
-                                          current_slices, width, height,
-                                          scaled_width, scaled_height, electrode_color)
-
-            if 'output' in points:
-                self._draw_point_if_visible(painter, points['output'], orientation,
-                                          current_slices, width, height,
-                                          scaled_width, scaled_height, electrode_color)
-
-        # Draw processed contacts
-        for electrode_name, contacts in processed_contacts.items():
-            hue = abs(hash(electrode_name)) % 360
-            contact_color = QColor()
-            contact_color.setHsv(hue, 200, 255, 180)
-
-            for contact_point in contacts:
-                self._draw_point_if_visible(painter, contact_point, orientation,
-                                          current_slices, width, height,
-                                          scaled_width, scaled_height, contact_color)
-
-        painter.end()
         return scaled_pixmap
 
     def _draw_point_if_visible(self, 
