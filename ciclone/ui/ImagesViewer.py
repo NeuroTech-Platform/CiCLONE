@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QMenu,
     QButtonGroup
 )
-from PyQt6.QtCore import Qt, QStandardPaths
+from PyQt6.QtCore import Qt, QStandardPaths, QTimer
 
 from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent
 
@@ -64,6 +64,14 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             self.image_controller.load_image(file_path)
         else:
             self.show_default_display()
+
+        # Track if we're in fitted mode (auto-resize) or user zoom mode
+        self._is_fitted_mode = True
+        
+        # Timer for debouncing resize events
+        self._resize_timer = QTimer()
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.timeout.connect(self.refresh_all_views)
 
     def _initialize_mvc_components(self):
         """Initialize the MVC architecture components."""
@@ -137,8 +145,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.SetEntryRadioButton.clicked.connect(lambda: self.on_coordinate_radio_clicked('entry'))
         self.SetOutputRadioButton.clicked.connect(lambda: self.on_coordinate_radio_clicked('output'))
 
-        # Splitter signal
-        self.splitter.splitterMoved.connect(self.refresh_all_views)
+        # Splitter signal - removed to prevent excessive refreshes during zoom
+        # self.splitter.splitterMoved.connect(self.refresh_all_views)
 
         # Slider signals
         self.Axial_horizontalSlider.valueChanged.connect(lambda: self.update_slice_display('axial'))
@@ -438,11 +446,29 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             'coronal': self.Coronal_horizontalSlider.value()
         }
 
-        # Get 3D coordinates from image controller
+        # Note: x, y are now in pixmap coordinates (from the enhanced ClickableImageLabel)
+        # We need to convert these to label coordinates for the existing coordinate system
+        
+        # For the enhanced ClickableImageLabel, coordinates are already in pixmap space
+        # So we need to calculate the offset to simulate the label coordinate system
+        pixmap_width = pixmap.width()
+        pixmap_height = pixmap.height()
+        label_width = label.width()
+        label_height = label.height()
+        
+        # Calculate offset as if the pixmap was centered in the label
+        x_offset = (label_width - pixmap_width) // 2
+        y_offset = (label_height - pixmap_height) // 2
+        
+        # Convert pixmap coordinates to label coordinates
+        label_x = x + x_offset
+        label_y = y + y_offset
+
+        # Get 3D coordinates from image controller using the converted coordinates
         coords = self.image_controller.get_3d_coordinates_from_click(
-            orientation, x, y,
-            label.width(), label.height(),
-            pixmap.width(), pixmap.height(),
+            orientation, label_x, label_y,
+            label_width, label_height,
+            pixmap_width, pixmap_height,
             current_slices
         )
 
@@ -466,9 +492,14 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         electrode_name = self.ElectrodesComboBox.currentText()
         if self.setting_entry:
             self.electrode_controller.set_entry_coordinate(electrode_name, coords)
-            self.refresh_all_views()
         elif self.setting_output:
             self.electrode_controller.set_output_coordinate(electrode_name, coords)
+        
+        # Only refresh if we actually set a coordinate
+        if self.setting_entry or self.setting_output:
+            # Refresh all views together to avoid cascade issues
+            # The slider updates above will change the slice positions,
+            # and we want to show the electrode points on all affected views
             self.refresh_all_views()
 
     # =============================================================================
@@ -492,29 +523,117 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 slider = self.Coronal_horizontalSlider
                 label = self.Coronal_ImagePreview
 
-            # Get current slice indices
-            current_slices = {
-                'axial': self.Axial_horizontalSlider.value(),
-                'sagittal': self.Sagittal_horizontalSlider.value(),
-                'coronal': self.Coronal_horizontalSlider.value()
-            }
-
-            # Create pixmap with points through image controller
-            pixmap = self.image_controller.create_slice_pixmap(
-                orientation, slider.value(),
-                label.width(), label.height(),
-                self.electrode_controller.get_electrode_points_for_display(),
-                self.electrode_controller.get_processed_contacts_for_display(),
-                current_slices
+            # Create clean pixmap without electrode points (just the image)
+            slice_data = self.image_controller.image_model.get_slice_data(orientation, slider.value())
+            if slice_data is None:
+                return
+                
+            # Create pixmap without electrode overlays
+            pixmap = self.image_controller.image_model.create_slice_pixmap_clean(
+                slice_data, orientation, label.width(), label.height()
             )
 
             if pixmap:
-                # Display the pixmap
+                # Set the clean pixmap (this will preserve zoom due to our improved setPixmap method)
                 label.setPixmap(pixmap)
-                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                
+                # Clear existing markers for this view
+                label.clear_markers()
+                
+                # Add markers for visible electrode points
+                self._add_visible_electrode_markers(label, orientation, slider.value())
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to update display: {str(e)}")
+    
+    def _add_visible_electrode_markers(self, label, orientation, slice_index):
+        """Add markers for electrode points visible on the current slice."""
+        # Get current slice indices
+        current_slices = {
+            'axial': self.Axial_horizontalSlider.value(),
+            'sagittal': self.Sagittal_horizontalSlider.value(),
+            'coronal': self.Coronal_horizontalSlider.value()
+        }
+        
+        # Get the actual pixmap to determine scaling
+        pixmap = label.pixmap()
+        if not pixmap:
+            return
+        
+        scaled_width = pixmap.width()
+        scaled_height = pixmap.height()
+        
+        # Get electrode points
+        electrode_points = self.electrode_controller.get_electrode_points_for_display()
+        processed_contacts = self.electrode_controller.get_processed_contacts_for_display()
+        
+        # Add entry/output point markers
+        for electrode_name, points in electrode_points.items():
+            hue = abs(hash(electrode_name)) % 360
+            from PyQt6.QtGui import QColor
+            electrode_color = QColor()
+            electrode_color.setHsv(hue, 200, 255, 180)
+            
+            for point_type, point in points.items():
+                if self._is_point_visible(point, orientation, current_slices):
+                    pixel_coords = self._convert_3d_to_pixel_coords(
+                        point, orientation, scaled_width, scaled_height
+                    )
+                    if pixel_coords:
+                        x, y = pixel_coords
+                        label.add_marker(x, y, electrode_color, radius=5)
+        
+        # Add processed contact markers
+        for electrode_name, contacts in processed_contacts.items():
+            hue = abs(hash(electrode_name)) % 360
+            from PyQt6.QtGui import QColor
+            contact_color = QColor()
+            contact_color.setHsv(hue, 200, 255, 180)
+            
+            for contact_point in contacts:
+                if self._is_point_visible(contact_point, orientation, current_slices):
+                    pixel_coords = self._convert_3d_to_pixel_coords(
+                        contact_point, orientation, scaled_width, scaled_height
+                    )
+                    if pixel_coords:
+                        x, y = pixel_coords
+                        label.add_marker(x, y, contact_color, radius=5)
+    
+    def _is_point_visible(self, point, orientation, current_slices):
+        """Check if a 3D point is visible on the current slice."""
+        x, y, z = point
+        
+        if orientation == 'axial' and abs(z - current_slices['axial']) <= 1:
+            return True
+        elif orientation == 'sagittal' and abs(x - current_slices['sagittal']) <= 1:
+            return True
+        elif orientation == 'coronal' and abs(y - current_slices['coronal']) <= 1:
+            return True
+        
+        return False
+    
+    def _convert_3d_to_pixel_coords(self, point, orientation, scaled_width, scaled_height):
+        """Convert 3D coordinates to pixel coordinates for the current view."""
+        x, y, z = point
+        volume_data = self.image_controller.image_model._volume_data
+        
+        if volume_data is None:
+            return None
+        
+        # Use the same logic as the original _draw_point_if_visible method
+        if orientation == 'axial':
+            pixel_x = int(x * scaled_width / volume_data.shape[0])
+            pixel_y = int((volume_data.shape[1] - 1 - y) * scaled_height / volume_data.shape[1])
+        elif orientation == 'sagittal':
+            pixel_x = int((volume_data.shape[1] - 1 - y) * scaled_width / volume_data.shape[1])
+            pixel_y = int((volume_data.shape[2] - 1 - z) * scaled_height / volume_data.shape[2])
+        elif orientation == 'coronal':
+            pixel_x = int(x * scaled_width / volume_data.shape[0])
+            pixel_y = int((volume_data.shape[2] - 1 - z) * scaled_height / volume_data.shape[2])
+        else:
+            return None
+        
+        return (pixel_x, pixel_y)
 
     def adjust_tab_heights(self, index):
         """Adjust tab heights based on selected tab."""
@@ -534,7 +653,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
     def resizeEvent(self, event):
         """Handle window resize events to update the display."""
         super().resizeEvent(event)
-        self.refresh_all_views()
+        # Use debounce timer to avoid excessive refreshes during resize
+        self._resize_timer.stop()
+        self._resize_timer.start(100)  # 100ms delay
 
     # =============================================================================
     # LEGACY METHODS (For backward compatibility)
