@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Dict, List
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QMessageBox
+import numpy as np
 
 from ciclone.models.image_model import ImageModel
 
@@ -139,6 +140,29 @@ class ImageController:
         self.image_model.clear_overlay_state()
         if self._view:
             self._view.refresh_all_views()
+    
+    def get_slice_data_for_display(self, orientation: str, slice_index: int) -> Optional[np.ndarray]:
+        """Get slice data for display purposes."""
+        return self.image_model.get_slice_data(orientation, slice_index)
+    
+    def create_clean_pixmap_for_display(self, slice_data: np.ndarray, orientation: str, 
+                                      label_width: int, label_height: int) -> Optional[QPixmap]:
+        """Create a clean pixmap without electrode overlays for display."""
+        return self.image_model.create_slice_pixmap_clean(slice_data, orientation, label_width, label_height)
+    
+    def get_volume_data_for_coordinates(self) -> Optional[np.ndarray]:
+        """Get volume data for coordinate calculations."""
+        return self.image_model.get_volume_data()
+    
+    def is_point_visible_on_slice(self, point: Tuple[int, int, int], orientation: str,
+                                 current_slices: Dict[str, int]) -> bool:
+        """Check if a 3D point is visible on the current slice."""
+        return self.image_model.is_point_visible_on_slice(point, orientation, current_slices)
+    
+    def convert_3d_to_pixel_coords(self, point: Tuple[int, int, int], orientation: str,
+                                  scaled_width: int, scaled_height: int) -> Optional[Tuple[int, int]]:
+        """Convert 3D coordinates to pixel coordinates for the current view."""
+        return self.image_model.convert_3d_to_pixel_coords(point, orientation, scaled_width, scaled_height)
     
     def _show_error(self, message: str):
         """Show error message to user."""

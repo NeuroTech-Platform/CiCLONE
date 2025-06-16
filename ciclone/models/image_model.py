@@ -511,4 +511,46 @@ class ImageModel:
 
     def get_current_path(self) -> Optional[str]:
         """Get the path of the currently loaded image."""
-        return self._primary_image_path 
+        return self._primary_image_path
+    
+    def is_point_visible_on_slice(self, point: Tuple[int, int, int], orientation: str, 
+                                 current_slices: Dict[str, int]) -> bool:
+        """Check if a 3D point is visible on the current slice."""
+        x, y, z = point
+        
+        if orientation == 'axial' and abs(z - current_slices['axial']) <= 1:
+            return True
+        elif orientation == 'sagittal' and abs(x - current_slices['sagittal']) <= 1:
+            return True
+        elif orientation == 'coronal' and abs(y - current_slices['coronal']) <= 1:
+            return True
+        
+        return False
+    
+    def convert_3d_to_pixel_coords(self, point: Tuple[int, int, int], orientation: str,
+                                  scaled_width: int, scaled_height: int) -> Optional[Tuple[int, int]]:
+        """Convert 3D coordinates to pixel coordinates for the current view."""
+        if not self._images or not self._primary_image_path:
+            return None
+            
+        x, y, z = point
+        primary_img = self._images.get(self._primary_image_path)
+        if not primary_img:
+            return None
+            
+        volume_data = primary_img.volume_data
+        
+        # Use the same logic as the original _draw_point_if_visible method
+        if orientation == 'axial':
+            pixel_x = int(x * scaled_width / volume_data.shape[0])
+            pixel_y = int((volume_data.shape[1] - 1 - y) * scaled_height / volume_data.shape[1])
+        elif orientation == 'sagittal':
+            pixel_x = int((volume_data.shape[1] - 1 - y) * scaled_width / volume_data.shape[1])
+            pixel_y = int((volume_data.shape[2] - 1 - z) * scaled_height / volume_data.shape[2])
+        elif orientation == 'coronal':
+            pixel_x = int(x * scaled_width / volume_data.shape[0])
+            pixel_y = int((volume_data.shape[2] - 1 - z) * scaled_height / volume_data.shape[2])
+        else:
+            return None
+        
+        return (pixel_x, pixel_y) 
