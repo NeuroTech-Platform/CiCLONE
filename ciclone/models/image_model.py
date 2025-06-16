@@ -4,71 +4,293 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush
 from PyQt6.QtCore import Qt
 
 
+class ImageData:
+    """Container for individual image data with opacity."""
+    def __init__(self, nifti_img, volume_data: np.ndarray, affine: np.ndarray, file_path: str, opacity: float = 1.0):
+        self.nifti_img = nifti_img
+        self.volume_data = volume_data
+        self.affine = affine
+        self.file_path = file_path
+        self.opacity = opacity
+
+
 class ImageModel:
-    """Model for managing image data and operations."""
+    """Model for managing multiple image data and operations."""
     
     def __init__(self):
-        self._volume_data: Optional[np.ndarray] = None
-        self._affine: Optional[np.ndarray] = None
-        self._current_nifti_img = None
-        self._current_nifti_path: Optional[str] = None
+        self._images: Dict[str, ImageData] = {}  # file_path -> ImageData
+        self._primary_image_path: Optional[str] = None  # Used for coordinate calculations
+        self._base_image_path: Optional[str] = None  # Base image for overlay
+        self._overlay_image_path: Optional[str] = None  # Overlay image
+        self._overlay_opacity: float = 1.0  # Opacity of overlay image
 
-    def load_nifti_file(self, nifti_path: str) -> bool:
+    def load_nifti_file(self, nifti_path: str, opacity: float = 1.0) -> bool:
         """Load NIFTI file and store the data."""
         try:
             import nibabel as nib
-            self._current_nifti_img = nib.load(nifti_path)
-            self._volume_data = self._current_nifti_img.get_fdata()
-            self._current_nifti_path = nifti_path
-            self._affine = self._current_nifti_img.affine
+            nifti_img = nib.load(nifti_path)
+            volume_data = nifti_img.get_fdata()
+            affine = nifti_img.affine
+            
+            # Store the image data
+            self._images[nifti_path] = ImageData(nifti_img, volume_data, affine, nifti_path, opacity)
+            
+            # Set as primary if it's the first image
+            if self._primary_image_path is None:
+                self._primary_image_path = nifti_path
+                
             return True
         except Exception:
-            self._volume_data = None
-            self._current_nifti_path = None
-            self._current_nifti_img = None
-            self._affine = None
             return False
 
+    def remove_image(self, file_path: str) -> bool:
+        """Remove an image from the model."""
+        if file_path in self._images:
+            del self._images[file_path]
+            
+            # Clean up overlay state if the deleted image was being used
+            overlay_state_changed = False
+            
+            if self._base_image_path == file_path:
+                self._base_image_path = None
+                overlay_state_changed = True
+                
+            if self._overlay_image_path == file_path:
+                self._overlay_image_path = None
+                overlay_state_changed = True
+            
+            # If overlay state was affected, handle the reorganization
+            if overlay_state_changed and self._images:
+                # Case 1: Base was removed but overlay still exists - promote overlay to base
+                if not self._base_image_path and self._overlay_image_path and self._overlay_image_path in self._images:
+                    print(f"Info: Promoting overlay to base image after base removal")
+                    self._base_image_path = self._overlay_image_path
+                    self._overlay_image_path = self._overlay_image_path  # Keep same image in both slots
+                    self._overlay_opacity = 0.0  # Show as single image
+                # Case 2: Both base and overlay were removed - set first remaining image as base
+                elif not self._base_image_path and not self._overlay_image_path:
+                    first_image_path = next(iter(self._images.keys()))
+                    self._base_image_path = first_image_path
+                    self._overlay_image_path = first_image_path
+                    self._overlay_opacity = 0.0  # Show as single image
+            
+            # Update primary image if needed
+            if self._primary_image_path == file_path:
+                self._primary_image_path = next(iter(self._images.keys())) if self._images else None
+                
+            return True
+        return False
+
+    # Old individual image opacity methods removed - replaced with overlay system
+
+    def get_loaded_images(self) -> List[str]:
+        """Get list of loaded image file paths."""
+        return list(self._images.keys())
+
+    def set_overlay_images(self, base_image_name: str, overlay_image_name: str, opacity: float) -> bool:
+        """Set the base and overlay images for two-image overlay system."""
+        import os
+        
+        # Find the full paths for the given image names
+        base_path = None
+        overlay_path = None
+        
+        for file_path in self._images.keys():
+            file_name = os.path.basename(file_path)
+            if file_name == base_image_name:
+                base_path = file_path
+            if file_name == overlay_image_name:
+                overlay_path = file_path
+        
+        if base_path and overlay_path and base_path in self._images and overlay_path in self._images:
+            # Check if image shapes are compatible
+            base_img = self._images[base_path]
+            overlay_img = self._images[overlay_path]
+            
+            if base_img.volume_data.shape != overlay_img.volume_data.shape:
+                print(f"Info: Different image sizes detected:")
+                print(f"  Base ({os.path.basename(base_path)}): {base_img.volume_data.shape}")
+                print(f"  Overlay ({os.path.basename(overlay_path)}): {overlay_img.volume_data.shape}")
+                print("Base image will be displayed at full resolution. Overlay blending available only for matching slices.")
+            
+            self._base_image_path = base_path
+            self._overlay_image_path = overlay_path
+            self._overlay_opacity = max(0.0, min(1.0, opacity))
+            
+            # Set primary image to base image for coordinate calculations
+            self._primary_image_path = base_path
+            return True
+        return False
+
+    def get_overlay_opacity(self) -> float:
+        """Get the current overlay opacity."""
+        return self._overlay_opacity
+
+    def get_current_base_image_name(self) -> Optional[str]:
+        """Get the current base image name."""
+        if self._base_image_path:
+            import os
+            return os.path.basename(self._base_image_path)
+        return None
+
+    def get_current_overlay_image_name(self) -> Optional[str]:
+        """Get the current overlay image name."""
+        if self._overlay_image_path:
+            import os
+            return os.path.basename(self._overlay_image_path)
+        return None
+
+    def clear_overlay_state(self):
+        """Clear the overlay state (show no images)."""
+        self._base_image_path = None
+        self._overlay_image_path = None
+        self._overlay_opacity = 1.0
+
     def get_slice_data(self, orientation: str, slice_index: int) -> Optional[np.ndarray]:
-        """Get slice data for a given orientation and index."""
-        if self._volume_data is None:
+        """Get composite slice data for two-image overlay system."""
+        if not self._images:
+            return None
+
+        # If no overlay configuration is set, return None (show nothing)
+        if not self._base_image_path or self._base_image_path not in self._images:
+            return None
+
+        # Get base and overlay images
+        base_img = self._images.get(self._base_image_path)
+        overlay_img = self._images.get(self._overlay_image_path) if self._overlay_image_path else None
+        
+        if not base_img:
             return None
 
         try:
+            # Get base slice
             if orientation == 'axial':
-                return self._volume_data[:, :, slice_index]
+                base_slice = base_img.volume_data[:, :, slice_index]
             elif orientation == 'sagittal':
-                return self._volume_data[slice_index, :, :]
+                base_slice = base_img.volume_data[slice_index, :, :]
             elif orientation == 'coronal':
-                return self._volume_data[:, slice_index, :]
-            return None
+                base_slice = base_img.volume_data[:, slice_index, :]
+            else:
+                return None
+
+            # If no overlay image or opacity is 0, return base image only
+            if not overlay_img or self._overlay_opacity <= 0:
+                return base_slice.astype(float)
+
+            # Get overlay slice
+            try:
+                if orientation == 'axial':
+                    overlay_slice = overlay_img.volume_data[:, :, slice_index]
+                elif orientation == 'sagittal':
+                    overlay_slice = overlay_img.volume_data[slice_index, :, :]
+                elif orientation == 'coronal':
+                    overlay_slice = overlay_img.volume_data[:, slice_index, :]
+            except IndexError:
+                # If overlay slice doesn't exist, return base only
+                return base_slice.astype(float)
+
+            # Handle shape mismatch - resample overlay to match base image size
+            if base_slice.shape != overlay_slice.shape:
+                print(f"Info: Resampling overlay to match base image size")
+                print(f"  Base: {base_slice.shape}, Overlay: {overlay_slice.shape}")
+                overlay_slice = self._resample_slice_to_match(overlay_slice, base_slice.shape)
+
+            # Normalize both slices
+            base_slice = base_slice.astype(float)
+            overlay_slice = overlay_slice.astype(float)
+            
+            if base_slice.max() != base_slice.min():
+                base_slice = (base_slice - base_slice.min()) / (base_slice.max() - base_slice.min())
+            
+            if overlay_slice.max() != overlay_slice.min():
+                overlay_slice = (overlay_slice - overlay_slice.min()) / (overlay_slice.max() - overlay_slice.min())
+
+            # Blend base and overlay with opacity
+            try:
+                composite_slice = base_slice * (1.0 - self._overlay_opacity) + overlay_slice * self._overlay_opacity
+                return composite_slice
+            except ValueError as e:
+                print(f"Error blending images: {e}")
+                print("Returning base image only")
+                return base_slice
+            
         except IndexError:
             return None
 
+    def _resample_slice_to_match(self, overlay_slice: np.ndarray, target_shape: Tuple[int, int]) -> np.ndarray:
+        """Resample overlay slice to match target shape using numpy-based interpolation."""
+        import numpy as np
+        
+        # Get source and target dimensions
+        src_h, src_w = overlay_slice.shape
+        tgt_h, tgt_w = target_shape
+        
+        # Create coordinate grids for the target shape
+        y_coords = np.linspace(0, src_h - 1, tgt_h)
+        x_coords = np.linspace(0, src_w - 1, tgt_w)
+        
+        # Create meshgrid for interpolation coordinates
+        yy, xx = np.meshgrid(y_coords, x_coords, indexing='ij')
+        
+        # Get integer coordinates and fractional parts
+        y0 = np.floor(yy).astype(int)
+        x0 = np.floor(xx).astype(int)
+        y1 = np.minimum(y0 + 1, src_h - 1)
+        x1 = np.minimum(x0 + 1, src_w - 1)
+        
+        # Get fractional parts
+        wy = yy - y0
+        wx = xx - x0
+        
+        # Bilinear interpolation
+        # Get the four corner values
+        val_00 = overlay_slice[y0, x0]
+        val_01 = overlay_slice[y0, x1]
+        val_10 = overlay_slice[y1, x0]
+        val_11 = overlay_slice[y1, x1]
+        
+        # Interpolate
+        val_0 = val_00 * (1 - wx) + val_01 * wx
+        val_1 = val_10 * (1 - wx) + val_11 * wx
+        resampled_slice = val_0 * (1 - wy) + val_1 * wy
+        
+        print(f"  Resampled overlay from {overlay_slice.shape} to {resampled_slice.shape}")
+        return resampled_slice.astype(overlay_slice.dtype)
+
     def get_slice_range(self, orientation: str) -> Tuple[int, int]:
         """Get the valid slice range for a given orientation."""
-        if self._volume_data is None:
+        if not self._images:
+            return (0, 0)
+
+        # Get primary image for reference dimensions
+        primary_img = self._images.get(self._primary_image_path)
+        if not primary_img:
             return (0, 0)
 
         if orientation == 'axial':
-            return (0, self._volume_data.shape[2] - 1)
+            return (0, primary_img.volume_data.shape[2] - 1)
         elif orientation == 'sagittal':
-            return (0, self._volume_data.shape[0] - 1)
+            return (0, primary_img.volume_data.shape[0] - 1)
         elif orientation == 'coronal':
-            return (0, self._volume_data.shape[1] - 1)
+            return (0, primary_img.volume_data.shape[1] - 1)
         return (0, 0)
 
     def get_initial_slice(self, orientation: str) -> int:
         """Get the initial slice index for a given orientation."""
-        if self._volume_data is None:
+        if not self._images:
+            return 0
+
+        # Get primary image for reference dimensions
+        primary_img = self._images.get(self._primary_image_path)
+        if not primary_img:
             return 0
 
         if orientation == 'axial':
-            return self._volume_data.shape[2] // 2
+            return primary_img.volume_data.shape[2] // 2
         elif orientation == 'sagittal':
-            return self._volume_data.shape[0] // 2
+            return primary_img.volume_data.shape[0] // 2
         elif orientation == 'coronal':
-            return self._volume_data.shape[1] // 2
+            return primary_img.volume_data.shape[1] // 2
         return 0
 
     def create_slice_pixmap(self, 
@@ -149,7 +371,7 @@ class ImageModel:
         q_img = QImage(slice_data.tobytes(), width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
 
         # Calculate aspect ratio based on voxel dimensions
-        pixdim = self._current_nifti_img.header.get_zooms()
+        pixdim = self._images.get(self._primary_image_path).nifti_img.header.get_zooms()
         if orientation == 'axial':
             aspect_ratio = pixdim[1] / pixdim[0]  # y/x
         elif orientation == 'sagittal':
@@ -194,16 +416,16 @@ class ImageModel:
 
         if orientation == 'axial' and abs(z - current_slices['axial']) <= 1:
             is_visible = True
-            pixel_x = int(x * scaled_width / self._volume_data.shape[0])
-            pixel_y = int((self._volume_data.shape[1] - 1 - y) * scaled_height / self._volume_data.shape[1])
+            pixel_x = int(x * scaled_width / orig_width)
+            pixel_y = int((orig_height - 1 - y) * scaled_height / orig_height)
         elif orientation == 'sagittal' and abs(x - current_slices['sagittal']) <= 1:
             is_visible = True
-            pixel_x = int((self._volume_data.shape[1] - 1 - y) * scaled_width / self._volume_data.shape[1])
-            pixel_y = int((self._volume_data.shape[2] - 1 - z) * scaled_height / self._volume_data.shape[2])
+            pixel_x = int((orig_width - 1 - y) * scaled_width / orig_width)
+            pixel_y = int((orig_height - 1 - z) * scaled_height / orig_height)
         elif orientation == 'coronal' and abs(y - current_slices['coronal']) <= 1:
             is_visible = True
-            pixel_x = int(x * scaled_width / self._volume_data.shape[0])
-            pixel_y = int((self._volume_data.shape[2] - 1 - z) * scaled_height / self._volume_data.shape[2])
+            pixel_x = int(x * scaled_width / orig_width)
+            pixel_y = int((orig_height - 1 - z) * scaled_height / orig_height)
 
         if is_visible:
             painter.setBrush(QBrush(color))
@@ -222,7 +444,12 @@ class ImageModel:
                          pixmap_height: int,
                          current_slices: Dict[str, int]) -> Optional[Tuple[int, int, int]]:
         """Convert 2D click coordinates to 3D volume coordinates."""
-        if self._volume_data is None:
+        if not self._images:
+            return None
+
+        # Get primary image for reference dimensions
+        primary_img = self._images.get(self._primary_image_path)
+        if not primary_img:
             return None
 
         # Calculate the offset to center the pixmap in the label
@@ -239,43 +466,49 @@ class ImageModel:
 
         # Convert to volume coordinates
         if orientation == 'axial':
-            x_coord = int(adjusted_x * self._volume_data.shape[0] / pixmap_width)
-            y_coord = int((pixmap_height - 1 - adjusted_y) * self._volume_data.shape[1] / pixmap_height)
+            x_coord = int(adjusted_x * primary_img.volume_data.shape[0] / pixmap_width)
+            y_coord = int((pixmap_height - 1 - adjusted_y) * primary_img.volume_data.shape[1] / pixmap_height)
             z_coord = current_slices['axial']
         elif orientation == 'sagittal':
             x_coord = current_slices['sagittal']
-            y_coord = int((pixmap_width - 1 - adjusted_x) * self._volume_data.shape[1] / pixmap_width)
-            z_coord = int((pixmap_height - 1 - adjusted_y) * self._volume_data.shape[2] / pixmap_height)
+            y_coord = int((pixmap_width - 1 - adjusted_x) * primary_img.volume_data.shape[1] / pixmap_width)
+            z_coord = int((pixmap_height - 1 - adjusted_y) * primary_img.volume_data.shape[2] / pixmap_height)
         elif orientation == 'coronal':
-            x_coord = int(adjusted_x * self._volume_data.shape[0] / pixmap_width)
+            x_coord = int(adjusted_x * primary_img.volume_data.shape[0] / pixmap_width)
             y_coord = current_slices['coronal']
-            z_coord = int((pixmap_height - 1 - adjusted_y) * self._volume_data.shape[2] / pixmap_height)
+            z_coord = int((pixmap_height - 1 - adjusted_y) * primary_img.volume_data.shape[2] / pixmap_height)
         else:
             return None
 
         # Clamp coordinates to valid ranges
-        x_coord = max(0, min(x_coord, self._volume_data.shape[0] - 1))
-        y_coord = max(0, min(y_coord, self._volume_data.shape[1] - 1))
-        z_coord = max(0, min(z_coord, self._volume_data.shape[2] - 1))
+        x_coord = max(0, min(x_coord, primary_img.volume_data.shape[0] - 1))
+        y_coord = max(0, min(y_coord, primary_img.volume_data.shape[1] - 1))
+        z_coord = max(0, min(z_coord, primary_img.volume_data.shape[2] - 1))
 
         return (x_coord, y_coord, z_coord)
 
     def is_loaded(self) -> bool:
         """Check if an image is currently loaded."""
-        return self._volume_data is not None
+        return bool(self._images)
 
     def get_affine(self):
         """Get the affine transformation matrix."""
-        return self._affine
+        if not self._images:
+            return None
+        return self._images[self._primary_image_path].affine
 
     def get_current_nifti_img(self):
         """Get the current NIFTI image object."""
-        return self._current_nifti_img
+        if not self._images:
+            return None
+        return self._images[self._primary_image_path].nifti_img
 
     def get_volume_data(self):
         """Get the current volume data."""
-        return self._volume_data
+        if not self._images:
+            return None
+        return self._images[self._primary_image_path].volume_data
 
     def get_current_path(self) -> Optional[str]:
         """Get the path of the currently loaded image."""
-        return self._current_nifti_path 
+        return self._primary_image_path 

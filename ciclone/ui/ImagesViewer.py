@@ -1,34 +1,30 @@
-import json
 import os
-import pickle
-import uuid
-from pathlib import Path
 from typing import Dict, Optional, List, Tuple
-import nibabel as nib
 import numpy as np
-import datetime
 
 from PyQt6.QtWidgets import (
     QMainWindow,
     QFileDialog,
     QMessageBox,
     QInputDialog,
-    QListWidgetItem,
     QSizePolicy,
     QHeaderView,
     QVBoxLayout,
-    QTableWidgetItem,
     QTreeWidgetItem,
     QMenu,
-    QButtonGroup
+    QSlider,
+    QWidget,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QToolButton,
+    QWidgetAction
 )
 from PyQt6.QtCore import Qt, QStandardPaths, QTimer
 
-from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent
 
-from ciclone.services.io.subject_importer import SubjectImporter
 from ciclone.models.image_model import ImageModel
-from ciclone.utils.utility import read_config_file
 from ciclone.controllers.image_controller import ImageController
 from ciclone.domain.electrodes import Electrode
 from ciclone.controllers.electrode_controller import ElectrodeController
@@ -38,7 +34,6 @@ from ciclone.forms.ImagesViewer_ui import Ui_ImagesViewer
 
 # Import new MVC components
 from ciclone.models import ElectrodeModel, CoordinateModel
-from ciclone.controllers import ImageController
 
 class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
@@ -95,6 +90,15 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Load electrode types into combo box
         self.ElectrodeTypeComboBox.addItems(self.electrode_controller.get_electrode_types())
 
+        # Configure column sizing for DataTreeWidget
+        self.DataTreeWidget.setColumnCount(2)
+        self.DataTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.DataTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.DataTreeWidget.setColumnWidth(1, 50)  # Width for visibility button
+        
+        # Setup opacity controls near image sliders
+        self.setup_image_opacity_controls()
+        
         # Configure column sizing for ElectrodeTreeWidget
         self.ElectrodeTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.ElectrodeTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -109,6 +113,12 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
         # Enable context menu for ElectrodeTreeWidget
         self.ElectrodeTreeWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        
+        # Enable context menu for DataTreeWidget
+        self.DataTreeWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        
+        # Enable multi-selection for data tree (images)
+        self.DataTreeWidget.setSelectionMode(self.DataTreeWidget.SelectionMode.ExtendedSelection)
         
         # Enable multi-selection for electrodes (only top-level items)
         self.ElectrodeTreeWidget.setSelectionMode(self.ElectrodeTreeWidget.SelectionMode.ExtendedSelection)
@@ -139,6 +149,485 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
 
+    def setup_image_opacity_controls(self):
+        """Setup gear buttons near image sliders that open overlay control panels."""
+        from PyQt6.QtWidgets import QComboBox
+        
+        # Initialize shared overlay controls (will be used in popup menus)
+        self.base_image_combo = None
+        self.overlay_image_combo = None
+        self.opacity_slider = None
+        self.opacity_percentage_label = None
+        
+        # Dictionary to store opacity menus for each view
+        self.opacity_menus = {}
+        
+        # Add gear buttons for each view
+        for orientation in ['Axial', 'Sagittal', 'Coronal']:
+            # Get the vertical layout for this orientation
+            layout = getattr(self, f"{orientation}_verticalLayout")
+            
+            # Create horizontal layout for slider and button
+            slider_layout = QHBoxLayout()
+            
+            # Get the existing slider
+            slider = getattr(self, f"{orientation}_horizontalSlider")
+            
+            # Remove slider from its current parent
+            layout.removeWidget(slider)
+            
+            # Create gear button
+            gear_btn = QToolButton()
+            gear_btn.setText("⚙")
+            gear_btn.setFixedSize(24, 24)
+            gear_btn.setStyleSheet("""
+                QToolButton {
+                    background-color: #404040;
+                    border: 1px solid #606060;
+                    border-radius: 3px;
+                    color: white;
+                    font-size: 12px;
+                }
+                QToolButton:hover {
+                    background-color: #505050;
+                }
+                QToolButton:pressed {
+                    background-color: #303030;
+                }
+            """)
+            
+            # Create overlay control menu
+            overlay_menu = QMenu()
+            gear_btn.setMenu(overlay_menu)
+            gear_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            
+            # Store reference to menu
+            self.opacity_menus[orientation.lower()] = overlay_menu
+            
+            # Add button and slider to horizontal layout (button on left)
+            slider_layout.addWidget(gear_btn)
+            slider_layout.addWidget(slider)
+            
+            # Add the horizontal layout to the vertical layout
+            layout.insertLayout(0, slider_layout)
+        
+        # Initialize all menus with the overlay controls
+        self.rebuild_all_overlay_menus()
+
+    def rebuild_all_overlay_menus(self):
+        """Rebuild all overlay control menus with the current two-image system."""
+        from PyQt6.QtWidgets import QWidgetAction, QComboBox
+        
+        # Get current state from model (the source of truth)
+        current_base = self.image_controller.get_current_base_image_name()
+        current_overlay = self.image_controller.get_current_overlay_image_name()
+        current_opacity = self.image_controller.get_overlay_opacity() * 100  # Convert to percentage
+        
+        for menu in self.opacity_menus.values():
+            # Clear existing actions
+            menu.clear()
+            
+            # Get loaded images
+            loaded_images = self.image_controller.get_loaded_images() if hasattr(self, 'image_controller') else []
+            
+            if not loaded_images:
+                # Add placeholder if no images
+                no_images_action = menu.addAction("No images loaded")
+                no_images_action.setEnabled(False)
+                return
+            
+            # Create overlay controls container
+            container_widget = QWidget()
+            container_layout = QVBoxLayout(container_widget)
+            container_layout.setContentsMargins(8, 8, 8, 8)
+            container_layout.setSpacing(6)
+            
+            # Title
+            title_label = QLabel("Image Overlay Controls")
+            title_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #333;")
+            title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            container_layout.addWidget(title_label)
+            
+            # Main horizontal layout: slider on left, dropdowns on right
+            main_layout = QHBoxLayout()
+            main_layout.setSpacing(10)
+            
+            # Left side: Opacity slider with percentage
+            slider_container = QWidget()
+            slider_layout = QVBoxLayout(slider_container)
+            slider_layout.setContentsMargins(0, 0, 0, 0)
+            slider_layout.setSpacing(3)
+            
+            opacity_slider = QSlider(Qt.Orientation.Vertical)
+            opacity_slider.setRange(0, 100)
+            opacity_slider.setValue(int(current_opacity))
+            opacity_slider.setFixedHeight(80)
+            opacity_slider.setEnabled(len(loaded_images) >= 2)
+            
+            percentage_label = QLabel(f"{int(current_opacity)}%")
+            percentage_label.setStyleSheet("font-size: 9px; color: #666; font-weight: bold;")
+            percentage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            percentage_label.setFixedWidth(35)
+            
+            slider_layout.addWidget(opacity_slider)
+            slider_layout.addWidget(percentage_label)
+            
+            # Right side: Dropdowns with aligned labels (centered vertically)
+            dropdowns_container = QWidget()
+            dropdowns_layout = QVBoxLayout(dropdowns_container)
+            dropdowns_layout.setContentsMargins(0, 0, 0, 0)
+            dropdowns_layout.setSpacing(8)
+            
+            # Add stretch at top to center content
+            dropdowns_layout.addStretch()
+            
+            # Overlay image section (horizontal: label + dropdown)
+            overlay_section = QWidget()
+            overlay_section_layout = QHBoxLayout(overlay_section)
+            overlay_section_layout.setContentsMargins(0, 0, 0, 0)
+            overlay_section_layout.setSpacing(6)
+            
+            overlay_label = QLabel("Overlay Image:")
+            overlay_label.setStyleSheet("font-size: 10px; color: #555; font-weight: bold;")
+            overlay_label.setFixedWidth(85)
+            overlay_combo = QComboBox()
+            overlay_combo.setMinimumWidth(230)
+            
+            overlay_section_layout.addWidget(overlay_label)
+            overlay_section_layout.addWidget(overlay_combo)
+            
+            # Base image section (horizontal: label + dropdown)
+            base_section = QWidget()
+            base_section_layout = QHBoxLayout(base_section)
+            base_section_layout.setContentsMargins(0, 0, 0, 0)
+            base_section_layout.setSpacing(6)
+            
+            base_label = QLabel("Base Image:")
+            base_label.setStyleSheet("font-size: 10px; color: #555; font-weight: bold;")
+            base_label.setFixedWidth(85)
+            base_combo = QComboBox()
+            base_combo.setMinimumWidth(230)
+            
+            base_section_layout.addWidget(base_label)
+            base_section_layout.addWidget(base_combo)
+            
+            # Populate dropdowns with image names
+            import os
+            image_names = [os.path.basename(path) for path in loaded_images]
+            
+            if len(loaded_images) >= 1:
+                # Add "None" option as first item in both dropdowns
+                base_combo.addItem("None")
+                base_combo.addItems(image_names)
+                base_combo.setEnabled(True)
+                
+                overlay_combo.addItem("None")
+                if len(loaded_images) >= 2:
+                    overlay_combo.addItems(image_names)
+                    overlay_combo.setEnabled(True)
+                else:
+                    overlay_combo.setEnabled(False)
+                    
+                # Set selections based on model state
+                if current_base and current_base in image_names:
+                    base_combo.setCurrentText(current_base)
+                else:
+                    base_combo.setCurrentText("None")
+                
+                if current_overlay and current_overlay in image_names:
+                    overlay_combo.setCurrentText(current_overlay)
+                else:
+                    overlay_combo.setCurrentText("None")
+                    
+            else:
+                base_combo.addItem("No images loaded")
+                overlay_combo.addItem("No images loaded")
+                base_combo.setEnabled(False)
+                overlay_combo.setEnabled(False)
+            
+            # Add sections to dropdowns container
+            dropdowns_layout.addWidget(overlay_section)
+            dropdowns_layout.addWidget(base_section)
+            
+            # Add stretch at bottom to center content
+            dropdowns_layout.addStretch()
+            
+            # Add slider and dropdowns to main layout
+            main_layout.addWidget(slider_container)
+            main_layout.addWidget(dropdowns_container)
+            
+            # Add main layout to container
+            container_layout.addLayout(main_layout)
+            
+            # Connect signals
+            base_combo.currentTextChanged.connect(self.on_base_image_changed)
+            overlay_combo.currentTextChanged.connect(self.on_overlay_image_changed)
+            opacity_slider.valueChanged.connect(lambda value, label=percentage_label: self.on_opacity_slider_changed(value, label))
+            
+            # Set container size
+            container_widget.setFixedWidth(390)
+            container_widget.adjustSize()
+            
+            # Create widget action and add to menu
+            widget_action = QWidgetAction(menu)
+            widget_action.setDefaultWidget(container_widget)
+            menu.addAction(widget_action)
+
+    def on_base_image_changed(self, image_name):
+        """Handle base image selection change."""
+        self._update_overlay_from_combo_change(is_base=True, selected_image=image_name)
+
+    def on_overlay_image_changed(self, image_name):
+        """Handle overlay image selection change."""
+        self._update_overlay_from_combo_change(is_base=False, selected_image=image_name)
+
+    def on_opacity_slider_changed(self, value, label=None):
+        """Handle opacity slider change."""
+        if label:
+            label.setText(f"{value}%")
+        
+        # Get current selections and update
+        base_image, overlay_image = self._get_current_combo_selections()
+        if self._are_valid_selections(base_image, overlay_image):
+            opacity = value / 100.0
+            self.image_controller.set_overlay_images(base_image, overlay_image, opacity)
+            self.refresh_all_views()
+
+    def _update_overlay_from_combo_change(self, is_base: bool, selected_image: str):
+        """Update overlay when a combo box changes."""
+        if not selected_image or selected_image == "No images loaded":
+            return
+            
+        base_image, overlay_image = self._get_current_combo_selections()
+        
+        if is_base:
+            base_image = selected_image
+        else:
+            overlay_image = selected_image
+            
+        # Convert "None" to actual None for processing
+        base_name = None if base_image == "None" else base_image
+        overlay_name = None if overlay_image == "None" else overlay_image
+        
+        # Handle the selections
+        if base_name and overlay_name:
+            if base_name == overlay_name:
+                # Same image in both dropdowns - show only this image
+                self.image_controller.set_overlay_images(base_name, base_name, 0.0)
+            else:
+                # Different images - show as overlay
+                opacity = self._get_current_opacity_value()
+                self.image_controller.set_overlay_images(base_name, overlay_name, opacity)
+        elif base_name and not overlay_name:
+            # Only base image, no overlay
+            self.image_controller.set_overlay_images(base_name, base_name, 0.0)
+        elif not base_name and overlay_name:
+            # Only overlay, promote to base
+            self.image_controller.set_overlay_images(overlay_name, overlay_name, 0.0)
+        else:
+            # Both None - clear display
+            self.image_controller.clear_overlay_state()
+                
+        self.update_all_visibility_buttons()
+        self.refresh_all_views()
+
+    def _get_current_combo_selections(self):
+        """Get current base and overlay selections from any active menu."""
+        from PyQt6.QtWidgets import QComboBox
+        
+        for menu in self.opacity_menus.values():
+            for action in menu.actions():
+                if hasattr(action, 'defaultWidget') and action.defaultWidget():
+                    widget = action.defaultWidget()
+                    combos = widget.findChildren(QComboBox)
+                    if len(combos) >= 2:
+                        # Order: overlay (0), base (1)
+                        overlay_image = combos[0].currentText()
+                        base_image = combos[1].currentText()
+                        return base_image, overlay_image
+        return None, None
+
+    def _get_current_opacity_value(self):
+        """Get current opacity value from any active menu."""
+        for menu in self.opacity_menus.values():
+            for action in menu.actions():
+                if hasattr(action, 'defaultWidget') and action.defaultWidget():
+                    widget = action.defaultWidget()
+                    sliders = widget.findChildren(QSlider)
+                    if sliders:
+                        return sliders[0].value() / 100.0
+        return 1.0
+
+    def _are_valid_selections(self, base_image, overlay_image):
+        """Check if the selections are valid for overlay."""
+        return (base_image and base_image not in ["No images loaded", "None"] and
+                overlay_image and overlay_image not in ["No images loaded", "None"] and
+                base_image != overlay_image)
+
+    def update_image_combo_boxes(self):
+        """Update the overlay control menus with currently loaded images."""
+        self.rebuild_all_overlay_menus()
+        self.update_all_visibility_buttons()
+
+    def on_visibility_toggle(self, file_path: str, checked: bool):
+        """Handle visibility button toggle."""
+        import os
+        file_name = os.path.basename(file_path)
+        
+        # Get actual current state from model
+        current_base = self.image_controller.get_current_base_image_name()
+        current_overlay = self.image_controller.get_current_overlay_image_name()
+        
+        if checked:
+            # Show image: add as base if empty, otherwise as overlay
+            if not current_base:
+                self._set_overlay_images_and_update(file_name, None)
+            else:
+                self._set_overlay_images_and_update(current_base, file_name)
+        else:
+            # Hide image: remove from current display
+            if current_base == file_name and current_overlay == file_name:
+                # Same image in both slots, clear everything
+                self._set_overlay_images_and_update(None, None)
+            elif current_base == file_name:
+                # Removing base: promote overlay to base if it exists
+                if current_overlay and current_overlay != file_name:
+                    self._set_overlay_images_and_update(current_overlay, None)
+                else:
+                    self._set_overlay_images_and_update(None, None)
+            elif current_overlay == file_name:
+                # Removing overlay: keep base only
+                self._set_overlay_images_and_update(current_base, None)
+            # If file_name is not currently displayed, do nothing
+
+    def _set_overlay_images_and_update(self, base_name, overlay_name):
+        """Set overlay images and update all UI elements."""
+        if base_name and overlay_name and base_name != overlay_name:
+            # Two different images
+            opacity = self._get_current_opacity_value()
+            self.image_controller.set_overlay_images(base_name, overlay_name, opacity)
+        elif base_name and not overlay_name:
+            # Only base image, no overlay
+            opacity = self._get_current_opacity_value()
+            self.image_controller.set_overlay_images(base_name, base_name, 0.0)
+        else:
+            # Clear everything (base_name is None)
+            self.image_controller.clear_overlay_state()
+        
+        # Update UI
+        self._sync_dropdown_selections()
+        self.update_all_visibility_buttons()
+        self.refresh_all_views()
+
+    def _sync_dropdown_selections(self):
+        """Update dropdown selections to match current overlay state."""
+        from PyQt6.QtWidgets import QComboBox
+        
+        # Get actual current state from model (not from dropdowns)
+        base_image = self.image_controller.get_current_base_image_name()
+        overlay_image = self.image_controller.get_current_overlay_image_name()
+        
+        # Check if this is a single image display (base and overlay are the same with 0 opacity)
+        opacity = self.image_controller.get_overlay_opacity()
+        is_single_image = (base_image and overlay_image and 
+                          base_image == overlay_image and 
+                          opacity <= 0.0)
+        
+        # Update all dropdown menus
+        for menu in self.opacity_menus.values():
+            for action in menu.actions():
+                if hasattr(action, 'defaultWidget') and action.defaultWidget():
+                    widget = action.defaultWidget()
+                    combos = widget.findChildren(QComboBox)
+                    if len(combos) >= 2:
+                        # Order: overlay (0), base (1)
+                        overlay_combo = combos[0]
+                        base_combo = combos[1]
+                        
+                        # Block signals to prevent recursion
+                        overlay_combo.blockSignals(True)
+                        base_combo.blockSignals(True)
+                        
+                        # Update base selection
+                        if base_image and base_combo.findText(base_image) >= 0:
+                            base_combo.setCurrentText(base_image)
+                        else:
+                            base_combo.setCurrentText("None")
+                        
+                        # Update overlay selection - show None for single image display
+                        if is_single_image:
+                            overlay_combo.setCurrentText("None")
+                        elif overlay_image and overlay_combo.findText(overlay_image) >= 0:
+                            overlay_combo.setCurrentText(overlay_image)
+                        else:
+                            overlay_combo.setCurrentText("None")
+                        
+                        # Re-enable signals
+                        overlay_combo.blockSignals(False)
+                        base_combo.blockSignals(False)
+
+    def update_all_visibility_buttons(self):
+        """Update the appearance of all visibility buttons based on current overlay state."""
+        # Get actual current state from model
+        base_image = self.image_controller.get_current_base_image_name()
+        overlay_image = self.image_controller.get_current_overlay_image_name()
+        
+        # Get currently displayed images
+        displayed_images = set()
+        if base_image:
+            displayed_images.add(base_image)
+        if overlay_image:
+            displayed_images.add(overlay_image)
+        
+        # Update all buttons
+        root = self.DataTreeWidget.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            file_path = item.data(0, Qt.ItemDataRole.UserRole)
+            if file_path:
+                import os
+                file_name = os.path.basename(file_path)
+                
+                # Find the button widget
+                widget = self.DataTreeWidget.itemWidget(item, 1)
+                if widget:
+                    button = widget.findChild(QPushButton)
+                    if button:
+                        is_displayed = file_name in displayed_images
+                        button.setChecked(is_displayed)
+                        self.update_visibility_button_appearance(button, is_displayed)
+
+    def update_visibility_button_appearance(self, button, is_visible):
+        """Update the appearance of a visibility button."""
+        if is_visible:
+            button.setText("👁")  # Eye emoji for visible
+            button.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    border: 1px solid #45a049;
+                    border-radius: 3px;
+                    color: white;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+        else:
+            button.setText("◯")  # Empty circle for hidden
+            button.setStyleSheet("""
+                QPushButton {
+                    background-color: #f0f0f0;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                    color: #666;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #e0e0e0;
+                }
+            """)
+
     def _connect_signals(self):
         """Connect UI signals to controller methods."""
         # Radio button signals
@@ -167,8 +656,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Combo box signals
         self.ElectrodesComboBox.currentTextChanged.connect(self.update_coordinate_display)
 
-        # Context menu signal
+        # Context menu signals
         self.ElectrodeTreeWidget.customContextMenuRequested.connect(self.on_electrode_context_menu_requested)
+        self.DataTreeWidget.customContextMenuRequested.connect(self.on_data_tree_context_menu_requested)
 
         # ToolBox signal
         self.toolBox.currentChanged.connect(self.adjust_tab_heights)
@@ -284,6 +774,89 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             self.update_slice_display('sagittal')
             self.update_slice_display('coronal')
 
+    def add_file_to_data_tree(self, file_path: str):
+        """Add a loaded file to the DataTreeWidget."""
+        import os
+        
+        # Extract filename from path
+        file_name = os.path.basename(file_path)
+        
+        # Check if file already exists in tree
+        root = self.DataTreeWidget.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            if item.data(0, Qt.ItemDataRole.UserRole) == file_path:
+                return
+        
+        # Create new tree item
+        item = QTreeWidgetItem()
+        item.setText(0, file_name)
+        item.setData(0, Qt.ItemDataRole.UserRole, file_path)
+        
+        # Add to tree
+        self.DataTreeWidget.addTopLevelItem(item)
+        
+        # Create visibility toggle button
+        visibility_widget = QWidget()
+        visibility_layout = QHBoxLayout(visibility_widget)
+        visibility_layout.setContentsMargins(5, 0, 5, 0)
+        
+        visibility_btn = QPushButton()
+        visibility_btn.setFixedSize(24, 24)
+        visibility_btn.setCheckable(True)
+        visibility_btn.setProperty('file_path', file_path)
+        visibility_btn.clicked.connect(lambda checked, path=file_path: self.on_visibility_toggle(path, checked))
+        
+        # Set initial appearance
+        self.update_visibility_button_appearance(visibility_btn, False)
+        
+        visibility_layout.addStretch()
+        visibility_layout.addWidget(visibility_btn)
+        visibility_layout.addStretch()
+        
+        # Set the widget in the second column
+        self.DataTreeWidget.setItemWidget(item, 1, visibility_widget)
+        
+        # Auto-display first image when loaded
+        current_base = self.image_controller.get_current_base_image_name()
+        if not current_base:
+            # No image currently displayed, make this one the base
+            self.image_controller.set_overlay_images(file_name, file_name, 0.0)
+        
+        # Update all UI to reflect current state
+        self.update_image_combo_boxes()
+        self.update_all_visibility_buttons()
+        self.refresh_all_views()
+
+    def remove_file_from_data_tree(self, file_path: str):
+        """Remove a file from the DataTreeWidget."""
+        root = self.DataTreeWidget.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            if item.data(0, Qt.ItemDataRole.UserRole) == file_path:
+                root.removeChild(item)
+                break
+        
+        # Update combo boxes after removing image
+        self.update_image_combo_boxes()
+
+    # Old opacity methods removed - replaced with new two-image overlay system
+
+    def remove_image(self, file_path: str):
+        """Remove an image from the viewer."""
+        self.image_controller.remove_image(file_path)
+        
+        # Update UI components after removal
+        self.update_image_combo_boxes()  # Rebuild dropdown menus
+        self.update_all_visibility_buttons()  # Update visibility button states
+        self.refresh_all_views()  # Refresh the display
+
+    def refresh_data_tree(self):
+        """Refresh the data tree display."""
+        # This method can be used to update the display status or other info
+        # Currently just ensures the tree is properly displayed
+        self.DataTreeWidget.update()
+
     # =============================================================================
     # EVENT HANDLERS (Delegate to Controllers)
     # =============================================================================
@@ -360,6 +933,39 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             QMessageBox.critical(self, "Error", f"Failed to save coordinates: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def on_data_tree_context_menu_requested(self, position):
+        """Handle right-click context menu for loaded images."""
+        item = self.DataTreeWidget.itemAt(position)
+        if item is None:
+            return
+        
+        # Get selected items
+        selected_items = self.DataTreeWidget.selectedItems()
+        
+        if not selected_items:
+            return
+        
+        # Create context menu
+        context_menu = QMenu(self)
+        
+        if len(selected_items) == 1:
+            remove_action = context_menu.addAction("Remove Image")
+        else:
+            remove_action = context_menu.addAction(f"Remove {len(selected_items)} Images")
+        
+        # Show context menu and handle action
+        action = context_menu.exec(self.DataTreeWidget.mapToGlobal(position))
+        
+        if action == remove_action:
+            self.remove_selected_images(selected_items)
+
+    def remove_selected_images(self, items):
+        """Remove selected images from the viewer."""
+        for item in items:
+            file_path = item.data(0, Qt.ItemDataRole.UserRole)
+            if file_path:
+                self.remove_image(file_path)
 
     def on_electrode_context_menu_requested(self, position):
         """Handle electrode context menu request."""
@@ -526,6 +1132,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             # Create clean pixmap without electrode points (just the image)
             slice_data = self.image_controller.image_model.get_slice_data(orientation, slider.value())
             if slice_data is None:
+                # No image data - clear the display
+                label.clear()
+                label.setText("No image loaded")
                 return
                 
             # Create pixmap without electrode overlays
@@ -668,6 +1277,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
     def update_all_views(self):
         """Legacy method - delegates to refresh_all_views."""
         self.refresh_all_views()
+
+
 
 
 if __name__ == "__main__":
