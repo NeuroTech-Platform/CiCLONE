@@ -16,14 +16,16 @@ class ImageController:
         """Set the view reference for UI updates."""
         self._view = view
     
-    def load_image(self, file_path: str) -> bool:
+    def load_image(self, file_path: str, opacity: float = 1.0) -> bool:
         """Load a NIFTI image file."""
-        success = self.image_model.load_nifti_file(file_path)
+        success = self.image_model.load_nifti_file(file_path, opacity)
         
         if success and self._view:
             self._view.enable_image_controls()
             self._view.update_slider_ranges()
             self._view.refresh_all_views()
+            # Add the loaded file to the DataTreeWidget
+            self._view.add_file_to_data_tree(file_path)
         elif not success and self._view:
             self._show_error("Failed to load NIFTI file.")
             self._view.show_default_display()
@@ -90,6 +92,53 @@ class ImageController:
     def get_volume_data(self):
         """Get the current volume data."""
         return self.image_model.get_volume_data()
+    
+    def remove_image(self, file_path: str) -> bool:
+        """Remove an image from the model."""
+        success = self.image_model.remove_image(file_path)
+        
+        if success and self._view:
+            self._view.remove_file_from_data_tree(file_path)
+            self._view.refresh_all_views()
+            
+            # If no images left, show default display
+            if not self.image_model.is_loaded():
+                self._view.show_default_display()
+        
+        return success
+
+    # Old individual image opacity methods removed - replaced with overlay system
+
+    def get_loaded_images(self) -> List[str]:
+        """Get list of loaded image file paths."""
+        return self.image_model.get_loaded_images()
+
+    def set_overlay_images(self, base_image_name: str, overlay_image_name: str, opacity: float) -> bool:
+        """Set the base and overlay images for two-image overlay system."""
+        success = self.image_model.set_overlay_images(base_image_name, overlay_image_name, opacity)
+        
+        if success and self._view:
+            self._view.refresh_all_views()
+        
+        return success
+
+    def get_overlay_opacity(self) -> float:
+        """Get the current overlay opacity."""
+        return self.image_model.get_overlay_opacity()
+
+    def get_current_base_image_name(self) -> Optional[str]:
+        """Get the current base image name."""
+        return self.image_model.get_current_base_image_name()
+
+    def get_current_overlay_image_name(self) -> Optional[str]:
+        """Get the current overlay image name."""
+        return self.image_model.get_current_overlay_image_name()
+
+    def clear_overlay_state(self):
+        """Clear the overlay state (show no images)."""
+        self.image_model.clear_overlay_state()
+        if self._view:
+            self._view.refresh_all_views()
     
     def _show_error(self, message: str):
         """Show error message to user."""

@@ -34,14 +34,72 @@
            </sizepolicy>
           </property>
           <property name="currentIndex">
-           <number>1</number>
+           <number>0</number>
           </property>
+          <widget class="QWidget" name="page_4">
+           <attribute name="label">
+            <string>Data</string>
+           </attribute>
+           <layout class="QGridLayout" name="gridLayout_4">
+            <item row="0" column="0">
+             <widget class="QScrollArea" name="treeScrollArea_2">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                <horstretch>0</horstretch>
+                <verstretch>1</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>300</height>
+               </size>
+              </property>
+              <property name="widgetResizable">
+               <bool>true</bool>
+              </property>
+              <widget class="QWidget" name="scrollAreaWidgetContents_2">
+               <property name="geometry">
+                <rect>
+                 <x>0</x>
+                 <y>0</y>
+                 <width>440</width>
+                 <height>298</height>
+                </rect>
+               </property>
+               <layout class="QVBoxLayout" name="scrollLayout_2">
+                <item>
+                 <widget class="QTreeWidget" name="DataTreeWidget">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                    <horstretch>0</horstretch>
+                    <verstretch>1</verstretch>
+                   </sizepolicy>
+                  </property>
+                  <column>
+                   <property name="text">
+                    <string>Name</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>View ? </string>
+                   </property>
+                  </column>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </widget>
+            </item>
+           </layout>
+          </widget>
           <widget class="QWidget" name="page_5">
            <property name="geometry">
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>203</width>
+             <width>466</width>
              <height>123</height>
             </rect>
            </property>
@@ -231,7 +289,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>138</width>
+             <width>466</width>
              <height>366</height>
             </rect>
            </property>
@@ -273,7 +331,7 @@
                 <rect>
                  <x>0</x>
                  <y>0</y>
-                 <width>98</width>
+                 <width>440</width>
                  <height>298</height>
                 </rect>
                </property>
@@ -356,7 +414,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>113</width>
+             <width>466</width>
              <height>44</height>
             </rect>
            </property>
