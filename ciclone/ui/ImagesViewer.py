@@ -94,7 +94,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.DataTreeWidget.setColumnCount(2)
         self.DataTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.DataTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        self.DataTreeWidget.setColumnWidth(1, 50)  # Width for visibility button
+        self.DataTreeWidget.setColumnWidth(1, 70)
+        self.DataTreeWidget.header().setStretchLastSection(False)  # Prevent last section from stretching
         
         # Setup opacity controls near image sliders
         self.setup_image_opacity_controls()
@@ -213,7 +214,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         # Initialize all menus with the overlay controls
         self.rebuild_all_overlay_menus()
-
+    
     def rebuild_all_overlay_menus(self):
         """Rebuild all overlay control menus with the current two-image system."""
         from PyQt6.QtWidgets import QWidgetAction, QComboBox
@@ -891,7 +892,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
     def on_save_file_clicked(self):
         """Handle save file button click."""
         # Check if we have electrodes with contacts
-        if not self.electrode_model.has_processed_contacts():
+        if not self.electrode_controller.has_processed_contacts():
             QMessageBox.warning(self, "Warning", "No processed electrode contacts to save.")
             return
             
@@ -912,7 +913,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         try:
             # Prepare electrode data for the SlicerFile class
             electrodes_data = []
-            for electrode in self.electrode_model.get_electrodes_with_contacts():
+            for electrode in self.electrode_controller.get_electrodes_with_contacts():
                 contacts = [(contact.x, contact.y, contact.z) for contact in electrode.contacts]
                 electrodes_data.append({
                     'name': electrode.name,
@@ -1130,7 +1131,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 label = self.Coronal_ImagePreview
 
             # Create clean pixmap without electrode points (just the image)
-            slice_data = self.image_controller.image_model.get_slice_data(orientation, slider.value())
+            slice_data = self.image_controller.get_slice_data_for_display(orientation, slider.value())
             if slice_data is None:
                 # No image data - clear the display
                 label.clear()
@@ -1138,7 +1139,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 return
                 
             # Create pixmap without electrode overlays
-            pixmap = self.image_controller.image_model.create_slice_pixmap_clean(
+            pixmap = self.image_controller.create_clean_pixmap_for_display(
                 slice_data, orientation, label.width(), label.height()
             )
 
@@ -1184,8 +1185,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             electrode_color.setHsv(hue, 200, 255, 180)
             
             for point_type, point in points.items():
-                if self._is_point_visible(point, orientation, current_slices):
-                    pixel_coords = self._convert_3d_to_pixel_coords(
+                if self.image_controller.is_point_visible_on_slice(point, orientation, current_slices):
+                    pixel_coords = self.image_controller.convert_3d_to_pixel_coords(
                         point, orientation, scaled_width, scaled_height
                     )
                     if pixel_coords:
@@ -1200,49 +1201,15 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             contact_color.setHsv(hue, 200, 255, 180)
             
             for contact_point in contacts:
-                if self._is_point_visible(contact_point, orientation, current_slices):
-                    pixel_coords = self._convert_3d_to_pixel_coords(
+                if self.image_controller.is_point_visible_on_slice(contact_point, orientation, current_slices):
+                    pixel_coords = self.image_controller.convert_3d_to_pixel_coords(
                         contact_point, orientation, scaled_width, scaled_height
                     )
                     if pixel_coords:
                         x, y = pixel_coords
                         label.add_marker(x, y, contact_color, radius=5)
     
-    def _is_point_visible(self, point, orientation, current_slices):
-        """Check if a 3D point is visible on the current slice."""
-        x, y, z = point
-        
-        if orientation == 'axial' and abs(z - current_slices['axial']) <= 1:
-            return True
-        elif orientation == 'sagittal' and abs(x - current_slices['sagittal']) <= 1:
-            return True
-        elif orientation == 'coronal' and abs(y - current_slices['coronal']) <= 1:
-            return True
-        
-        return False
-    
-    def _convert_3d_to_pixel_coords(self, point, orientation, scaled_width, scaled_height):
-        """Convert 3D coordinates to pixel coordinates for the current view."""
-        x, y, z = point
-        volume_data = self.image_controller.image_model._volume_data
-        
-        if volume_data is None:
-            return None
-        
-        # Use the same logic as the original _draw_point_if_visible method
-        if orientation == 'axial':
-            pixel_x = int(x * scaled_width / volume_data.shape[0])
-            pixel_y = int((volume_data.shape[1] - 1 - y) * scaled_height / volume_data.shape[1])
-        elif orientation == 'sagittal':
-            pixel_x = int((volume_data.shape[1] - 1 - y) * scaled_width / volume_data.shape[1])
-            pixel_y = int((volume_data.shape[2] - 1 - z) * scaled_height / volume_data.shape[2])
-        elif orientation == 'coronal':
-            pixel_x = int(x * scaled_width / volume_data.shape[0])
-            pixel_y = int((volume_data.shape[2] - 1 - z) * scaled_height / volume_data.shape[2])
-        else:
-            return None
-        
-        return (pixel_x, pixel_y)
+
 
     def adjust_tab_heights(self, index):
         """Adjust tab heights based on selected tab."""

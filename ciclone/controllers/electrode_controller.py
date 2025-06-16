@@ -157,6 +157,14 @@ class ElectrodeController:
         """Get available electrode types."""
         return self.electrode_model.get_available_electrode_types()
     
+    def has_processed_contacts(self) -> bool:
+        """Check if any electrodes have processed contacts."""
+        return self.electrode_model.has_processed_contacts()
+    
+    def get_electrodes_with_contacts(self) -> List:
+        """Get all electrodes that have processed contacts."""
+        return self.electrode_model.get_electrodes_with_contacts()
+    
     def _show_error(self, message: str):
         """Show error message to user."""
         if self._view:
