@@ -21,8 +21,7 @@ from PyQt6.QtWidgets import (
     QWidgetAction
 )
 from PyQt6.QtCore import Qt, QStandardPaths, QTimer
-
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent, QAction
 
 from ciclone.models.image_model import ImageModel
 from ciclone.controllers.image_controller import ImageController
@@ -33,7 +32,8 @@ from ciclone.ui.Viewer3D import Viewer3D
 from ciclone.forms.ImagesViewer_ui import Ui_ImagesViewer
 
 # Import new MVC components
-from ciclone.models import ElectrodeModel, CoordinateModel
+from ciclone.models import ElectrodeModel, CoordinateModel, CrosshairModel
+from ciclone.controllers import CrosshairController
 
 class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
@@ -74,16 +74,21 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.electrode_model = ElectrodeModel()
         self.coordinate_model = CoordinateModel()
         self.image_model = ImageModel()
+        self.crosshair_model = CrosshairModel()
         
         # Initialize controllers
         self.electrode_controller = ElectrodeController(
             self.electrode_model, self.coordinate_model
         )
         self.image_controller = ImageController(self.image_model)
+        self.crosshair_controller = CrosshairController(
+            self.crosshair_model, self.image_controller
+        )
         
         # Set view references in controllers
         self.electrode_controller.set_view(self)
         self.image_controller.set_view(self)
+        self.crosshair_controller.set_view(self)
 
     def _setup_ui_components(self):
         """Setup UI components and styling."""
@@ -149,6 +154,12 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         grid.setColumnStretch(1, 1)
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
+
+
+    
+    def toggle_crosshairs(self, checked):
+        """Toggle crosshair display on all views."""
+        self.crosshair_controller.toggle_crosshairs(checked)
 
     def setup_image_opacity_controls(self):
         """Setup gear buttons near image sliders that open overlay control panels."""
@@ -666,6 +677,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.toolBox.setCurrentIndex(1)
         self.toolBox.setCurrentIndex(0)
 
+        # Crosshair action from toolbar
+        self.actionCrosshairs.triggered.connect(self.toggle_crosshairs)
+
     # =============================================================================
     # VIEW INTERFACE METHODS (Called by Controllers)
     # =============================================================================
@@ -1084,7 +1098,11 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
         x_coord, y_coord, z_coord = coords
 
-        # Update other views to show the clicked point
+        # If crosshairs are enabled, set the crosshair position to the clicked point
+        if self.crosshair_controller.is_enabled():
+            self.crosshair_controller.set_crosshair_position((x_coord, y_coord, z_coord))
+
+        # Update other views to show the clicked point (same for crosshairs or normal mode)
         if orientation == 'axial':
             self.Sagittal_horizontalSlider.setValue(x_coord)
             self.Coronal_horizontalSlider.setValue(y_coord)
@@ -1102,11 +1120,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         elif self.setting_output:
             self.electrode_controller.set_output_coordinate(electrode_name, coords)
         
-        # Only refresh if we actually set a coordinate
-        if self.setting_entry or self.setting_output:
-            # Refresh all views together to avoid cascade issues
-            # The slider updates above will change the slice positions,
-            # and we want to show the electrode points on all affected views
+        # Refresh all views if crosshairs are enabled or if setting coordinates
+        if self.crosshair_controller.is_enabled() or self.setting_entry or self.setting_output:
             self.refresh_all_views()
 
     # =============================================================================
@@ -1173,6 +1188,10 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         scaled_width = pixmap.width()
         scaled_height = pixmap.height()
         
+        # Update crosshairs if enabled (efficient update, no redraw)
+        if self.crosshair_controller.is_enabled():
+            self.crosshair_controller.update_crosshairs_for_view(label, orientation, current_slices, scaled_width, scaled_height)
+        
         # Get electrode points
         electrode_points = self.electrode_controller.get_electrode_points_for_display()
         processed_contacts = self.electrode_controller.get_processed_contacts_for_display()
@@ -1209,7 +1228,10 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                         x, y = pixel_coords
                         label.add_marker(x, y, contact_color, radius=5)
     
-
+    def remove_all_crosshairs(self):
+        """Remove crosshairs from all views - called by crosshair controller."""
+        for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
+            label.remove_crosshairs()
 
     def adjust_tab_heights(self, index):
         """Adjust tab heights based on selected tab."""
@@ -1232,21 +1254,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Use debounce timer to avoid excessive refreshes during resize
         self._resize_timer.stop()
         self._resize_timer.start(100)  # 100ms delay
-
-    # =============================================================================
-    # LEGACY METHODS (For backward compatibility)
-    # =============================================================================
-
-    def load_nifti_file(self, nifti_path):
-        """Load NIFTI file - delegates to image controller."""
-        self.image_controller.load_image(nifti_path)
-
-    def update_all_views(self):
-        """Legacy method - delegates to refresh_all_views."""
-        self.refresh_all_views()
-
-
-
 
 if __name__ == "__main__":
     import sys
