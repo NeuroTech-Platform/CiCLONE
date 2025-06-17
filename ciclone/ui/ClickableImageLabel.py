@@ -58,6 +58,10 @@ class ClickableImageLabel(QGraphicsView):
         
         # Track markers separately from the image
         self.markers = []  # List to keep track of marker items
+        
+        # Track crosshair elements separately
+        self.crosshair_horizontal = None
+        self.crosshair_vertical = None
     
     def setPixmap(self, pixmap: QPixmap):
         """Set the pixmap to display."""
@@ -122,6 +126,8 @@ class ClickableImageLabel(QGraphicsView):
         self.target_zoom = 1.0
         self._is_fitted_mode = True
         self.markers.clear()  # Clear marker tracking list
+        self.crosshair_horizontal = None
+        self.crosshair_vertical = None
     
     def setText(self, text: str):
         """Set text when no image is available (for compatibility)."""
@@ -379,6 +385,9 @@ class ClickableImageLabel(QGraphicsView):
         marker.setPen(pen)
         marker.setBrush(brush)
         
+        # Set Z-value to ensure markers appear in front of the image
+        marker.setZValue(5)  # Higher than image (default 0), but lower than crosshairs
+        
         # Add to scene and track it
         self.scene.addItem(marker)
         self.markers.append(marker)
@@ -400,3 +409,68 @@ class ClickableImageLabel(QGraphicsView):
     def get_markers(self):
         """Get all current markers."""
         return self.markers.copy()
+
+    def add_crosshairs(self, center_x, center_y, color=QColor(255, 255, 0), line_width=1):
+        """Add crosshairs centered at the specified coordinates."""
+        if not self.pixmap_item:
+            return None
+            
+        # Remove existing crosshairs first
+        self.remove_crosshairs()
+        
+        # Get the pixmap bounds
+        pixmap_rect = self.pixmap_item.boundingRect()
+        
+        # Create horizontal line
+        self.crosshair_horizontal = self.scene.addLine(
+            pixmap_rect.left(), center_y,
+            pixmap_rect.right(), center_y,
+            QPen(color, line_width)
+        )
+        
+        # Create vertical line  
+        self.crosshair_vertical = self.scene.addLine(
+            center_x, pixmap_rect.top(),
+            center_x, pixmap_rect.bottom(),
+            QPen(color, line_width)
+        )
+        
+        # Set Z-value to ensure crosshairs appear in front of the image
+        self.crosshair_horizontal.setZValue(10)  # Higher than image (default 0)
+        self.crosshair_vertical.setZValue(10)
+        
+        return (self.crosshair_horizontal, self.crosshair_vertical)
+    
+    def update_crosshairs(self, center_x, center_y):
+        """Update crosshair position without recreating them."""
+        if not self.pixmap_item or not self.crosshair_horizontal or not self.crosshair_vertical:
+            return
+            
+        # Get the pixmap bounds
+        pixmap_rect = self.pixmap_item.boundingRect()
+        
+        # Update horizontal line position
+        self.crosshair_horizontal.setLine(
+            pixmap_rect.left(), center_y,
+            pixmap_rect.right(), center_y
+        )
+        
+        # Update vertical line position
+        self.crosshair_vertical.setLine(
+            center_x, pixmap_rect.top(),
+            center_x, pixmap_rect.bottom()
+        )
+    
+    def remove_crosshairs(self):
+        """Remove all crosshair lines from the scene."""
+        if self.crosshair_horizontal:
+            self.scene.removeItem(self.crosshair_horizontal)
+            self.crosshair_horizontal = None
+            
+        if self.crosshair_vertical:
+            self.scene.removeItem(self.crosshair_vertical)
+            self.crosshair_vertical = None
+    
+    def has_crosshairs(self):
+        """Check if crosshairs are currently displayed."""
+        return self.crosshair_horizontal is not None and self.crosshair_vertical is not None
