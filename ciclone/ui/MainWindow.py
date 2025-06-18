@@ -51,6 +51,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Run stages buttons
         self.runAllStages_PushButton.clicked.connect(self.run_all_stages)
         self.runSelectedStages_pushButton.clicked.connect(self.run_selected_stages)
+        
+        # Stop processing button (defined in UI file)
+        self.stopProcessing_pushButton.clicked.connect(self.stop_processing)
 
         # Initialize stages UI from main controller
         self._setup_stages_ui()
@@ -409,6 +412,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Update button states
         self.runAllStages_PushButton.setEnabled(not is_running)
         self.runSelectedStages_pushButton.setEnabled(not is_running)
+        
+        # Update stop button state
+        self.stopProcessing_pushButton.setEnabled(is_running)
     
     def clear_processing_log(self):
         """Clear the processing log (called by processing controller)."""
@@ -440,3 +446,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Show menu at cursor position
         context_menu.exec(self.textBrowser.mapToGlobal(position))
+    
+    def stop_processing(self):
+        """Stop the current processing operation."""
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Stop Processing",
+            "Are you sure you want to stop the current processing operation?\n\n"
+            "This will interrupt the current operation and may leave some subjects "
+            "partially processed.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            success = self.main_controller.stop_processing()
+            if success:
+                QMessageBox.information(
+                    self,
+                    "Processing Stopped",
+                    "Processing has been stopped successfully."
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Stop Failed",
+                    "Failed to stop processing. Check the log for details."
+                )
