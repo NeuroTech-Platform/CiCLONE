@@ -155,6 +155,26 @@ class MainController(QObject):
         """Get the current output directory."""
         return self.application_model.get_output_directory()
     
+    def set_output_directory(self, directory: str):
+        """Set the output directory through the application model."""
+        self.application_model.set_output_directory(directory)
+    
+    def is_output_directory_set(self) -> bool:
+        """Check if output directory is set and exists."""
+        return self.application_model.is_output_directory_set()
+    
+    def connect_worker_state_signal(self, callback):
+        """Connect to worker state change signal."""
+        self.application_model.worker_state_changed.connect(callback)
+    
+    def set_selected_stages(self, stage_names: List[str]):
+        """Set the selected stages."""
+        self.application_model.set_selected_stages(stage_names)
+    
+    def update_stage_selection_from_ui(self, selected_stage_names: List[str]):
+        """Update stage selection from UI."""
+        self.processing_controller.update_stage_selection_from_ui(selected_stage_names)
+    
     # File Browsing Operations
     def browse_file(self, field_type: str) -> Optional[str]:
         """Generic file browser for different field types."""
@@ -217,7 +237,26 @@ class MainController(QObject):
     
     # Subject Management (delegated)
     def create_subject(self, subject_data: SubjectData) -> bool:
-        """Create a new subject (delegated to SubjectController)."""
+        """Create a subject using the subject controller."""
+        return self.subject_controller.create_subject(subject_data)
+    
+    def create_subject_from_form_data(self, form_data: Dict[str, Any]) -> bool:
+        """Create a subject from form data (MVC-compliant method)."""
+        # Create subject data object in controller (not view)
+        subject_data = SubjectData(
+            name=form_data['name'],
+            schema=form_data.get('schema', ''),
+            pre_ct=form_data.get('pre_ct', ''),
+            pre_mri=form_data.get('pre_mri', ''),
+            post_ct=form_data.get('post_ct', ''),
+            post_mri=form_data.get('post_mri', '')
+        )
+        
+        # Set schema files if provided
+        if 'schema_files' in form_data:
+            subject_data.set_schema_files(form_data['schema_files'])
+        
+        # Use existing subject creation logic
         return self.subject_controller.create_subject(subject_data)
     
     def rename_subject(self, current_name: str, new_name: str) -> bool:

@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 
-from ciclone.models.subject_model import SubjectData
 from ciclone.controllers.main_controller import MainController
 
 from ..forms.MainWindow_ui import Ui_MainWindow
@@ -59,7 +58,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._setup_stages_ui()
         
         # Connect to application model signals through main controller
-        self.main_controller.application_model.worker_state_changed.connect(self.update_processing_ui)
+        self.main_controller.connect_worker_state_signal(self.update_processing_ui)
         
         # Add verbose mode toggle (Ctrl+V)
         self.verbose_action = QAction("Toggle Verbose Logging", self)
@@ -80,7 +79,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def output_directory(self, value):
         """Set output directory through main controller."""
         if value:
-            self.main_controller.application_model.set_output_directory(value)
+            self.main_controller.set_output_directory(value)
 
     def create_output_directory(self):
         """Create new output directory using main controller."""
@@ -101,7 +100,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Get directory from line edit and notify main controller
         directory_text = self.lineEdit_outputDirectory.text().strip()
         if directory_text:
-            self.main_controller.application_model.set_output_directory(directory_text)
+            self.main_controller.set_output_directory(directory_text)
 
     def _browse_file(self, field_type: str):
         """Generic file browser for different fields using main controller."""
@@ -128,7 +127,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def add_subject(self):
         """Add a new subject to the current output directory"""
-        if not self.main_controller.application_model.is_output_directory_set():
+        if not self.main_controller.is_output_directory_set():
             QMessageBox.warning(self, "Error", "Please select an output directory first")
             return
             
@@ -137,24 +136,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.warning(self, "Error", "Please enter a subject name")
             return
 
-        # Create subject data object
-        subject_data = SubjectData(
-            name=subject_name,
-            schema=self.lineEdit_Schema.text(),
-            pre_ct=self.lineEdit_preCT.text(),
-            pre_mri=self.lineEdit_preMRI.text(),
-            post_ct=self.lineEdit_postCT.text(),
-            post_mri=self.lineEdit_postMRI.text()
-        )
+        # Collect form data and pass to controller
+        form_data = {
+            'name': subject_name,
+            'schema': self.lineEdit_Schema.text(),
+            'pre_ct': self.lineEdit_preCT.text(),
+            'pre_mri': self.lineEdit_preMRI.text(),
+            'post_ct': self.lineEdit_postCT.text(),
+            'post_mri': self.lineEdit_postMRI.text()
+        }
         
-        # Set schema files if multiple were selected
+        # Handle multiple schema files
         schema_text = self.lineEdit_Schema.text().strip()
         if schema_text:
             schema_files = [path.strip() for path in schema_text.split(',') if path.strip()]
-            subject_data.set_schema_files(schema_files)
+            form_data['schema_files'] = schema_files
         
-        # Use main controller to create subject
-        success = self.main_controller.create_subject(subject_data)
+        # Use main controller to create subject from form data
+        success = self.main_controller.create_subject_from_form_data(form_data)
         
         if success:
             # Show success message box
@@ -396,7 +395,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Set initial selection in application model through main controller
         stage_names = [stage["name"] for stage in stages]
-        self.main_controller.application_model.set_selected_stages(stage_names)
+        self.main_controller.set_selected_stages(stage_names)
     
     def _get_selected_subjects(self):
         """Get list of selected subject names from the tree view."""
@@ -411,7 +410,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if item.checkState() == Qt.CheckState.Checked:
                 selected_stage_names.append(item.text())
         
-        self.main_controller.processing_controller.update_stage_selection_from_ui(selected_stage_names)
+        self.main_controller.update_stage_selection_from_ui(selected_stage_names)
     
     def update_processing_ui(self, is_running: bool, progress: int):
         """Update UI based on processing state changes (called by application model signal)."""
