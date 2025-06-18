@@ -148,23 +148,29 @@ class ProcessingController(QObject):
         worker = self.application_model.get_worker_instance()
         if worker and self.application_model.is_worker_running():
             try:
+                print("[STOP] Attempting to stop processing gracefully...")
+                
                 # Attempt to terminate the worker gracefully
                 worker.terminate()
                 worker.wait(5000)  # Wait up to 5 seconds
                 
                 if worker.isRunning():
+                    print("[STOP] Graceful termination failed, forcing kill...")
                     # Force kill if graceful termination failed
                     worker.kill()
                     worker.wait(2000)
                 
+                print("[STOP] Processing stopped successfully!")
                 self._log_message("warning", "Processing stopped by user")
                 self.application_model.set_worker_stopped()
                 return True
                 
             except Exception as e:
+                print(f"[STOP] Failed to stop processing: {str(e)}")
                 self._log_message("error", f"Failed to stop processing: {str(e)}")
                 return False
         else:
+            print("[STOP] No processing operation to stop")
             self._log_message("warning", "No processing operation to stop")
             return False
     
