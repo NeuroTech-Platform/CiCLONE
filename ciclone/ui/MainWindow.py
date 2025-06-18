@@ -1,39 +1,30 @@
-import json
 import os
-from pathlib import Path
-from typing import Dict, Optional
-import nibabel as nib
-import numpy as np
-
 from PyQt6.QtWidgets import (
     QMainWindow,
-    QFileDialog,
     QMessageBox,
     QInputDialog,
     QListWidgetItem,
-    QSizePolicy,
-    QApplication
+    QMenu
 )
-from PyQt6.QtCore import Qt, QStandardPaths
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction
 
-from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap
-
-from ciclone.services.io.subject_importer import SubjectImporter
-from ciclone.utils.utility import read_config_file
-from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
-from ciclone.ui.ImagesViewer import ImagesViewer
+from ciclone.models.subject_model import SubjectData
+from ciclone.controllers.main_controller import MainController
 
 from ..forms.MainWindow_ui import Ui_MainWindow
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     config_path = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "config/config.yaml"))
-    __worker = None
+    
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setupUi(self)
         
-        # Initialize images_viewer as None
-        self.images_viewer = None
+        # Initialize main controller (coordinates all other controllers and models)
+        self.main_controller = MainController(self.config_path)
+        self.main_controller.set_view(self)
+        self.main_controller.set_log_callback(self.add_log_message)
         
         # File menu actions
         self.actionNew_Output_Directory.triggered.connect(self.create_output_directory)
@@ -45,6 +36,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Subject tree view
         self.subjectTreeView.clicked.connect(self.on_tree_item_clicked)
+        
+        # Set up context menu for subject tree view
+        self.subjectTreeView.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.subjectTreeView.customContextMenuRequested.connect(self.show_context_menu)
 
         # Browse buttons
         self.browse_Schema.clicked.connect(lambda: self._browse_file("Schema"))
@@ -57,61 +52,47 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.runAllStages_PushButton.clicked.connect(self.run_all_stages)
         self.runSelectedStages_pushButton.clicked.connect(self.run_selected_stages)
 
-        # Read config file
-        self.config = read_config_file(self.config_path)
-
-        # Load config file in the list widget
-        stages = self.config["stages"]
-        for stage in stages:
-            item = QListWidgetItem(stage["name"])
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)
-            self.stages_listWidget.addItem(item)
+        # Initialize stages UI from main controller
+        self._setup_stages_ui()
+        
+        # Connect to application model signals through main controller
+        self.main_controller.application_model.worker_state_changed.connect(self.update_processing_ui)
+    
+    @property
+    def output_directory(self):
+        """Get output directory from main controller."""
+        return self.main_controller.get_output_directory()
+    
+    @output_directory.setter  
+    def output_directory(self, value):
+        """Set output directory through main controller."""
+        if value:
+            self.main_controller.application_model.set_output_directory(value)
 
     def create_output_directory(self):
-        dataset_name = QInputDialog.getText(self, "Folder Name", "Please enter a name")[0]
-        if dataset_name == "":
-            QMessageBox.warning(self, "Folder Name empty", "Please enter a folder name")
-            return
-            
-        self.output_directory = QFileDialog.getExistingDirectory(self, "Select Output Directory", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation))
-        if self.output_directory:
-            self.output_directory = os.path.join(self.output_directory, dataset_name)
-            os.makedirs(self.output_directory, exist_ok=True)
-            self.lineEdit_outputDirectory.setText(self.output_directory)
+        """Create new output directory using main controller."""
+        output_directory = self.main_controller.create_output_directory()
+        if output_directory:
+            self.output_directory = output_directory
+            self.lineEdit_outputDirectory.setText(output_directory)
         
     def open_output_directory(self):
-        self.output_directory = QFileDialog.getExistingDirectory(self, "Select Output Directory")
-        self.lineEdit_outputDirectory.setText(self.output_directory)
+        """Open existing output directory using main controller."""
+        output_directory = self.main_controller.open_output_directory()
+        if output_directory:
+            self.output_directory = output_directory
+            self.lineEdit_outputDirectory.setText(output_directory)
 
     def on_output_directory_changed(self):
-        # Define file system model for the output directory
-        self.subjectModel = QFileSystemModel()
-        self.subjectModel.setReadOnly(True)
-        self.subjectModel.setRootPath(self.output_directory)
-
-        # Set model and root index in tree view
-        self.subjectTreeView.setModel(self.subjectModel)
-        self.subjectTreeView.setRootIndex(self.subjectModel.index(self.output_directory))
-
-        # Configure tree view appearance
-        self.subjectTreeView.setAnimated(False)
-        self.subjectTreeView.setIndentation(20)
-        self.subjectTreeView.hideColumn(1)
-        self.subjectTreeView.hideColumn(2) 
-        self.subjectTreeView.hideColumn(3)
-        self.subjectTreeView.header().hide()
+        """Handle output directory changes and update UI."""
+        # Get directory from line edit and notify main controller
+        directory_text = self.lineEdit_outputDirectory.text().strip()
+        if directory_text:
+            self.main_controller.application_model.set_output_directory(directory_text)
 
     def _browse_file(self, field_type: str):
-        """Generic file browser for different fields"""
-        file_filters = {
-            "Schema": "JPG files (*.jpg);;PNG files (*.png)",
-            "PreCT": "DICOM files (*.dcm);;NIFTI files (*.nii *.nii.gz)",
-            "PreMRI": "DICOM files (*.dcm);;NIFTI files (*.nii *.nii.gz)", 
-            "PostCT": "DICOM files (*.dcm);;NIFTI files (*.nii *.nii.gz)",
-            "PostMRI": "DICOM files (*.dcm);;NIFTI files (*.nii *.nii.gz)"
-        }
-        file_path, _ = QFileDialog.getOpenFileName(self, f"Select {field_type} File", "", file_filters.get(field_type, "All Files (*.*)"))
+        """Generic file browser for different fields using main controller."""
+        file_path = self.main_controller.browse_file(field_type)
         if file_path:
             if field_type == "Schema":
                 self.lineEdit_Schema.setText(file_path)
@@ -126,7 +107,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def add_subject(self):
         """Add a new subject to the current output directory"""
-        if not self.output_directory:
+        if not self.main_controller.application_model.is_output_directory_set():
             QMessageBox.warning(self, "Error", "Please select an output directory first")
             return
             
@@ -135,119 +116,62 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.warning(self, "Error", "Please enter a subject name")
             return
 
-        subject_dir = os.path.join(self.output_directory, subject_name)
-        if os.path.exists(subject_dir):
-            QMessageBox.warning(self, "Error", "Subject already exists")
-            return
-
-        subject_data = {
-            "name": subject_name,
-            "schema": self.lineEdit_Schema.text(),
-            "pre_ct": self.lineEdit_preCT.text(),
-            "pre_mri": self.lineEdit_preMRI.text(),
-            "post_ct": self.lineEdit_postCT.text(),
-            "post_mri": self.lineEdit_postMRI.text()
-        }
+        # Create subject data object
+        subject_data = SubjectData(
+            name=subject_name,
+            schema=self.lineEdit_Schema.text(),
+            pre_ct=self.lineEdit_preCT.text(),
+            pre_mri=self.lineEdit_preMRI.text(),
+            post_ct=self.lineEdit_postCT.text(),
+            post_mri=self.lineEdit_postMRI.text()
+        )
         
-        # Log import start and show loading cursor
-        self.add_log_message("info", f"Starting import of subject '{subject_name}'...")
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            SubjectImporter.import_subject(self.output_directory, subject_data)
-            # Refresh the tree view
-            self.subjectTreeView.setRootIndex(self.subjectModel.index(self.output_directory))
-            
-            # Log success and show message box
-            self.add_log_message("success", f"Subject '{subject_name}' imported successfully")
+        # Use main controller to create subject
+        success = self.main_controller.create_subject(subject_data)
+        
+        if success:
+            # Show success message box
             QMessageBox.information(
                 self, 
                 "Import Successful", 
                 f"Subject '{subject_name}' has been imported successfully!"
             )
-        except Exception as e:
-            # Log error and show error message box
-            self.add_log_message("error", f"Failed to import subject '{subject_name}': {str(e)}")
+        else:
+            # Show error message box (detailed error already logged by controller)
             QMessageBox.critical(
                 self, 
                 "Import Failed", 
-                f"Failed to import subject '{subject_name}':\n{str(e)}"
+                f"Failed to import subject '{subject_name}'. Check the log for details."
             )
-        finally:
-            # Always restore the cursor
-            QApplication.restoreOverrideCursor()
 
     def run_all_stages(self):
-        # Check if a process is already running
-        if hasattr(self, '__worker') and self.__worker.isRunning():
-            print("[run_all_stages] Run all stages is already in progress")
-            return
-
-        subject_list = [item.data() for item in self.subjectTreeView.selectedIndexes()]
-        if len(subject_list) == 0:
+        """Run all configured stages for selected subjects."""
+        subject_list = self._get_selected_subjects()
+        if not subject_list:
             QMessageBox.warning(self, "Error", "Please select at least one subject")
             return
-
-        # Clear the text browser and reset progress bar
-        self.textBrowser.clear()
-        self.progressBar.setValue(0)
         
-        # Log the start of processing
-        self.add_log_message("info", "run_all_stages => Starting processing...")
-
-        # Create worker
-        self.__worker = ImageProcessingWorker(self.output_directory, subject_list, self.config["stages"])
-
-        # Connect signals
-        self.__worker.update_progress_signal.connect(self.progressBar.setValue)
-        self.__worker.log_signal.connect(self.add_log_message)
-        self.__worker.finished.connect(self.on_worker_finished)
-
-        # Start the worker thread
-        self.__worker.start()
+        # Use main controller to run all stages
+        success = self.main_controller.run_all_stages(subject_list)
+        if not success:
+            # Error already logged by controller
+            pass
 
     def run_selected_stages(self):
-        # Check if a process is already running
-        if hasattr(self, '__worker') and self.__worker.isRunning():
-            print("[run_all_stages] Run all stages is already in progress")
-            return
-
-        # Get selected subjects from the tree view
-        subject_list = [item.data() for item in self.subjectTreeView.selectedIndexes()]
-        if len(subject_list) == 0:
+        """Run only the selected stages for selected subjects."""
+        subject_list = self._get_selected_subjects()
+        if not subject_list:
             QMessageBox.warning(self, "Error", "Please select at least one subject")
             return
-
-        # Clear the text browser and reset progress bar
-        self.textBrowser.clear()
-        self.progressBar.setValue(0)
         
-        # Log the start of processing
-        self.add_log_message("info", "run_selected_stages => Starting processing...")
-
-        # Get stages that are checked in the UI
-        selected_stage_names = []
-        for i in range(self.stages_listWidget.count()):
-            item = self.stages_listWidget.item(i)
-            if item.checkState() == Qt.CheckState.Checked:
-                selected_stage_names.append(item.text())
+        # Update stages selection from UI first
+        self._update_stages_selection_from_ui()
         
-        stages = [stage for stage in self.config["stages"] if stage["name"] in selected_stage_names]
-        
-        # Create worker
-        self.__worker = ImageProcessingWorker(self.output_directory, subject_list, stages)
-
-        # Connect signals
-        self.__worker.update_progress_signal.connect(self.progressBar.setValue)
-        self.__worker.log_signal.connect(self.add_log_message)
-        self.__worker.finished.connect(self.on_worker_finished)
-
-        # Start the worker thread
-        self.__worker.start()
-
-    def on_worker_finished(self):
-        """Handle cleanup after the worker thread finishes"""
-        self.add_log_message("info", "Processing completed")
-        self.__worker.deleteLater()
+        # Use main controller to run selected stages
+        success = self.main_controller.run_selected_stages(subject_list)
+        if not success:
+            # Error already logged by controller
+            pass
 
     def add_log_message(self, level: str, message: str):
         """Add a log message to the text browser with appropriate formatting"""
@@ -265,16 +189,216 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def on_tree_item_clicked(self, index):
         """Handle tree item clicks to display NIFTI files in ImagesViewer window"""
-        file_path = self.subjectModel.filePath(index)
-        if file_path.endswith(('.nii', '.nii.gz')):
-            # Create new ImagesViewer instance or reuse existing one
-            if not hasattr(self, 'images_viewer') or self.images_viewer is None:
-                self.images_viewer = ImagesViewer(file_path)
-            else:
-                # Use the new MVC architecture - load image through image controller
-                self.images_viewer.image_controller.load_image(file_path)
+        file_path = self.main_controller.get_file_path_from_tree_index(index)
+        if file_path and self.main_controller.is_nifti_file(file_path):
+            # Use main controller to open NIFTI file
+            self.main_controller.open_nifti_file(file_path)
+
+    def show_context_menu(self, position):
+        """Show context menu for subject management"""
+        index = self.subjectTreeView.indexAt(position)
+        if not index.isValid():
+            return
             
-            # Show and bring to front
-            self.images_viewer.show()
-            self.images_viewer.raise_()  # Bring window to front
-            self.images_viewer.activateWindow()  # Ensure window gets focus
+        # Get all selected indexes
+        selected_indexes = self.subjectTreeView.selectedIndexes()
+        if not selected_indexes:
+            return
+        
+        # Get subject paths through main controller
+        subject_paths = self.main_controller.get_selected_subject_paths_from_tree(selected_indexes)
+        
+        if not subject_paths:
+            return
+        
+        context_menu = QMenu(self)
+        
+        if len(subject_paths) == 1:
+            # Single subject selected - show rename and delete options
+            single_path = subject_paths[0]
+            
+            # Rename action
+            rename_action = QAction("Rename Subject", self)
+            rename_action.triggered.connect(lambda: self.rename_subject(single_path))
+            context_menu.addAction(rename_action)
+            
+            # Delete action
+            delete_action = QAction("Delete Subject", self)
+            delete_action.triggered.connect(lambda: self.delete_subject(single_path))
+            context_menu.addAction(delete_action)
+        else:
+            # Multiple subjects selected - show only delete option
+            delete_action = QAction(f"Delete {len(subject_paths)} Subjects", self)
+            delete_action.triggered.connect(lambda: self.delete_multiple_subjects(subject_paths))
+            context_menu.addAction(delete_action)
+        
+        # Show menu at cursor position
+        context_menu.exec(self.subjectTreeView.mapToGlobal(position))
+
+    def rename_subject(self, subject_path):
+        """Rename a subject directory"""
+        current_name = os.path.basename(subject_path)
+        new_name, ok = QInputDialog.getText(
+            self, 
+            "Rename Subject", 
+            f"Enter new name for subject '{current_name}':",
+            text=current_name
+        )
+        
+        if not ok or not new_name.strip():
+            return
+            
+        new_name = new_name.strip()
+        if new_name == current_name:
+            return
+            
+        # Use main controller to rename subject
+        success = self.main_controller.rename_subject(current_name, new_name)
+        
+        if success:
+            QMessageBox.information(
+                self, 
+                "Rename Successful", 
+                f"Subject '{current_name}' has been renamed to '{new_name}'"
+            )
+        else:
+            # Show error message box (detailed error already logged by controller)
+            QMessageBox.critical(
+                self, 
+                "Rename Failed", 
+                f"Failed to rename subject '{current_name}'. Check the log for details."
+            )
+
+    def delete_subject(self, subject_path):
+        """Delete a subject directory"""
+        subject_name = os.path.basename(subject_path)
+        
+        # Confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Delete Subject",
+            f"Are you sure you want to delete subject '{subject_name}'?\n\n"
+            "This action cannot be undone and will permanently delete all files "
+            "and data associated with this subject.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+            
+        # Use main controller to delete subject
+        success = self.main_controller.delete_subject(subject_name)
+        
+        if success:
+            QMessageBox.information(
+                self, 
+                "Delete Successful", 
+                f"Subject '{subject_name}' has been deleted successfully."
+            )
+        else:
+            # Show error message box (detailed error already logged by controller)
+            QMessageBox.critical(
+                self, 
+                "Delete Failed", 
+                f"Failed to delete subject '{subject_name}'. Check the log for details."
+            )
+    
+    def delete_multiple_subjects(self, subject_paths):
+        """Delete multiple selected subjects"""
+        subject_names = [os.path.basename(path) for path in subject_paths]
+        subject_count = len(subject_names)
+        
+        # Confirmation dialog for multiple subjects
+        subject_list = "\n".join(f"• {name}" for name in subject_names)
+        reply = QMessageBox.question(
+            self,
+            f"Delete {subject_count} Subjects",
+            f"Are you sure you want to delete the following {subject_count} subjects?\n\n"
+            f"{subject_list}\n\n"
+            "This action cannot be undone and will permanently delete all files "
+            "and data associated with these subjects.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Use main controller to delete multiple subjects
+        success_count, failed_subjects = self.main_controller.delete_multiple_subjects(subject_names)
+        
+        # Show results
+        if failed_subjects:
+            if success_count > 0:
+                QMessageBox.warning(
+                    self,
+                    "Partial Success",
+                    f"Successfully deleted {success_count} subjects.\n\n"
+                    f"Failed to delete {len(failed_subjects)} subjects:\n" +
+                    "\n".join(f"• {name}" for name in failed_subjects) +
+                    "\n\nCheck the log for details."
+                )
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Delete Failed",
+                    f"Failed to delete all {subject_count} subjects.\n"
+                    "Check the log for details."
+                )
+        else:
+            QMessageBox.information(
+                self,
+                "Delete Successful",
+                f"All {subject_count} subjects have been deleted successfully."
+            )
+    
+    def refresh_subject_tree(self):
+        """Refresh the subject tree view (called by controller after operations)."""
+        self.main_controller.refresh_views()
+    
+    def _setup_stages_ui(self):
+        """Initialize the stages UI from main controller configuration."""
+        stages = self.main_controller.get_stages_config()
+        for stage in stages:
+            item = QListWidgetItem(stage["name"])
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)
+            self.stages_listWidget.addItem(item)
+        
+        # Set initial selection in application model through main controller
+        stage_names = [stage["name"] for stage in stages]
+        self.main_controller.application_model.set_selected_stages(stage_names)
+    
+    def _get_selected_subjects(self):
+        """Get list of selected subject names from the tree view."""
+        selected_indexes = self.subjectTreeView.selectedIndexes()
+        return self.main_controller.get_selected_subject_names_from_tree(selected_indexes)
+    
+    def _update_stages_selection_from_ui(self):
+        """Update the application model with current UI stage selection."""
+        selected_stage_names = []
+        for i in range(self.stages_listWidget.count()):
+            item = self.stages_listWidget.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                selected_stage_names.append(item.text())
+        
+        self.main_controller.processing_controller.update_stage_selection_from_ui(selected_stage_names)
+    
+    def update_processing_ui(self, is_running: bool, progress: int):
+        """Update UI based on processing state changes (called by application model signal)."""
+        if is_running:
+            # Clear the text browser and reset progress bar when starting
+            if progress == 0:
+                self.textBrowser.clear()
+        
+        # Update progress bar
+        self.progressBar.setValue(progress)
+        
+        # Update button states
+        self.runAllStages_PushButton.setEnabled(not is_running)
+        self.runSelectedStages_pushButton.setEnabled(not is_running)
+    
+    def clear_processing_log(self):
+        """Clear the processing log (called by processing controller)."""
+        self.textBrowser.clear()
