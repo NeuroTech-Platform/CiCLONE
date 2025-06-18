@@ -11,7 +11,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QInputDialog,
     QListWidgetItem,
-    QSizePolicy
+    QSizePolicy,
+    QApplication
 )
 from PyQt6.QtCore import Qt, QStandardPaths
 
@@ -147,10 +148,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "post_ct": self.lineEdit_postCT.text(),
             "post_mri": self.lineEdit_postMRI.text()
         }
-        SubjectImporter.import_subject(self.output_directory, subject_data)
-        # Refresh the tree view
-        self.subjectTreeView.setRootIndex(self.subjectModel.index(self.output_directory))
-        self.add_log_message("success", f"Subject '{subject_name}' imported successfully")
+        
+        # Show loading cursor during import
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            SubjectImporter.import_subject(self.output_directory, subject_data)
+            # Refresh the tree view
+            self.subjectTreeView.setRootIndex(self.subjectModel.index(self.output_directory))
+            
+            # Show success message box
+            QMessageBox.information(
+                self, 
+                "Import Successful", 
+                f"Subject '{subject_name}' has been imported successfully!"
+            )
+        except Exception as e:
+            # Show error message box if import fails
+            QMessageBox.critical(
+                self, 
+                "Import Failed", 
+                f"Failed to import subject '{subject_name}':\n{str(e)}"
+            )
+        finally:
+            # Always restore the cursor
+            QApplication.restoreOverrideCursor()
 
     def run_all_stages(self):
         # Check if a process is already running
