@@ -9,6 +9,7 @@ from ciclone.controllers.subject_controller import SubjectController
 from ciclone.controllers.processing_controller import ProcessingController
 from ciclone.controllers.tree_view_controller import TreeViewController
 from ciclone.ui.ImagesViewer import ImagesViewer
+from ciclone.services.io.schema_processor import SchemaProcessor
 
 
 class MainController(QObject):
@@ -157,8 +158,15 @@ class MainController(QObject):
     # File Browsing Operations
     def browse_file(self, field_type: str) -> Optional[str]:
         """Generic file browser for different field types."""
+        if field_type == "Schema":
+            # For schema files, use the multiple file browser
+            file_paths = self.browse_schema_files()
+            if file_paths:
+                # Return comma-separated paths for backward compatibility
+                return ', '.join(file_paths)
+            return None
+        
         file_filters = {
-            "Schema": "JPG files (*.jpg);;PNG files (*.png)",
             "PreCT": "DICOM files (*.dcm);;NIFTI files (*.nii *.nii.gz)",
             "PreMRI": "DICOM files (*.dcm);;NIFTI files (*.nii *.nii.gz)", 
             "PostCT": "DICOM files (*.dcm);;NIFTI files (*.nii *.nii.gz)",
@@ -178,6 +186,34 @@ class MainController(QObject):
             return file_path
         
         return None
+    
+    def browse_schema_files(self) -> List[str]:
+        """Browse for schema files (supports multiple selection and PowerPoint)."""
+        file_filter = SchemaProcessor.get_supported_extensions_filter()
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self._view,
+            "Select Schema Files (Images or PowerPoint)",
+            "",
+            file_filter
+        )
+        
+        if file_paths:
+            # Filter out unsupported files using the centralized check
+            supported_files = [path for path in file_paths if SchemaProcessor.is_supported_file(path)]
+            
+            if supported_files:
+                file_names = [os.path.basename(path) for path in supported_files]
+                self._log_message("debug", f"Selected {len(supported_files)} schema file(s): {', '.join(file_names)}")
+                
+                if len(supported_files) != len(file_paths):
+                    unsupported_count = len(file_paths) - len(supported_files)
+                    self._log_message("warning", f"Filtered out {unsupported_count} unsupported file(s)")
+                
+                return supported_files
+            else:
+                self._log_message("warning", "No supported files selected")
+        
+        return []
     
     # Subject Management (delegated)
     def create_subject(self, subject_data: SubjectData) -> bool:
@@ -216,7 +252,7 @@ class MainController(QObject):
     # Images Viewer Management
     def open_nifti_file(self, file_path: str) -> bool:
         """Open a NIFTI file in the images viewer."""
-        if not file_path.endswith(('.nii', '.nii.gz')):
+        if not self.is_nifti_file(file_path):
             self._log_message("warning", f"File is not a NIFTI file: {file_path}")
             return False
         

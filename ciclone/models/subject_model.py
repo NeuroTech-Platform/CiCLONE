@@ -11,11 +11,41 @@ from ciclone.domain.subject import Subject
 class SubjectData:
     """Data structure for subject information."""
     name: str
-    schema: str = ""
+    schema: str = ""  # For backward compatibility (will store comma-separated paths)
+    schema_files: List[str] = None  # List of schema file paths
     pre_ct: str = ""
     pre_mri: str = ""
     post_ct: str = ""
     post_mri: str = ""
+    
+    def __post_init__(self):
+        """Initialize schema_files list if not provided."""
+        if self.schema_files is None:
+            self.schema_files = []
+            # If schema (legacy) is provided, add it to schema_files
+            if self.schema:
+                self.schema_files = [path.strip() for path in self.schema.split(',') if path.strip()]
+    
+    def get_schema_files(self) -> List[str]:
+        """Get list of schema files."""
+        return self.schema_files if self.schema_files else []
+    
+    def set_schema_files(self, file_paths: List[str]):
+        """Set schema files and update legacy schema field."""
+        self.schema_files = file_paths if file_paths else []
+        self.schema = ', '.join(self.schema_files)
+    
+    def add_schema_file(self, file_path: str):
+        """Add a single schema file."""
+        if not self.schema_files:
+            self.schema_files = []
+        if file_path not in self.schema_files:
+            self.schema_files.append(file_path)
+            self.schema = ', '.join(self.schema_files)
+    
+    def has_schema_files(self) -> bool:
+        """Check if any schema files are configured."""
+        return len(self.get_schema_files()) > 0
 
 
 class SubjectValidationResult(NamedTuple):

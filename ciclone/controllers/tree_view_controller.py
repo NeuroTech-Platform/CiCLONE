@@ -4,6 +4,8 @@ from PyQt6.QtCore import QObject
 from PyQt6.QtGui import QFileSystemModel
 from PyQt6.QtWidgets import QTreeView
 
+from ciclone.utils.file_utils import FileUtils
+
 
 class TreeViewController(QObject):
     """Controller for managing tree view operations and file system model."""
@@ -122,7 +124,7 @@ class TreeViewController(QObject):
         """Check if a file is a NIFTI file."""
         if not file_path:
             return False
-        return file_path.endswith(('.nii', '.nii.gz'))
+        return FileUtils.is_file_type(file_path, FileUtils.NIFTI_EXTENSIONS)
     
     def clear_tree_view(self):
         """Clear the tree view."""

@@ -60,6 +60,7 @@ class SubjectController:
             subject_dict = {
                 "name": subject_data.name,
                 "schema": subject_data.schema,
+                "schema_files": subject_data.get_schema_files(),
                 "pre_ct": subject_data.pre_ct,
                 "pre_mri": subject_data.pre_mri,
                 "post_ct": subject_data.post_ct,

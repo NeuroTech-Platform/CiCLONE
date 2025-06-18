@@ -109,6 +109,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if file_path:
             if field_type == "Schema":
                 self.lineEdit_Schema.setText(file_path)
+                # Set tooltip to show all selected files for schema
+                if ',' in file_path:
+                    schema_files = [path.strip() for path in file_path.split(',') if path.strip()]
+                    file_names = [os.path.basename(path) for path in schema_files]
+                    tooltip_text = f"Selected {len(schema_files)} file(s):\n" + "\n".join(file_names)
+                    self.lineEdit_Schema.setToolTip(tooltip_text)
+                else:
+                    self.lineEdit_Schema.setToolTip(os.path.basename(file_path))
             elif field_type == "PreCT":
                 self.lineEdit_preCT.setText(file_path)
             elif field_type == "PreMRI":
@@ -138,6 +146,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             post_ct=self.lineEdit_postCT.text(),
             post_mri=self.lineEdit_postMRI.text()
         )
+        
+        # Set schema files if multiple were selected
+        schema_text = self.lineEdit_Schema.text().strip()
+        if schema_text:
+            schema_files = [path.strip() for path in schema_text.split(',') if path.strip()]
+            subject_data.set_schema_files(schema_files)
         
         # Use main controller to create subject
         success = self.main_controller.create_subject(subject_data)

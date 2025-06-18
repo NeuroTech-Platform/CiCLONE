@@ -1,4 +1,6 @@
 import numpy as np
+import os
+import nibabel as nib
 from typing import Dict, Tuple, Optional, List
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush
 from PyQt6.QtCore import Qt
@@ -27,7 +29,6 @@ class ImageModel:
     def load_nifti_file(self, nifti_path: str, opacity: float = 1.0) -> bool:
         """Load NIFTI file and store the data."""
         try:
-            import nibabel as nib
             nifti_img = nib.load(nifti_path)
             volume_data = nifti_img.get_fdata()
             affine = nifti_img.affine
@@ -89,7 +90,6 @@ class ImageModel:
 
     def set_overlay_images(self, base_image_name: str, overlay_image_name: str, opacity: float) -> bool:
         """Set the base and overlay images for two-image overlay system."""
-        import os
         
         # Find the full paths for the given image names
         base_path = None
@@ -129,14 +129,12 @@ class ImageModel:
     def get_current_base_image_name(self) -> Optional[str]:
         """Get the current base image name."""
         if self._base_image_path:
-            import os
             return os.path.basename(self._base_image_path)
         return None
 
     def get_current_overlay_image_name(self) -> Optional[str]:
         """Get the current overlay image name."""
         if self._overlay_image_path:
-            import os
             return os.path.basename(self._overlay_image_path)
         return None
 
@@ -219,7 +217,6 @@ class ImageModel:
 
     def _resample_slice_to_match(self, overlay_slice: np.ndarray, target_shape: Tuple[int, int]) -> np.ndarray:
         """Resample overlay slice to match target shape using numpy-based interpolation."""
-        import numpy as np
         
         # Get source and target dimensions
         src_h, src_w = overlay_slice.shape
