@@ -57,6 +57,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Connect to application model signals through main controller
         self.main_controller.application_model.worker_state_changed.connect(self.update_processing_ui)
+        
+        # Add verbose mode toggle (Ctrl+V)
+        self.verbose_action = QAction("Toggle Verbose Logging", self)
+        self.verbose_action.setShortcut("Ctrl+V")
+        self.verbose_action.triggered.connect(self.toggle_verbose_mode)
+        self.addAction(self.verbose_action)
+        
+        # Add right-click context menu to log area
+        self.textBrowser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.textBrowser.customContextMenuRequested.connect(self.show_log_context_menu)
     
     @property
     def output_directory(self):
@@ -176,6 +186,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def add_log_message(self, level: str, message: str):
         """Add a log message to the text browser with appropriate formatting"""
         color_map = {
+            "debug": "gray",
             "info": "black",
             "success": "green",
             "error": "red",
@@ -402,3 +413,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def clear_processing_log(self):
         """Clear the processing log (called by processing controller)."""
         self.textBrowser.clear()
+    
+    def toggle_verbose_mode(self):
+        """Toggle verbose logging mode."""
+        new_state = self.main_controller.toggle_verbose_mode()
+        # The log message in the controller provides feedback, no popup needed
+        # This allows for seamless toggling during processes
+    
+    def show_log_context_menu(self, position):
+        """Show context menu for the log area."""
+        context_menu = QMenu(self)
+        
+        # Clear log action
+        clear_action = QAction("Clear Log", self)
+        clear_action.triggered.connect(self.clear_processing_log)
+        context_menu.addAction(clear_action)
+        
+        context_menu.addSeparator()
+        
+        # Verbose mode toggle
+        verbose_mode = self.main_controller.is_verbose_mode()
+        verbose_text = "Disable Verbose Mode" if verbose_mode else "Enable Verbose Mode"
+        verbose_action = QAction(verbose_text, self)
+        verbose_action.triggered.connect(self.toggle_verbose_mode)
+        context_menu.addAction(verbose_action)
+        
+        # Show menu at cursor position
+        context_menu.exec(self.textBrowser.mapToGlobal(position))

@@ -162,7 +162,7 @@ class SubjectController:
                         if new_filename != filename and not os.path.exists(new_file_path):
                             os.rename(old_file_path, new_file_path)
                             renamed_count += 1
-                            self._log_message("info", f"Renamed file: {filename} → {new_filename}")
+                            self._log_message("debug", f"Renamed file: {filename} → {new_filename}")
                 
                 # Rename directories that contain the old subject name (excluding the root)
                 for dirname in dirs[:]:  # Use slice copy to avoid modification during iteration
@@ -175,7 +175,7 @@ class SubjectController:
                         if new_dirname != dirname and not os.path.exists(new_dir_path):
                             os.rename(old_dir_path, new_dir_path)
                             renamed_count += 1
-                            self._log_message("info", f"Renamed directory: {dirname} → {new_dirname}")
+                            self._log_message("debug", f"Renamed directory: {dirname} → {new_dirname}")
                             
                             # Update the dirs list to reflect the change for further walking
                             dirs[dirs.index(dirname)] = new_dirname

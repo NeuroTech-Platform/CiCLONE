@@ -50,7 +50,7 @@ class TreeViewController(QObject):
                 # Configure tree view appearance
                 self._configure_tree_view_appearance()
             
-            self._log_message("info", f"Tree view updated for directory: {directory_path}")
+            self._log_message("debug", f"Tree view updated for directory: {directory_path}")
             return True
             
         except Exception as e:
@@ -110,7 +110,7 @@ class TreeViewController(QObject):
         if self._tree_view and self._file_system_model and self._output_directory:
             try:
                 self._tree_view.setRootIndex(self._file_system_model.index(self._output_directory))
-                self._log_message("info", "Tree view refreshed")
+                self._log_message("debug", "Tree view refreshed")
             except Exception as e:
                 self._log_message("error", f"Failed to refresh tree view: {str(e)}")
     
@@ -131,4 +131,4 @@ class TreeViewController(QObject):
         
         self._file_system_model = None
         self._output_directory = None
-        self._log_message("info", "Tree view cleared") 
+        self._log_message("debug", "Tree view cleared") 

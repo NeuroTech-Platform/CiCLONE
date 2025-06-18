@@ -14,7 +14,7 @@ from ciclone.ui.ImagesViewer import ImagesViewer
 class MainController(QObject):
     """Main controller that coordinates all application operations and manages the overall workflow."""
     
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, verbose_mode: bool = False):
         super().__init__()
         
         # Initialize models
@@ -28,6 +28,7 @@ class MainController(QObject):
         
         self._view = None
         self._log_callback: Optional[Callable[[str, str], None]] = None
+        self._verbose_mode = verbose_mode
         
         # Setup controller relationships
         self._setup_controllers()
@@ -49,12 +50,23 @@ class MainController(QObject):
     def set_log_callback(self, callback: Callable[[str, str], None]):
         """Set logging callback and propagate to child controllers."""
         self._log_callback = callback
-        self.subject_controller.set_log_callback(callback)
-        self.processing_controller.set_log_callback(callback)
-        self.tree_view_controller.set_log_callback(callback)
+        # Pass through the main controller's log method to enable real-time verbose toggling
+        controller_callback = lambda level, msg: self._log_message(level, msg)
+        self.subject_controller.set_log_callback(controller_callback)
+        self.processing_controller.set_log_callback(controller_callback)
+        self.tree_view_controller.set_log_callback(controller_callback)
         
     def _log_message(self, level: str, message: str):
-        """Log a message if callback is set."""
+        """Log a message if callback is set.
+        
+        Args:
+            level: Log level (debug, info, success, warning, error)
+            message: Message to log
+        """
+        # Filter debug messages based on verbose mode
+        if level == "debug" and not self._verbose_mode:
+            return
+            
         if self._log_callback:
             self._log_callback(level, message)
     
@@ -73,7 +85,7 @@ class MainController(QObject):
         # Update tree view controller
         self.tree_view_controller.set_output_directory(directory_path)
         
-        self._log_message("info", f"Output directory changed to: {directory_path}")
+        self._log_message("debug", f"Output directory changed to: {directory_path}")
     
     def _on_images_viewer_state_changed(self, is_active: bool):
         """Handle images viewer state changes."""
@@ -133,7 +145,7 @@ class MainController(QObject):
         if output_directory:
             # Update application model
             self.application_model.set_output_directory(output_directory)
-            self._log_message("info", f"Opened output directory: {output_directory}")
+            self._log_message("debug", f"Opened output directory: {output_directory}")
             return output_directory
         
         return None
@@ -162,7 +174,7 @@ class MainController(QObject):
         )
         
         if file_path:
-            self._log_message("info", f"Selected {field_type} file: {os.path.basename(file_path)}")
+            self._log_message("debug", f"Selected {field_type} file: {os.path.basename(file_path)}")
             return file_path
         
         return None
@@ -290,6 +302,33 @@ class MainController(QObject):
         self.application_model.clear_all_state()
         
         self._log_message("info", "Application state cleared")
+    
+    # Verbose Mode Management
+    def set_verbose_mode(self, enabled: bool):
+        """Enable or disable verbose logging mode."""
+        self._verbose_mode = enabled
+        mode_text = "enabled" if enabled else "disabled"
+        self._log_message("info", f"Verbose logging {mode_text}")
+    
+    def is_verbose_mode(self) -> bool:
+        """Check if verbose mode is enabled."""
+        return self._verbose_mode
+    
+    def toggle_verbose_mode(self) -> bool:
+        """Toggle verbose mode and return new state.
+        
+        This can be called anytime, even during processing, for real-time control.
+        """
+        self._verbose_mode = not self._verbose_mode
+        mode_text = "enabled" if self._verbose_mode else "disabled"
+        
+        # Use info level so this toggle message always shows
+        self._log_message("info", f"🔧 Verbose logging {mode_text}")
+        
+        if self._verbose_mode:
+            self._log_message("debug", "Debug messages are now visible - you'll see detailed operations")
+        
+        return self._verbose_mode
     
     # Validation and Prerequisites
     def validate_application_state(self) -> Tuple[bool, str]:
