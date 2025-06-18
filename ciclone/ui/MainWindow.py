@@ -149,21 +149,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "post_mri": self.lineEdit_postMRI.text()
         }
         
-        # Show loading cursor during import
+        # Log import start and show loading cursor
+        self.add_log_message("info", f"Starting import of subject '{subject_name}'...")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             SubjectImporter.import_subject(self.output_directory, subject_data)
             # Refresh the tree view
             self.subjectTreeView.setRootIndex(self.subjectModel.index(self.output_directory))
             
-            # Show success message box
+            # Log success and show message box
+            self.add_log_message("success", f"Subject '{subject_name}' imported successfully")
             QMessageBox.information(
                 self, 
                 "Import Successful", 
                 f"Subject '{subject_name}' has been imported successfully!"
             )
         except Exception as e:
-            # Show error message box if import fails
+            # Log error and show error message box
+            self.add_log_message("error", f"Failed to import subject '{subject_name}': {str(e)}")
             QMessageBox.critical(
                 self, 
                 "Import Failed", 
