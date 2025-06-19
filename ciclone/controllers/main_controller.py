@@ -438,6 +438,43 @@ class MainController(QObject):
         """Check if file is a NIFTI file."""
         return self.tree_view_controller.is_nifti_file(file_path)
     
+    def is_image_file(self, file_path: str) -> bool:
+        """Check if file is a standard image file."""
+        return self.tree_view_controller.is_image_file(file_path)
+    
+    def is_markdown_file(self, file_path: str) -> bool:
+        """Check if file is a markdown/text file."""
+        return self.tree_view_controller.is_markdown_file(file_path)
+    
+    def is_previewable_file(self, file_path: str) -> bool:
+        """Check if file can be previewed."""
+        return self.tree_view_controller.is_previewable_file(file_path)
+    
+    def open_file_preview(self, file_path: str) -> bool:
+        """Open appropriate preview for any supported file type."""
+        if not file_path or not os.path.exists(file_path):
+            self._log_message("warning", f"File does not exist: {file_path}")
+            return False
+        
+        try:
+            if self.is_nifti_file(file_path):
+                # Use existing NIFTI viewer
+                return self.open_nifti_file(file_path)
+            elif self.is_image_file(file_path) or self.is_markdown_file(file_path):
+                # Use simple preview dialog for images and markdown
+                from ciclone.ui.PreviewDialog import PreviewDialog
+                preview_dialog = PreviewDialog(file_path, self._view)
+                preview_dialog.exec()
+                self._log_message("info", f"Opened preview for: {os.path.basename(file_path)}")
+                return True
+            else:
+                self._log_message("warning", f"File type not supported for preview: {file_path}")
+                return False
+                
+        except Exception as e:
+            self._log_message("error", f"Failed to open file preview: {str(e)}")
+            return False
+    
     # Utility Methods
     def refresh_views(self):
         """Refresh all views (useful after major state changes)."""

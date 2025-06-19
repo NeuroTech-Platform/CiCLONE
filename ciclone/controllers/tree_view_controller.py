@@ -126,6 +126,24 @@ class TreeViewController(QObject):
             return False
         return FileUtils.is_file_type(file_path, FileUtils.NIFTI_EXTENSIONS)
     
+    def is_image_file(self, file_path: str) -> bool:
+        """Check if a file is a standard image file (PNG, TIFF, etc.)."""
+        if not file_path:
+            return False
+        return FileUtils.is_file_type(file_path, FileUtils.IMAGE_EXTENSIONS)
+    
+    def is_markdown_file(self, file_path: str) -> bool:
+        """Check if a file is a markdown/text file."""
+        if not file_path:
+            return False
+        return FileUtils.is_file_type(file_path, FileUtils.MARKDOWN_EXTENSIONS)
+    
+    def is_previewable_file(self, file_path: str) -> bool:
+        """Check if a file can be previewed (image, markdown, or NIFTI)."""
+        return (self.is_image_file(file_path) or 
+                self.is_markdown_file(file_path) or 
+                self.is_nifti_file(file_path))
+    
     def clear_tree_view(self):
         """Clear the tree view."""
         if self._tree_view:
