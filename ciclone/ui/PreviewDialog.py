@@ -193,106 +193,136 @@ class PreviewDialog(QDialog):
             # Convert markdown to HTML
             html = md.convert(fixed_markdown_content)
             
-            # Wrap in a styled container with CSS that mimics modern markdown renderers
+            # Wrap in a styled container with CSS that exactly matches Cursor's markdown.css
             styled_html = f"""
             <html>
             <head>
             <style>
-                body {{
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    line-height: 1.1;
-                    color: #333;
-                    max-width: none;
+                html, body {{
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif;
+                    font-size: 14px;
+                    padding: 0 26px;
+                    line-height: 22px;
+                    word-wrap: break-word;
                     margin: 0;
-                    padding: 8px;
                     background-color: #ffffff;
                 }}
+                body {{
+                    padding-top: 1em;
+                }}
+                /* Reset margin top for elements */
+                h1, h2, h3, h4, h5, h6,
+                p, ol, ul, pre {{
+                    margin-top: 0;
+                }}
                 h1, h2, h3, h4, h5, h6 {{
-                    margin-top: 4px;
+                    font-weight: 600;
+                    margin-top: 24px;
+                    margin-bottom: 16px;
+                    line-height: 1.25;
+                }}
+                /* Prevent `sub` and `sup` elements from affecting line height */
+                sub,
+                sup {{
+                    line-height: 0;
+                }}
+                ul ul:first-child,
+                ul ol:first-child,
+                ol ul:first-child,
+                ol ol:first-child {{
                     margin-bottom: 0;
-                    font-weight: 600;
-                    line-height: 1.1;
-                    border-bottom: 1px solid #eaecef;
-                    padding-bottom: 2px;
                 }}
-                h1 {{ font-size: 2em; }}
-                h2 {{ font-size: 1.5em; }}
-                h3 {{ font-size: 1.25em; }}
-                h4 {{ font-size: 1em; }}
-                h5 {{ font-size: 0.875em; }}
-                h6 {{ font-size: 0.85em; }}
-                p {{ margin: 0; padding: 0; line-height: 1; }}
-                blockquote {{
-                    padding: 0 1em;
-                    color: #6a737d;
-                    border-left: 4px solid #dfe2e5;
-                    margin: 2px 0;
-                }}
-                ul, ol {{ padding-left: 2em; margin-bottom: 2px; }}
-                li {{ margin-bottom: 0; }}
-                code {{
-                    padding: 2px 4px;
-                    font-size: 85%;
-                    background-color: #f6f8fa;
-                    border-radius: 3px;
-                    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-                }}
-                pre {{
-                    padding: 16px;
-                    overflow: auto;
-                    font-size: 85%;
-                    line-height: 1.45;
-                    background-color: #f6f8fa;
-                    border-radius: 6px;
-                    margin-bottom: 16px;
-                }}
-                pre code {{
-                    background-color: transparent;
-                    padding: 0;
-                    font-size: 100%;
-                }}
-                table {{
-                    border-collapse: collapse;
-                    width: 100%;
-                    margin-bottom: 16px;
-                }}
-                th, td {{
-                    border: 1px solid #dfe2e5;
-                    padding: 6px 13px;
-                    text-align: left;
-                }}
-                th {{
-                    background-color: #f6f8fa;
-                    font-weight: 600;
-                }}
-                tr:nth-child(even) {{
-                    background-color: #f6f8fa;
+                img, video {{
+                    max-width: 100%;
+                    max-height: 100%;
                 }}
                 a {{
-                    color: #0366d6;
                     text-decoration: none;
                 }}
                 a:hover {{
                     text-decoration: underline;
                 }}
+                p {{
+                    margin-bottom: 16px;
+                }}
+                li p {{
+                    margin-bottom: 0.7em;
+                }}
+                ul,
+                ol {{
+                    margin-bottom: 0.7em;
+                }}
                 hr {{
-                    height: 2px;
-                    background-color: #eaecef;
                     border: 0;
-                    margin: 24px 0;
+                    height: 1px;
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.18);
                 }}
-                img {{
-                    max-width: 100%;
-                    height: auto;
-                    border-radius: 6px;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-                    margin: 0 0 2px 0;
-                    display: block;
+                h1 {{
+                    font-size: 2em;
+                    margin-top: 0;
+                    padding-bottom: 0.3em;
+                    border-bottom-width: 1px;
+                    border-bottom-style: solid;
+                    border-color: rgba(0, 0, 0, 0.18);
                 }}
-                .highlight {{
-                    background-color: #f6f8fa;
-                    border-radius: 6px;
+                h2 {{
+                    font-size: 1.5em;
+                    padding-bottom: 0.3em;
+                    border-bottom-width: 1px;
+                    border-bottom-style: solid;
+                    border-color: rgba(0, 0, 0, 0.18);
+                }}
+                h3 {{
+                    font-size: 1.25em;
+                }}
+                h4 {{
+                    font-size: 1em;
+                }}
+                h5 {{
+                    font-size: 0.875em;
+                }}
+                h6 {{
+                    font-size: 0.85em;
+                }}
+                table {{
+                    border-collapse: collapse;
+                    margin-bottom: 0.7em;
+                }}
+                th {{
+                    text-align: left;
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.69);
+                }}
+                th,
+                td {{
+                    padding: 5px 10px;
+                }}
+                table > tbody > tr + tr > td {{
+                    border-top: 1px solid rgba(0, 0, 0, 0.18);
+                }}
+                blockquote {{
+                    margin: 0;
+                    padding: 0px 16px 0 10px;
+                    border-left-width: 5px;
+                    border-left-style: solid;
+                    border-left-color: rgba(0, 0, 0, 0.18);
+                    border-radius: 2px;
+                }}
+                code {{
+                    font-family: "SF Mono", Monaco, Menlo, Consolas, "Ubuntu Mono", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
+                    font-size: 1em;
+                    line-height: 1.357em;
+                }}
+                pre {{
                     padding: 16px;
+                    border-radius: 3px;
+                    overflow: auto;
+                    background-color: #f8f8f8;
+                    border: 1px solid #e1e1e1;
+                }}
+                pre code {{
+                    display: inline-block;
+                    tab-size: 4;
+                    background: none;
                 }}
                 strong {{ font-weight: 600; }}
                 em {{ font-style: italic; }}
