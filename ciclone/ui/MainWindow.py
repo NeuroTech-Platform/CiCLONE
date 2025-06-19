@@ -215,11 +215,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.textBrowser.ensureCursorVisible()
 
     def on_tree_item_clicked(self, index):
-        """Handle tree item clicks to display NIFTI files in ImagesViewer window"""
+        """Handle tree item clicks to display files in appropriate viewer/preview"""
         file_path = self.main_controller.get_file_path_from_tree_index(index)
-        if file_path and self.main_controller.is_nifti_file(file_path):
-            # Use main controller to open NIFTI file
-            self.main_controller.open_nifti_file(file_path)
+        if file_path and self.main_controller.is_previewable_file(file_path):
+            # Use main controller to open appropriate preview for any supported file type
+            self.main_controller.open_file_preview(file_path)
 
     def show_context_menu(self, position):
         """Show context menu for subject management"""

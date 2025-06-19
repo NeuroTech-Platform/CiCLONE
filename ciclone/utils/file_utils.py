@@ -17,6 +17,7 @@ class FileUtils:
     IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp'}
     NIFTI_EXTENSIONS = {'.nii', '.nii.gz'}
     POWERPOINT_EXTENSIONS = {'.ppt', '.pptx'}
+    MARKDOWN_EXTENSIONS = {'.md', '.markdown', '.txt'}
     
     @classmethod
     def get_file_extension(cls, file_path: str) -> str:

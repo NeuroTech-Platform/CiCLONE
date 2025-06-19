@@ -1,11 +1,11 @@
 import os
+import re
+from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 from ciclone.utils.file_utils import FileUtils
-
-# Required imports for PowerPoint processing
-from docling.document_converter import DocumentConverter
+from pptx import Presentation
 
 
 class SchemaProcessor:
@@ -31,7 +31,7 @@ class SchemaProcessor:
     def convert_powerpoint_to_images(cls, ppt_path: str, output_dir: str, 
                                    output_format: str = 'png') -> Tuple[bool, List[str], str]:
         """
-        Convert PowerPoint slides to structured content with images and text using Docling.
+        Convert PowerPoint slides to structured content with images and text using python-pptx.
         
         Args:
             ppt_path: Path to PowerPoint file
@@ -49,70 +49,223 @@ class SchemaProcessor:
             # Get base filename without extension
             base_name = Path(ppt_path).stem
             
-            # Convert PowerPoint using Docling
-            return cls._convert_ppt_with_docling(ppt_path, output_dir, base_name)
+            # Convert PowerPoint using python-pptx
+            return cls._convert_ppt_with_pptx(ppt_path, output_dir, base_name)
                 
         except Exception as e:
             return False, [], f"PowerPoint conversion failed: {str(e)}"
     
     @classmethod
-    def _convert_ppt_with_docling(cls, ppt_path: str, output_dir: str, base_name: str) -> Tuple[bool, List[str], str]:
-        """Convert PowerPoint using Docling for advanced document understanding."""
+    def _convert_ppt_with_pptx(cls, ppt_path: str, output_dir: str, base_name: str) -> Tuple[bool, List[str], str]:
+        """Convert PowerPoint using python-pptx for both slide structure and images."""
         try:
-            # Use Docling for PowerPoint conversion
-            converter = DocumentConverter()
-            result = converter.convert(ppt_path)
+            # Step 1: Use python-pptx to extract slide structure and text
+            print("Extracting slide structure with python-pptx...")
+            slide_contents = cls._extract_slides_with_pptx(ppt_path)
             
-            if not result or not result.document:
-                return False, [], "Docling failed to process PowerPoint file"
+            # Step 2: Extract images directly from slides using python-pptx
+            print("Extracting images with python-pptx...")
+            slide_images = cls._extract_images_by_slide(ppt_path, output_dir, base_name)
             
-            # Extract markdown content from Docling result
-            markdown_content = result.document.export_to_markdown()
+            output_paths = []
+            total_images = sum(len(images) for images in slide_images.values())
             
-            # Save markdown file
+            # Add all image paths to output
+            for slide_num, images in slide_images.items():
+                for image_path in images:
+                    if os.path.exists(image_path):
+                        output_paths.append(image_path)
+            
+            # Step 3: Combine slide structure with images
+            enhanced_markdown_content = cls._create_hybrid_markdown_with_slide_images(
+                slide_contents, slide_images, base_name, ppt_path
+            )
+            
+            # Save enhanced markdown file
             markdown_filename = f"{base_name}_slides.md"
             markdown_path = os.path.join(output_dir, markdown_filename)
             
             with open(markdown_path, 'w', encoding='utf-8') as f:
-                f.write(markdown_content)
+                f.write(enhanced_markdown_content)
             
-            output_paths = [markdown_path]
+            output_paths.insert(0, markdown_path)
             
-            # Try to extract any embedded images from the document
-            image_count = 0
-            if hasattr(result.document, 'pictures') and result.document.pictures:
-                print(f"Found {len(result.document.pictures)} images in PowerPoint, attempting extraction...")
-                for i, picture in enumerate(result.document.pictures, 1):
-                    try:
-                        image_filename = f"{base_name}_image_{i:02d}.png"
-                        image_path = os.path.join(output_dir, image_filename)
-                        
-                        # Extract image using Docling API
-                        if hasattr(picture, 'get_image'):
-                            img = picture.get_image(result.document)
-                            if img:
-                                img.save(image_path)
-                                output_paths.append(image_path)
-                                image_count += 1
-                                print(f"Successfully extracted image {i}")
-                            
-                    except Exception as e:
-                        print(f"Warning: Could not extract image {i}: {str(e)}")
-                        continue
-            else:
-                print("No images found in PowerPoint document")
-            
-            # Count content for summary
-            lines = markdown_content.split('\n')
-            slide_count = len([line for line in lines if line.startswith('## ') or line.startswith('# ')])
-            
-            print(f"Created Docling markdown: {markdown_filename}")
-            return True, output_paths, f"Successfully converted PowerPoint using Docling: {slide_count} sections, {image_count} images extracted, markdown created."
+            print(f"Created enhanced markdown: {markdown_filename}")
+            return True, output_paths, f"Successfully converted PowerPoint using python-pptx: {len(slide_contents)} slides, {total_images} images extracted."
             
         except Exception as e:
-            print(f"Docling conversion failed: {str(e)}")
-            return False, [], f"Docling conversion failed: {str(e)}"
+            print(f"PowerPoint conversion failed: {str(e)}")
+            return False, [], f"PowerPoint conversion failed: {str(e)}"
     
+    @classmethod
+    def _extract_slides_with_pptx(cls, ppt_path: str) -> List[Dict[str, str]]:
+        """
+        Extract slide content using python-pptx to preserve slide structure.
+        
+        Args:
+            ppt_path: Path to PowerPoint file
+        
+        Returns:
+            List of dictionaries with slide titles and content
+        """
+        try:
+            prs = Presentation(ppt_path)
+            slides = []
+            
+            for i, slide in enumerate(prs.slides):
+                slide_num = i + 1
+                title = ""
+                content = ""
+                
+                # Extract text from all shapes in the slide
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        text = shape.text.strip()
+                        
+                        # First meaningful text becomes the title
+                        if not title and len(text) < 100:
+                            title = text
+                        else:
+                            # All other text becomes content
+                            if content:
+                                content += "\n\n"
+                            content += text
+                
+                # Clean up title and content
+                if not title:
+                    title = f"Slide {slide_num}"
+                
+                slides.append({
+                    "title": title,
+                    "content": content or ""
+                })
+                
+                print(f"Extracted slide {slide_num}: {title[:50]}...")
+            
+            return slides
+            
+        except Exception as e:
+            print(f"Warning: Could not extract slides with python-pptx: {str(e)}")
+            return []
+    
+    @classmethod
+    def _extract_images_by_slide(cls, ppt_path: str, output_dir: str, base_name: str) -> Dict[int, List[str]]:
+        """
+        Extract images from PowerPoint, organized by slide number.
+        
+        Args:
+            ppt_path: Path to PowerPoint file
+            output_dir: Directory to save images
+            base_name: Base name for image files
+        
+        Returns:
+            Dictionary mapping slide numbers to lists of image filenames
+        """
+        try:
+            from pptx.enum.shapes import MSO_SHAPE_TYPE
+            from PIL import Image as PILImage
+            import io
+            
+            prs = Presentation(ppt_path)
+            slide_images = {}
+            global_image_count = 1
+            
+            for slide_num, slide in enumerate(prs.slides, 1):
+                slide_image_list = []
+                
+                # Look for images in the slide
+                for shape in slide.shapes:
+                    try:
+                        if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                            # Extract image from shape
+                            image_stream = io.BytesIO(shape.image.blob)
+                            image = PILImage.open(image_stream)
+                            
+                            # Save image
+                            image_filename = f"{base_name}_slide_{slide_num}_{len(slide_image_list)+1:02d}.png"
+                            image_path = os.path.join(output_dir, image_filename)
+                            
+                            # Convert to RGB if necessary and save
+                            if image.mode in ('RGBA', 'LA', 'P'):
+                                rgb_image = PILImage.new('RGB', image.size, (255, 255, 255))
+                                if image.mode == 'P':
+                                    image = image.convert('RGBA')
+                                rgb_image.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+                                rgb_image.save(image_path, 'PNG')
+                            else:
+                                image.save(image_path, 'PNG')
+                            
+                            slide_image_list.append(image_filename)
+                            print(f"Extracted image from slide {slide_num}: {image_filename}")
+                            global_image_count += 1
+                            
+                    except Exception as e:
+                        print(f"Warning: Could not extract image from slide {slide_num}: {str(e)}")
+                        continue
+                
+                if slide_image_list:
+                    slide_images[slide_num] = slide_image_list
+                    print(f"Slide {slide_num}: {len(slide_image_list)} images")
+                else:
+                    print(f"Slide {slide_num}: No images found")
+            
+            return slide_images
+            
+        except Exception as e:
+            print(f"Warning: Could not extract images with python-pptx: {str(e)}")
+            return {}
+    
+    @classmethod
+    def _create_hybrid_markdown_with_slide_images(cls, slide_contents: List[Dict[str, str]], 
+                                                 slide_images: Dict[int, List[str]], 
+                                                 base_name: str, source_ppt_path: str) -> str:
+        """
+        Create markdown content with images properly matched to their original slides.
+        
+        Args:
+            slide_contents: List of slide dictionaries from python-pptx
+            slide_images: Dictionary mapping slide numbers to image filenames
+            base_name: Base name for the presentation
+            source_ppt_path: Path to the original PowerPoint file
+        
+        Returns:
+            Enhanced markdown content with proper slide-image matching
+        """
+        total_images = sum(len(images) for images in slide_images.values())
+        
+        # Create header
+        header = f"""# {base_name.replace('_', ' ').title()} - PowerPoint Conversion
+
+Source File: {os.path.basename(source_ppt_path)}  
+Converted: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
+Slides: {len(slide_contents)}
+Images Extracted: {total_images}
+
+---
+
+"""
+        
+        # Create slides with their actual images
+        formatted_slides = []
+        
+        for i, slide in enumerate(slide_contents):
+            slide_num = i + 1
+            
+            # Create slide header
+            formatted_slide = f"## Slide {slide_num}: {slide['title']}\n\n"
+            
+            # Add images that actually belong to this slide
+            if slide_num in slide_images:
+                for j, image_filename in enumerate(slide_images[slide_num]):
+                    formatted_slide += f"![]({image_filename})\n"
+            
+            # Add slide content (only if there is content)
+            if slide['content'].strip():
+                formatted_slide += f"{slide['content']}\n\n"
+            
+            formatted_slides.append(formatted_slide)
+        
+        return header + ''.join(formatted_slides)
 
 
     @classmethod
