@@ -5,11 +5,19 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from ciclone.services.processing.stages import run_stage
 from ciclone.domain.subject import Subject
+from ciclone.utils.utility import clean_before_stage
 
-def processImagesAnalysis(conn, output_directory: str, subject_list: list, stages: list):
+def processImagesAnalysis(conn, output_directory: str, subject_list: list, config_data: dict):
     # Check if output directory exists
     if not os.path.exists(output_directory):
         conn.send({"type": "log", "level": "error", "message": f"Output directory {output_directory} does not exist."})
+        conn.send({"type": "progress", "value": -1})  # Indicate error
+        return
+    
+    # Get stages from config data
+    stages = config_data.get('stages', [])
+    if not stages:
+        conn.send({"type": "log", "level": "error", "message": "No stages found in configuration."})
         conn.send({"type": "progress", "value": -1})  # Indicate error
         return
     
@@ -25,9 +33,14 @@ def processImagesAnalysis(conn, output_directory: str, subject_list: list, stage
 
         conn.send({"type": "log", "level": "info", "message": f"Processing subject {subject_name}..."})
         subject = Subject(subject_folder)
-        subject.clear_processed_tmp()
+        #subject.clear_processed_tmp()
         
         for stage in stages:
+            # Clean before stage if clean_before is defined
+            if 'clean_before' in stage and stage['clean_before']:
+                conn.send({"type": "log", "level": "info", "message": f"Cleaning before stage {stage['name']} for subject {subject_name}..."})
+                clean_before_stage(subject, stage['name'], config_data)
+            
             conn.send({"type": "log", "level": "info", "message": f"Running stage {stage['name']} for subject {subject_name}..."})
             run_stage(stage, subject)
             completed_steps += 1
