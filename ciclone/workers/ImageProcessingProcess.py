@@ -36,10 +36,14 @@ def processImagesAnalysis(conn, output_directory: str, subject_list: list, confi
         #subject.clear_processed_tmp()
         
         for stage in stages:
-            # Clean before stage if clean_before is defined
-            if 'clean_before' in stage and stage['clean_before']:
-                conn.send({"type": "log", "level": "info", "message": f"Cleaning before stage {stage['name']} for subject {subject_name}..."})
-                clean_before_stage(subject, stage['name'], config_data)
+            # Clean before stage if auto_clean is enabled
+            if stage.get('auto_clean', False):
+                conn.send({"type": "log", "level": "info", "message": f"Auto-cleaning before stage {stage['name']} for subject {subject_name}..."})
+                try:
+                    clean_before_stage(subject, stage['name'], config_data)
+                    conn.send({"type": "log", "level": "info", "message": f"Auto-cleaning completed for stage {stage['name']}"})
+                except Exception as e:
+                    conn.send({"type": "log", "level": "error", "message": f"Auto-cleaning failed for stage {stage['name']}: {e}"})
             
             conn.send({"type": "log", "level": "info", "message": f"Running stage {stage['name']} for subject {subject_name}..."})
             run_stage(stage, subject)
