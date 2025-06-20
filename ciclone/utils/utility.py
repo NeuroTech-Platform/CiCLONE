@@ -6,12 +6,14 @@ from pathlib import Path
 def execute_command(command: list, silent: bool = False) -> None:
     """Execute a shell command with error handling."""
     try:
+        # Convert Path objects to strings
+        str_command = [str(arg) for arg in command]
         if silent:
-            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(str_command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
-            subprocess.run(command, check=True)
+            subprocess.run(str_command, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"Command '{' '.join(command)}' failed with error: {e}")
+        print(f"Command '{' '.join(str(arg) for arg in command)}' failed with error: {e}")
         raise
 
 def read_config_file(file_path: str) -> dict:
@@ -88,11 +90,15 @@ def clean_before_stage(subject, stage_name: str, config_data: dict) -> None:
         if not target_stage.get('auto_clean', False):
             return
         
-        # Collect patterns to clean: this stage + all downstream stages
+        # Collect patterns to clean: current stage + all downstream stages
         patterns_to_clean = []
         
-        # Start from current stage and include all downstream stages
-        for i in range(stage_index, len(stages)):
+        # Include current stage outputs (since we're about to re-run it)
+        if target_stage['name'] in stage_outputs:
+            patterns_to_clean.extend(stage_outputs[target_stage['name']])
+        
+        # Include all downstream stages
+        for i in range(stage_index + 1, len(stages)):
             downstream_stage_name = stages[i]['name']
             if downstream_stage_name in stage_outputs:
                 patterns_to_clean.extend(stage_outputs[downstream_stage_name])
