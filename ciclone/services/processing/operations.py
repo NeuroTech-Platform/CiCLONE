@@ -1,10 +1,13 @@
 from pathlib import Path
 import shutil
 from ciclone.utils.utility import execute_command
+from ciclone.services.processing.tool_config import tool_config
 import json
 import numpy as np
 import os
 import subprocess
+
+
 
 def open_fsleyes(input_file: Path):
     input_file = Path(input_file)
@@ -14,7 +17,7 @@ def open_fsleyes(input_file: Path):
         return
 
     print(f"Opening {input_file} with fsleyes")
-    execute_command(["/usr/local/fsl/bin/fsleyes", input_file])
+    execute_command([tool_config.get_fsl_tool_path("fsleyes"), input_file])
 
 def crop_image(input_file: Path, output_filename: str) -> Path:
     input_file = Path(input_file)
@@ -24,7 +27,7 @@ def crop_image(input_file: Path, output_filename: str) -> Path:
         return
 
     print(f"Cropping {input_file} => {output_filename}")
-    execute_command(["/usr/local/fsl/bin/robustfov","-v","-i", input_file,"-r", output_filename], silent=True)
+    execute_command([tool_config.get_fsl_tool_path("robustfov"),"-v","-i", input_file,"-r", output_filename], silent=True)
 
 def move_image(input_file: Path, output_file: str) -> None:
     input_file = Path(input_file)
@@ -49,7 +52,7 @@ def coregister_images(input_file: Path, ref_file: Path, output_file_name: str) -
 
     print(f"Registering {input_file.stem} to {ref_file.stem} => {output_file_name}")
     execute_command([
-        "/usr/local/fsl/bin/flirt",
+        tool_config.get_fsl_tool_path("flirt"),
         "-in", input_file.stem,
         "-ref", ref_file.stem,
         "-out", output_file_name,
@@ -77,7 +80,7 @@ def subtract_image(input_file: Path, mask_file: Path, output_file_name: str) -> 
 
     print(f"Subtracting {input_file.stem} by {mask_file.stem} => {output_file_name}")
     execute_command([
-        "/usr/local/fsl/bin/fslmaths", input_file.stem, "-sub", mask_file.stem, output_file_name
+        tool_config.get_fsl_tool_path("fslmaths"), input_file.stem, "-sub", mask_file.stem, output_file_name
     ])
 
 def threshold_image(input_file: Path, output_file_name: str) -> None:
@@ -88,7 +91,7 @@ def threshold_image(input_file: Path, output_file_name: str) -> None:
 
     print(f"Thresholding {input_file.stem} => {output_file_name}")
     execute_command([
-        "/usr/local/fsl/bin/fslmaths", input_file.stem, "-thr", "1600", output_file_name
+        tool_config.get_fsl_tool_path("fslmaths"), input_file.stem, "-thr", "1600", output_file_name
     ])
 
 def apply_transformation2image(input_file: Path, transformation_file: Path, ref_file:Path, output_file_name: str) -> None:
@@ -108,7 +111,7 @@ def apply_transformation2image(input_file: Path, transformation_file: Path, ref_
     
     print(f"Applying transformation {transformation_file.stem} to {input_file.stem} using for ref {ref_file.stem} => {output_file_name}")
     execute_command([
-        "/usr/local/fsl/bin/flirt", "-in", input_file.stem, "-applyxfm", "-init", transformation_file, 
+        tool_config.get_fsl_tool_path("flirt"), "-in", input_file.stem, "-applyxfm", "-init", transformation_file, 
         "-out", output_file_name, "-paddingsize", "0.0", "-interp", "sinc", 
         "-ref", ref_file.stem, "-bins", "256", "-cost", "mutualinfo", 
         "-searchrx", "-180", "180", "-searchry", "-180", "180", "-searchrz", "-180", "180", 
@@ -121,7 +124,7 @@ def extract_brain(input_file: Path, output_file: Path):
 
     # Use BET to preserve screws and enhance visibility of relevant structures
     execute_command([
-        "/usr/local/fsl/bin/bet", input_file.stem, output_file.stem, "-f", "0.45", "-g", "0", "-m"
+        tool_config.get_fsl_tool_path("bet"), input_file.stem, output_file.stem, "-f", "0.45", "-g", "0", "-m"
     ])
 
 def extract_brain2(input_file: Path, output_file: Path):
@@ -130,7 +133,7 @@ def extract_brain2(input_file: Path, output_file: Path):
 
     # Use BET to preserve screws and enhance visibility of relevant structures
     execute_command([
-        "/usr/local/fsl/bin/bet", input_file.stem, output_file.stem, "-f", "0.25", "-g", "0"
+        tool_config.get_fsl_tool_path("bet"), input_file.stem, output_file.stem, "-f", "0.25", "-g", "0"
     ])
 
 def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
@@ -146,7 +149,7 @@ def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
 
     print(f"Masking {input_file.stem} by {mask_file.stem} => {output_file_name}")
     execute_command([
-        "/usr/local/fsl/bin/fslmaths", input_file.stem, "-mas", mask_file.stem, output_file_name
+        tool_config.get_fsl_tool_path("fslmaths"), input_file.stem, "-mas", mask_file.stem, output_file_name
     ])
 
 def cortical_reconstruction(input_file: Path, fs_output_dir: str):
@@ -162,7 +165,7 @@ def cortical_reconstruction(input_file: Path, fs_output_dir: str):
         
     print(f"Reconstructing {input_file.stem} using FreeSurfer => {fs_subject_dir.stem}")
     execute_command([
-        "recon-all", "-sd", str(fs_subject_dir.parent), "-s", str(fs_subject_dir.stem), "-i", str(input_file), "-all"
+        tool_config.get_freesurfer_tool_path("recon-all"), "-sd", str(fs_subject_dir.parent), "-s", str(fs_subject_dir.stem), "-i", str(input_file), "-all"
     ])
 
 def transform_coordinates(input_json: Path, transformation_matrix: Path, output_json: str) -> None:
@@ -240,7 +243,7 @@ def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
     print(f"Registering {input_file.stem} to {ref_file.stem} => {output_file_name}")
     # First stage: rigid registration (6 DOF)
     execute_command([
-        "/usr/local/fsl/bin/flirt",
+        tool_config.get_fsl_tool_path("flirt"),
         "-in", input_file.stem,
         "-ref", ref_file,
         "-omat", f"{output_file_name}_rigid.mat",
@@ -256,7 +259,7 @@ def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
 
     # Second stage: affine registration (12 DOF) initialized with rigid result
     execute_command([
-        "/usr/local/fsl/bin/flirt",
+        tool_config.get_fsl_tool_path("flirt"),
         "-in", input_file.stem,
         "-ref", ref_file,
         "-init", f"{output_file_name}_rigid.mat",  # Initialize with rigid transform
@@ -294,7 +297,7 @@ def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:
     
     print(f"Registering {input_file.name} to MNI space => {output_file_name}")
     execute_command([
-        "/usr/local/fsl/bin/flirt",
+        tool_config.get_fsl_tool_path("flirt"),
         "-in", input_file.name,
         "-ref", ref_file,
         "-out", output_file_name,

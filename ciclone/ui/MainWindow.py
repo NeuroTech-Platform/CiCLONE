@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 
 from ciclone.controllers.main_controller import MainController
+from ciclone.services.processing.tool_config import tool_config
 
 from ..forms.MainWindow_ui import Ui_MainWindow
 
@@ -19,6 +20,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setupUi(self)
+        
+        # Check neuroimaging environment (FSL and FreeSurfer) before initializing controllers
+        self._check_neuroimaging_environment()
         
         # Initialize main controller (coordinates all other controllers and models)
         self.main_controller = MainController(self.config_path)
@@ -69,6 +73,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Add right-click context menu to log area
         self.textBrowser.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.textBrowser.customContextMenuRequested.connect(self.show_log_context_menu)
+
+    def _check_neuroimaging_environment(self):
+        """
+        Check if FSL and FreeSurfer are properly configured.
+        Show warning dialog if there are issues.
+        """
+        print("Checking neuroimaging environment...")
+        is_configured, error_messages = tool_config.validate_environment()
+        
+        if not is_configured:
+            error_text = "The following neuroimaging tools are not properly configured:\n\n" + \
+                        "\n".join(error_messages) + \
+                        "\n\nSome features may not work correctly. " + \
+                        "Please ensure these tools are installed and their environment variables are set:\n" + \
+                        "- FSL: Set FSLDIR environment variable\n" + \
+                        "- FreeSurfer: Set FREESURFER_HOME environment variable"
+            
+            QMessageBox.warning(
+                self,
+                "Neuroimaging Environment Warning",
+                error_text
+            )
     
     @property
     def output_directory(self):

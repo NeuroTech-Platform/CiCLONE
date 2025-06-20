@@ -1,5 +1,29 @@
+# Define stage outputs and dependencies for automatic cleaning
+stage_outputs:
+  preprocessing:
+    - "*_C.nii*"          # Cropped images
+    - "*_C"               # Cropped directories
+  coregisteration: 
+    - "*.mat"             # Transformation matrices
+    - "v_*"               # Registration outputs
+    - "b_*"               # Registration outputs
+  extract_electrodes:
+    - "r_*"               # Applied transformation outputs
+    - "*_seeg*"           # SEEG outputs
+    - "*_sub*"            # Subtraction outputs
+  apply_mask:
+    - "*_stripped*"       # Brain extraction outputs
+    - "*_masked*"         # Masked outputs
+  mni_registration:
+    - "MNI_*"             # MNI registration outputs
+    - "*_rigid*"          # Rigid registration temp files
+    - "norm_*"            # Normalized images
+  cortical_extraction:
+    - "freesurfer_*"      # FreeSurfer outputs
+
 stages:
   - name: preprocessing
+    auto_clean: true      # Clean this stage + all downstream stages
     operations:
       - type: open_fsleyes
         workdir: preop/ct
@@ -28,7 +52,9 @@ stages:
       - type: move
         workdir: preop/mri
         files: ["${name}_T1_C", "${subj_dir}/processed_tmp"]
+
   - name: coregisteration
+    auto_clean: true      # Clean this stage + all downstream stages
     operations:
       - type: coregister
         workdir: processed_tmp
@@ -39,7 +65,9 @@ stages:
       - type: coregister
         workdir: processed_tmp
         files: ["${name}_CT_Electrodes_C", "${name}_CT_Bone_C", "b_${name}_postimplant_ct"]
+
   - name: extract_electrodes
+    auto_clean: true      # Clean this stage + all downstream stages
     operations:
       - type: subtract
         workdir: processed_tmp
@@ -50,7 +78,9 @@ stages:
       - type: apply_transformation
         workdir: processed_tmp
         files: ["b_${name}_seeg", "v_${name}_bone_mask.mat", "${name}_CT_Electrodes_C", "r_${name}_seeg"]
+
   - name: apply_mask
+    auto_clean: true      # Clean this stage + all downstream stages
     operations:
       - type: extract_brain
         workdir: processed_tmp
@@ -58,12 +88,16 @@ stages:
       - type: mask
         workdir: processed_tmp
         files: ["r_${name}_seeg", "${name}_stripped_mask", "r_${name}_seeg_masked"]
+
   - name: mni_registration
+    auto_clean: true      # Clean this stage + all downstream stages
     operations:
       - type: register_mri_to_mni
         workdir: processed_tmp
         files: ["${name}_T1_C", "MNI_${name}_T1"]
+
   - name: cortical_extraction
+    auto_clean: true      # Clean this stage + all downstream stages
     operations:
       - type: reconstruct
         workdir: processed_tmp

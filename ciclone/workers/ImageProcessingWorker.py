@@ -9,15 +9,15 @@ class ImageProcessingWorker(QThread):
     log_signal = pyqtSignal(str, str)  # level, message
     finished = pyqtSignal()
 
-    def __init__(self, output_directory: str, subject_list: list, stages: list):
+    def __init__(self, output_directory: str, subject_list: list, config_data: dict):
         super().__init__()
         self.output_directory = output_directory
         self.subject_list = subject_list
-        self.stages = stages
+        self.config_data = config_data
 
     def run(self):
         parent_conn, child_conn = mp.Pipe()
-        process = mp.Process(target=processImagesAnalysis, args=(child_conn, self.output_directory, self.subject_list, self.stages))
+        process = mp.Process(target=processImagesAnalysis, args=(child_conn, self.output_directory, self.subject_list, self.config_data))
         process.start()
 
         while True:

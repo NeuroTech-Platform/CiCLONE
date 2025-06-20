@@ -104,8 +104,9 @@ class ProcessingController(QObject):
             stage_names = [stage.get("name", "Unknown") for stage in stages_config]
             self._log_message("info", f"{operation_name} => Starting processing {len(subject_list)} subjects with stages: {', '.join(stage_names)}")
             
-            # Create worker
-            worker = ImageProcessingWorker(output_directory, subject_list, stages_config)
+            # Create worker config with selected stages
+            worker_config = self._build_worker_config(stages_config)
+            worker = ImageProcessingWorker(output_directory, subject_list, worker_config)
             
             # Connect worker signals
             worker.update_progress_signal.connect(self._on_worker_progress_update)
@@ -123,6 +124,33 @@ class ProcessingController(QObject):
         except Exception as e:
             self._log_message("error", f"Failed to start processing: {str(e)}")
             return False
+    
+    def _build_worker_config(self, stages_to_run: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Build configuration for the worker containing only the necessary data.
+        
+        Args:
+            stages_to_run: List of stage configurations to execute
+            
+        Returns:
+            Configuration dictionary optimized for worker usage
+        """
+        # Get base config data (excluding stages)
+        base_config = self.application_model.get_config()
+        
+        # Build worker config with only needed components
+        worker_config = {
+            'stages': stages_to_run,
+            # Include any other config sections that might be needed by operations
+            # (add as needed, but avoid copying everything)
+        }
+        
+        # Copy only essential non-stage configuration if it exists
+        for key in ['settings', 'paths', 'defaults']:
+            if key in base_config:
+                worker_config[key] = base_config[key]
+        
+        return worker_config
     
     def _on_worker_progress_update(self, progress: int):
         """Handle progress updates from the worker."""
