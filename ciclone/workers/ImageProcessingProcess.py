@@ -1,13 +1,32 @@
 import os
 import shutil
+import signal
 import multiprocessing
-from PyQt6.QtCore import QObject, pyqtSignal
 
 from ciclone.services.processing.stages import run_stage
 from ciclone.domain.subject import Subject
 from ciclone.utils.utility import clean_before_stage
 
 def processImagesAnalysis(conn, output_directory: str, subject_list: list, config_data: dict):
+    # Set up signal handler for clean termination
+    def signal_handler(signum, frame):
+        conn.send({"type": "log", "level": "info", "message": "Processing interrupted, cleaning up..."})
+        # Kill all child processes in this process group
+        try:
+            os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
+        except:
+            pass
+        exit(1)
+    
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # Set this process as a process group leader
+    try:
+        os.setpgrp()
+    except:
+        pass
+    
     # Check if output directory exists
     if not os.path.exists(output_directory):
         conn.send({"type": "log", "level": "error", "message": f"Output directory {output_directory} does not exist."})
@@ -33,7 +52,6 @@ def processImagesAnalysis(conn, output_directory: str, subject_list: list, confi
 
         conn.send({"type": "log", "level": "info", "message": f"Processing subject {subject_name}..."})
         subject = Subject(subject_folder)
-        #subject.clear_processed_tmp()
         
         for stage in stages:
             # Clean before stage if auto_clean is enabled
