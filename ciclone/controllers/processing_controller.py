@@ -141,12 +141,10 @@ class ProcessingController(QObject):
         # Build worker config with only needed components
         worker_config = {
             'stages': stages_to_run,
-            # Include any other config sections that might be needed by operations
-            # (add as needed, but avoid copying everything)
         }
         
-        # Copy only essential non-stage configuration if it exists
-        for key in ['settings', 'paths', 'defaults']:
+        # Copy essential configuration sections needed by operations
+        for key in ['stage_outputs', 'settings', 'paths', 'defaults']:
             if key in base_config:
                 worker_config[key] = base_config[key]
         
