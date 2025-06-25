@@ -45,8 +45,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self._initialize_mvc_components()
         
         # Initialize UI state
-        self.setting_entry = False
-        self.setting_output = False
+        self.last_clicked_coordinates = None  # Store coordinates of last image click
         
         # Setup UI components
         self._setup_ui_components()
@@ -642,9 +641,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
     def _connect_signals(self):
         """Connect UI signals to controller methods."""
-        # Radio button signals
-        self.SetEntryRadioButton.clicked.connect(lambda: self.on_coordinate_radio_clicked('entry'))
-        self.SetOutputRadioButton.clicked.connect(lambda: self.on_coordinate_radio_clicked('output'))
+        # Push button signals for coordinate setting
+        self.SetEntryPushButton.clicked.connect(self.on_set_entry_clicked)
+        self.SetOutputPushButton.clicked.connect(self.on_set_output_clicked)
 
         # Splitter signal - removed to prevent excessive refreshes during zoom
         # self.splitter.splitterMoved.connect(self.refresh_all_views)
@@ -700,8 +699,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.ElectrodesComboBox.blockSignals(False)
         
         has_electrodes = self.ElectrodesComboBox.count() > 0
-        self.SetEntryRadioButton.setEnabled(has_electrodes)
-        self.SetOutputRadioButton.setEnabled(has_electrodes)
+        self.SetEntryPushButton.setEnabled(has_electrodes)
+        self.SetOutputPushButton.setEnabled(has_electrodes)
         
         self.update_coordinate_display()
 
@@ -1020,34 +1019,55 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             for item in reversed(items):
                 self.ElectrodeTreeWidget.takeTopLevelItem(self.ElectrodeTreeWidget.indexOfTopLevelItem(item))
 
-    def on_coordinate_radio_clicked(self, mode):
-        """Handle radio button clicks for both entry and output modes."""
+    def on_set_entry_clicked(self):
+        """Handle set entry button click."""
         # Check if an electrode is selected
         electrode_name = self.ElectrodesComboBox.currentText()
         if not electrode_name:
             QMessageBox.warning(self, "Warning", "Please select an electrode first.")
-            getattr(self, f"Set{mode.capitalize()}RadioButton").setChecked(False)
             return
 
-        # Get the other mode
-        other_mode = 'output' if mode == 'entry' else 'entry'
-        
-        # Toggle the state
-        setattr(self, f"setting_{mode}", not getattr(self, f"setting_{mode}"))
-        setattr(self, f"setting_{other_mode}", False)
-        
-        # Update radio buttons
-        getattr(self, f"Set{other_mode.capitalize()}RadioButton").setChecked(False)
-        getattr(self, f"Set{other_mode.capitalize()}RadioButton").setStyleSheet("")
-        
-        # Update UI
-        if getattr(self, f"setting_{mode}"):
-            getattr(self, f"Set{mode.capitalize()}RadioButton").setStyleSheet("color: red;")
-        else:
-            getattr(self, f"Set{mode.capitalize()}RadioButton").setStyleSheet("")
+        # Check if we have stored coordinates from a previous image click
+        if self.last_clicked_coordinates is None:
+            QMessageBox.information(self, "Information", "Please click on an image first to select coordinates.")
+            return
+
+        # Set the entry coordinates using the stored coordinates
+        self.electrode_controller.set_entry_coordinate(electrode_name, self.last_clicked_coordinates)
         
         # Update coordinate display
         self.update_coordinate_display(electrode_name)
+        
+        # Refresh all views to show the electrode marker immediately
+        self.refresh_all_views()
+        
+        # Clear the stored coordinates after use
+        self.last_clicked_coordinates = None
+
+    def on_set_output_clicked(self):
+        """Handle set output button click."""
+        # Check if an electrode is selected
+        electrode_name = self.ElectrodesComboBox.currentText()
+        if not electrode_name:
+            QMessageBox.warning(self, "Warning", "Please select an electrode first.")
+            return
+
+        # Check if we have stored coordinates from a previous image click
+        if self.last_clicked_coordinates is None:
+            QMessageBox.information(self, "Information", "Please click on an image first to select coordinates.")
+            return
+
+        # Set the output coordinates using the stored coordinates
+        self.electrode_controller.set_output_coordinate(electrode_name, self.last_clicked_coordinates)
+        
+        # Update coordinate display
+        self.update_coordinate_display(electrode_name)
+        
+        # Refresh all views to show the electrode marker immediately
+        self.refresh_all_views()
+        
+        # Clear the stored coordinates after use
+        self.last_clicked_coordinates = None
 
     def on_image_clicked(self, orientation, x, y):
         """Handle clicks on any view by determining the 3D coordinates and updating other views."""
@@ -1113,15 +1133,11 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             self.Axial_horizontalSlider.setValue(z_coord)
             self.Sagittal_horizontalSlider.setValue(x_coord)
 
-        # Handle coordinate setting through controllers
-        electrode_name = self.ElectrodesComboBox.currentText()
-        if self.setting_entry:
-            self.electrode_controller.set_entry_coordinate(electrode_name, coords)
-        elif self.setting_output:
-            self.electrode_controller.set_output_coordinate(electrode_name, coords)
+        # Store the coordinates for later use by the push buttons
+        self.last_clicked_coordinates = coords
         
-        # Refresh all views if crosshairs are enabled or if setting coordinates
-        if self.crosshair_controller.is_enabled() or self.setting_entry or self.setting_output:
+        # Refresh all views if crosshairs are enabled
+        if self.crosshair_controller.is_enabled():
             self.refresh_all_views()
 
     # =============================================================================

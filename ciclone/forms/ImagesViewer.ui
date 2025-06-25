@@ -214,7 +214,7 @@
             <item row="1" column="0">
              <layout class="QHBoxLayout" name="horizontalLayout_6">
               <item>
-               <widget class="QRadioButton" name="SetEntryRadioButton">
+               <widget class="QPushButton" name="SetEntryPushButton">
                 <property name="minimumSize">
                  <size>
                   <width>50</width>
@@ -229,12 +229,6 @@
                 </property>
                 <property name="text">
                  <string>Set</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="autoExclusive">
-                 <bool>false</bool>
                 </property>
                </widget>
               </item>
@@ -250,7 +244,7 @@
             <item row="2" column="0">
              <layout class="QHBoxLayout" name="horizontalLayout_5">
               <item>
-               <widget class="QRadioButton" name="SetOutputRadioButton">
+               <widget class="QPushButton" name="SetOutputPushButton">
                 <property name="minimumSize">
                  <size>
                   <width>50</width>
@@ -265,12 +259,6 @@
                 </property>
                 <property name="text">
                  <string>Set</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="autoExclusive">
-                 <bool>false</bool>
                 </property>
                </widget>
               </item>
