@@ -155,7 +155,22 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
 
-
+        # Style the toolbar to make checked crosshair button green (same as visibility buttons)
+        self.mainToolBar.setStyleSheet("""
+            QToolButton {
+                border: 1px solid transparent;
+                border-radius: 3px;
+            }
+            QToolButton:checked {
+                background-color: #4CAF50;
+                border: 1px solid #45a049;
+                border-radius: 3px;
+                color: white;
+            }
+            QToolButton:checked:hover {
+                background-color: #45a049;
+            }
+        """)
     
     def toggle_crosshairs(self, checked):
         """Toggle crosshair display on all views."""
