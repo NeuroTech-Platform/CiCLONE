@@ -5,6 +5,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from ciclone.models.electrode_model import ElectrodeModel
 from ciclone.models.coordinate_model import CoordinateModel
 from ciclone.domain.electrodes import Electrode
+from ciclone.interfaces.view_interfaces import IImageView
 
 
 class ElectrodeController:
@@ -15,7 +16,7 @@ class ElectrodeController:
         self.coordinate_model = coordinate_model
         self._view = None
     
-    def set_view(self, view):
+    def set_view(self, view: IImageView):
         """Set the view reference for UI updates."""
         self._view = view
     

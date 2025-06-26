@@ -62,15 +62,14 @@ class ImageProcessingWorker(QThread):
     def _terminate_all_processes(self):
         """Terminate the main process and all its subprocesses."""
         if self.process and self.process.is_alive():
-            self.log_signal.emit("info", "Stopping all processes (FSL, FreeSurfer, etc.)...")
-            
+            print("[DEBUG] Terminating worker processes (FSL, FreeSurfer, etc.)...")
             # Terminate the main process - this should kill all child processes too
             self.process.terminate()
             self.process.join(timeout=5)  # Wait up to 5 seconds for graceful termination
             
             if self.process.is_alive():
-                self.log_signal.emit("warning", "Force killing all processes...")
+                print("[DEBUG] Force killing stubborn processes...")
                 self.process.kill()
                 self.process.join()
             
-            self.log_signal.emit("info", "All processes stopped.")
+            print("[DEBUG] All worker processes terminated.")

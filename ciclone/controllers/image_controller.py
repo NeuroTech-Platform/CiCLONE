@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QMessageBox
 import numpy as np
 
 from ciclone.models.image_model import ImageModel
+from ciclone.interfaces.view_interfaces import IImageView
 
 
 class ImageController:
@@ -13,7 +14,7 @@ class ImageController:
         self.image_model = image_model
         self._view = None
     
-    def set_view(self, view):
+    def set_view(self, view: IImageView):
         """Set the view reference for UI updates."""
         self._view = view
     
