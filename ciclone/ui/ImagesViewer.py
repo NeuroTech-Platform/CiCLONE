@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QWidgetAction
 )
 from PyQt6.QtCore import Qt, QStandardPaths, QTimer
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent, QAction
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent, QAction, QCursor
 
 from ciclone.models.image_model import ImageModel
 from ciclone.controllers.image_controller import ImageController
@@ -30,6 +30,7 @@ from ciclone.controllers.electrode_controller import ElectrodeController
 from ciclone.services.io.slicer_file import SlicerFile
 from ciclone.ui.Viewer3D import Viewer3D
 from ciclone.forms.ImagesViewer_ui import Ui_ImagesViewer
+from ciclone.interfaces.view_interfaces import IImageView, IBaseView
 
 # Import new MVC components
 from ciclone.models import ElectrodeModel, CoordinateModel, CrosshairModel
@@ -1270,6 +1271,96 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Use debounce timer to avoid excessive refreshes during resize
         self._resize_timer.stop()
         self._resize_timer.start(100)  # 100ms delay
+    
+    # =============================================================================
+    # IImageView Interface Implementation
+    # =============================================================================
+    
+    def load_image_file(self, file_path: str) -> bool:
+        """Load an image file for display."""
+        return self.image_controller.load_image(file_path)
+    
+    def set_slice_range(self, orientation: str, min_slice: int, max_slice: int) -> None:
+        """Set the valid slice range for an orientation."""
+        if orientation == 'axial':
+            slider = self.Axial_horizontalSlider
+        elif orientation == 'sagittal':
+            slider = self.Sagittal_horizontalSlider
+        elif orientation == 'coronal':
+            slider = self.Coronal_horizontalSlider
+        else:
+            return
+        
+        slider.setMinimum(min_slice)
+        slider.setMaximum(max_slice)
+    
+    def set_overlay_visibility(self, visible: bool) -> None:
+        """Set overlay visibility."""
+        # Implementation depends on current overlay system
+        # This would update overlay visibility state
+        pass
+    
+    def update_overlay_opacity(self, opacity: float) -> None:
+        """Update overlay opacity."""
+        # Update the opacity controls if they exist
+        if hasattr(self, 'opacity_slider') and self.opacity_slider:
+            self.opacity_slider.setValue(int(opacity * 100))
+    
+    def refresh_overlay_controls(self) -> None:
+        """Refresh overlay control widgets."""
+        self.rebuild_all_overlay_menus()
+        self.update_image_combo_boxes()
+    
+    def enable_electrode_controls(self, enabled: bool) -> None:
+        """Enable or disable electrode control widgets."""
+        self.AddElectrode_pushButton.setEnabled(enabled)
+        self.SetEntryPushButton.setEnabled(enabled)
+        self.SetOutputPushButton.setEnabled(enabled)
+        self.ElectrodeNameLineEdit.setEnabled(enabled)
+        self.ElectrodeTypeComboBox.setEnabled(enabled)
+    
+    def show_crosshairs(self, show: bool) -> None:
+        """Show or hide crosshairs."""
+        self.crosshair_controller.toggle_crosshairs(show)
+    
+    def update_crosshair_position(self, x: int, y: int, z: int) -> None:
+        """Update crosshair position."""
+        self.crosshair_controller.set_crosshair_position((x, y, z))
+    
+    def synchronize_crosshairs(self) -> None:
+        """Synchronize crosshairs across all views."""
+        self.refresh_all_views()
+    
+    def clear_data_tree(self) -> None:
+        """Clear the data tree."""
+        self.DataTreeWidget.clear()
+    
+    # =============================================================================
+    # IBaseView Interface Implementation
+    # =============================================================================
+    
+    def show_error_message(self, title: str, message: str) -> None:
+        """Show an error message to the user."""
+        QMessageBox.critical(self, title, message)
+    
+    def show_warning_message(self, title: str, message: str) -> None:
+        """Show a warning message to the user."""
+        QMessageBox.warning(self, title, message)
+    
+    def show_info_message(self, title: str, message: str) -> None:
+        """Show an info message to the user."""
+        QMessageBox.information(self, title, message)
+    
+    def set_busy_state(self, busy: bool) -> None:
+        """Set the view to busy state (e.g., show loading cursor)."""
+        if busy:
+            self.setCursor(QCursor(Qt.CursorShape.WaitCursor))
+        else:
+            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+    
+    def get_widget(self) -> QWidget:
+        """Get the underlying QWidget for this view."""
+        return self
 
 if __name__ == "__main__":
     import sys

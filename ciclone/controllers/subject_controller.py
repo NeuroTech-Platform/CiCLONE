@@ -15,6 +15,7 @@ class SubjectController:
         self.subject_model = subject_model
         self._view = None
         self._log_callback: Optional[Callable[[str, str], None]] = None
+        self._dialog_service = None
         
     def set_view(self, view):
         """Set the view reference for UI updates."""
@@ -23,6 +24,10 @@ class SubjectController:
     def set_log_callback(self, callback: Callable[[str, str], None]):
         """Set callback function for logging messages."""
         self._log_callback = callback
+    
+    def set_dialog_service(self, dialog_service):
+        """Set dialog service for user feedback."""
+        self._dialog_service = dialog_service
         
     def _log_message(self, level: str, message: str):
         """Log a message if callback is set."""
@@ -75,6 +80,12 @@ class SubjectController:
             if success:
                 self._log_message("success", f"Subject '{subject_data.name}' imported successfully")
                 
+                # Show success feedback to user
+                if self._dialog_service:
+                    self._dialog_service.show_subject_operation_result(
+                        "Import", subject_data.name, True
+                    )
+                
                 # Notify view to refresh if available
                 if self._view and hasattr(self._view, 'refresh_subject_tree'):
                     self._view.refresh_subject_tree()
@@ -82,10 +93,24 @@ class SubjectController:
                 return True
             else:
                 self._log_message("error", f"Failed to add subject to model")
+                
+                # Show error feedback to user
+                if self._dialog_service:
+                    self._dialog_service.show_subject_operation_result(
+                        "Import", subject_data.name, False, "Failed to add subject to model"
+                    )
+                
                 return False
                 
         except Exception as e:
             self._log_message("error", f"Failed to import subject '{subject_data.name}': {str(e)}")
+            
+            # Show error feedback to user
+            if self._dialog_service:
+                self._dialog_service.show_subject_operation_result(
+                    "Import", subject_data.name, False, str(e)
+                )
+            
             return False
         finally:
             QApplication.restoreOverrideCursor()

@@ -16,8 +16,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QStandardPaths
 
-from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap
+from PyQt6.QtGui import QFileSystemModel, QImage, QPixmap, QCursor
 from ciclone.forms.Viewer3D_ui import Ui_Viewer3D
+from ciclone.interfaces.view_interfaces import IViewer3D, IBaseView
 
 class Viewer3D(QWidget, Ui_Viewer3D):
     def __init__(self, nifti_img=None, current_volume_data=None, *args, **kwargs):
@@ -121,3 +122,101 @@ class Viewer3D(QWidget, Ui_Viewer3D):
             super().keyPressEvent(event)
         self.ren.ResetCameraClippingRange()
         self.vtkWidget.GetRenderWindow().Render()
+    
+    # =============================================================================
+    # IViewer3D Interface Implementation
+    # =============================================================================
+    
+    def load_volume_data(self, volume_data) -> bool:
+        """Load volume data for 3D rendering."""
+        try:
+            self.current_volume_data = volume_data
+            self.update_3d_view()
+            return True
+        except Exception:
+            return False
+    
+    def update_rendering(self) -> None:
+        """Update the 3D rendering."""
+        self.update_3d_view()
+    
+    def reset_camera(self) -> None:
+        """Reset camera to default position."""
+        if hasattr(self, 'ren') and self.ren:
+            self.ren.ResetCamera()
+            self.vtkWidget.GetRenderWindow().Render()
+    
+    def add_electrode_to_scene(self, electrode_data) -> None:
+        """Add an electrode to the 3D scene."""
+        # Implementation would add electrode visualization
+        # This would require extending the current VTK pipeline
+        pass
+    
+    def remove_electrode_from_scene(self, electrode_name: str) -> None:
+        """Remove an electrode from the 3D scene."""
+        # Implementation would remove electrode visualization
+        pass
+    
+    def update_electrode_visibility(self, electrode_name: str, visible: bool) -> None:
+        """Update electrode visibility in 3D scene."""
+        # Implementation would toggle electrode visibility
+        pass
+    
+    def set_rendering_quality(self, quality: str) -> None:
+        """Set rendering quality (low, medium, high)."""
+        # Implementation would adjust VTK rendering parameters
+        pass
+    
+    def enable_interaction(self, enabled: bool) -> None:
+        """Enable or disable 3D view interaction."""
+        if hasattr(self, 'iren') and self.iren:
+            if enabled:
+                self.iren.Enable()
+            else:
+                self.iren.Disable()
+    
+    def export_screenshot(self, file_path: str) -> bool:
+        """Export current view as screenshot."""
+        try:
+            if hasattr(self, 'vtkWidget') and self.vtkWidget:
+                # Capture window to image
+                window_to_image = vtk.vtkWindowToImageFilter()
+                window_to_image.SetInput(self.vtkWidget.GetRenderWindow())
+                window_to_image.Update()
+                
+                # Write to file
+                writer = vtk.vtkPNGWriter()
+                writer.SetFileName(file_path)
+                writer.SetInputConnection(window_to_image.GetOutputPort())
+                writer.Write()
+                return True
+        except Exception:
+            pass
+        return False
+    
+    # =============================================================================
+    # IBaseView Interface Implementation
+    # =============================================================================
+    
+    def show_error_message(self, title: str, message: str) -> None:
+        """Show an error message to the user."""
+        QMessageBox.critical(self, title, message)
+    
+    def show_warning_message(self, title: str, message: str) -> None:
+        """Show a warning message to the user."""
+        QMessageBox.warning(self, title, message)
+    
+    def show_info_message(self, title: str, message: str) -> None:
+        """Show an info message to the user."""
+        QMessageBox.information(self, title, message)
+    
+    def set_busy_state(self, busy: bool) -> None:
+        """Set the view to busy state (e.g., show loading cursor)."""
+        if busy:
+            self.setCursor(QCursor(Qt.CursorShape.WaitCursor))
+        else:
+            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+    
+    def get_widget(self) -> QWidget:
+        """Get the underlying QWidget for this view."""
+        return self

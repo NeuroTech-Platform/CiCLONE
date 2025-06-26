@@ -8,14 +8,24 @@ from ciclone.domain.subject import Subject
 from ciclone.utils.utility import clean_before_stage
 
 def processImagesAnalysis(conn, output_directory: str, subject_list: list, config_data: dict):
+    # Track cleanup state to prevent multiple cleanup messages
+    cleanup_started = False
+    
     # Set up signal handler for clean termination
     def signal_handler(signum, frame):
-        conn.send({"type": "log", "level": "info", "message": "Processing interrupted, cleaning up..."})
-        # Kill all child processes in this process group
-        try:
-            os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
-        except:
-            pass
+        nonlocal cleanup_started
+        if not cleanup_started:
+            cleanup_started = True
+            print(f"[DEBUG] Signal {signum} received, starting cleanup...")
+            conn.send({"type": "log", "level": "info", "message": "Processing interrupted, cleaning up..."})
+            # Kill all child processes in this process group
+            try:
+                os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
+                print("[DEBUG] Sent SIGTERM to process group")
+            except Exception as e:
+                print(f"[DEBUG] Failed to kill process group: {e}")
+        else:
+            print(f"[DEBUG] Signal {signum} received, but cleanup already started")
         exit(1)
     
     signal.signal(signal.SIGTERM, signal_handler)

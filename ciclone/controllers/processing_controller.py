@@ -1,12 +1,22 @@
 from typing import Optional, Callable, List, Dict, Any, Tuple
+
 from PyQt6.QtCore import QObject
+from PyQt6.QtWidgets import QApplication
 
 from ciclone.models.application_model import ApplicationModel
 from ciclone.workers.ImageProcessingWorker import ImageProcessingWorker
+from ciclone.interfaces.view_interfaces import IMainView
 
 
 class ProcessingController(QObject):
-    """Controller for managing image processing operations and worker coordination."""
+    """
+    Controller for managing image processing operations and worker coordination.
+    
+    This controller handles the execution of medical image processing pipelines,
+    coordinating between the UI, application model, and background worker processes.
+    It manages stage selection, progress tracking, and graceful termination of
+    long-running operations involving external tools like FSL and FreeSurfer.
+    """
     
     def __init__(self, application_model: ApplicationModel):
         super().__init__()
@@ -14,11 +24,11 @@ class ProcessingController(QObject):
         self._view = None
         self._log_callback: Optional[Callable[[str, str], None]] = None
         
-        # Connect to application model signals
+        # Connect to application model signals for state synchronization
         self.application_model.worker_state_changed.connect(self._on_worker_state_changed)
         self.application_model.stages_selection_changed.connect(self._on_stages_selection_changed)
         
-    def set_view(self, view):
+    def set_view(self, view: IMainView):
         """Set the view reference for UI updates."""
         self._view = view
         
@@ -41,9 +51,10 @@ class ProcessingController(QObject):
         if self._view and hasattr(self._view, 'update_stages_selection_ui'):
             self._view.update_stages_selection_ui(selected_stages)
     
+    # Processing Operations
+    
     def run_all_stages(self, selected_subjects: List[str]) -> bool:
         """Run all configured stages for the selected subjects."""
-        # Check if a process is already running
         if self.application_model.is_worker_running():
             self._log_message("warning", "Processing is already in progress")
             return False
@@ -57,7 +68,6 @@ class ProcessingController(QObject):
             self._log_message("error", "Output directory not set")
             return False
         
-        # Get all stages from configuration
         stages_config = self.application_model.get_stages_config()
         if not stages_config:
             self._log_message("error", "No stages configured")
@@ -67,7 +77,6 @@ class ProcessingController(QObject):
     
     def run_selected_stages(self, selected_subjects: List[str]) -> bool:
         """Run only the selected stages for the selected subjects."""
-        # Check if a process is already running
         if self.application_model.is_worker_running():
             self._log_message("warning", "Processing is already in progress")
             return False
@@ -81,7 +90,6 @@ class ProcessingController(QObject):
             self._log_message("error", "Output directory not set")
             return False
         
-        # Get selected stages configuration
         selected_stages_config = self.application_model.get_selected_stages_config()
         if not selected_stages_config:
             self._log_message("error", "No stages selected for processing")
@@ -94,17 +102,14 @@ class ProcessingController(QObject):
         try:
             output_directory = self.application_model.get_output_directory()
             
-            # Clear any previous progress and reset UI
             if self._view and hasattr(self._view, 'clear_processing_log'):
                 self._view.clear_processing_log()
             
             self.application_model.update_worker_progress(0)
             
-            # Log the start of processing
             stage_names = [stage.get("name", "Unknown") for stage in stages_config]
             self._log_message("info", f"{operation_name} => Starting processing {len(subject_list)} subjects with stages: {', '.join(stage_names)}")
             
-            # Create worker config with selected stages
             worker_config = self._build_worker_config(stages_config)
             worker = ImageProcessingWorker(output_directory, subject_list, worker_config)
             
@@ -113,10 +118,7 @@ class ProcessingController(QObject):
             worker.log_signal.connect(self._on_worker_log_message)
             worker.finished.connect(self._on_worker_finished)
             
-            # Update application state
             self.application_model.set_worker_running(worker)
-            
-            # Start the worker thread
             worker.start()
             
             return True
@@ -126,29 +128,20 @@ class ProcessingController(QObject):
             return False
     
     def _build_worker_config(self, stages_to_run: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Build configuration for the worker containing only the necessary data.
-        
-        Args:
-            stages_to_run: List of stage configurations to execute
-            
-        Returns:
-            Configuration dictionary optimized for worker usage
-        """
-        # Get base config data (excluding stages)
+        """Build configuration for the worker containing only the necessary data."""
         base_config = self.application_model.get_config()
         
-        # Build worker config with only needed components
         worker_config = {
             'stages': stages_to_run,
         }
         
-        # Copy essential configuration sections needed by operations
         for key in ['stage_outputs', 'settings', 'paths', 'defaults']:
             if key in base_config:
                 worker_config[key] = base_config[key]
         
         return worker_config
+    
+    # Worker Event Handlers
     
     def _on_worker_progress_update(self, progress: int):
         """Handle progress updates from the worker."""
@@ -162,7 +155,6 @@ class ProcessingController(QObject):
         """Handle worker completion."""
         self._log_message("info", "Processing completed")
         
-        # Clean up worker state
         worker = self.application_model.get_worker_instance()
         if worker:
             worker.deleteLater()
@@ -170,35 +162,47 @@ class ProcessingController(QObject):
         self.application_model.set_worker_stopped()
     
     def stop_processing(self) -> bool:
-        """Stop the current processing operation."""
+        """
+        Stop the current processing operation gracefully.
+        
+        This method terminates the worker thread and all associated subprocesses
+        (FSL, FreeSurfer, ANTs tools) while ensuring proper cleanup and message ordering.
+        Uses Qt's event processing to guarantee cleanup messages appear before success.
+        
+        Returns:
+            bool: True if stop was successful, False otherwise
+        """
         worker = self.application_model.get_worker_instance()
         if worker and self.application_model.is_worker_running():
             try:
-                print("[STOP] Attempting to stop processing gracefully...")
+                self._log_message("info", "Stopping processing operation...")
                 
-                # Attempt to terminate the worker gracefully
+                # Terminate worker thread and wait for graceful shutdown
                 worker.terminate()
                 worker.wait(5000)  # Wait up to 5 seconds
                 
                 if worker.isRunning():
-                    print("[STOP] Graceful termination failed, forcing kill...")
-                    # Force kill if graceful termination failed
+                    self._log_message("warning", "Graceful termination failed, forcing stop...")
                     worker.kill()
-                    worker.wait(2000)
+                    worker.wait(2000)  # Wait up to 2 more seconds for force kill
                 
-                print("[STOP] Processing stopped successfully!")
-                self._log_message("warning", "Processing stopped by user")
+                # Process any remaining Qt events to ensure proper message ordering
+                # This guarantees cleanup messages from subprocesses are handled before success
+                QApplication.processEvents()
+                
+                # Declare success after all cleanup is complete
+                self._log_message("success", "✅ Processing stopped successfully")
                 self.application_model.set_worker_stopped()
                 return True
                 
             except Exception as e:
-                print(f"[STOP] Failed to stop processing: {str(e)}")
                 self._log_message("error", f"Failed to stop processing: {str(e)}")
                 return False
         else:
-            print("[STOP] No processing operation to stop")
             self._log_message("warning", "No processing operation to stop")
             return False
+    
+    # Processing State Queries
     
     def is_processing_running(self) -> bool:
         """Check if processing is currently running."""
@@ -208,7 +212,8 @@ class ProcessingController(QObject):
         """Get current processing progress."""
         return self.application_model.get_worker_progress()
     
-    # Stage Selection Management
+    # Stage Management
+    
     def update_stage_selection_from_ui(self, stage_names: List[str]):
         """Update stage selection based on UI state."""
         self.application_model.set_selected_stages(stage_names)
@@ -239,10 +244,10 @@ class ProcessingController(QObject):
         """Check if a specific stage is selected."""
         return stage_name in self.application_model.get_selected_stages()
     
-    # Utility Methods
+    # Validation and Summary
+    
     def validate_processing_prerequisites(self, selected_subjects: List[str]) -> Tuple[bool, str]:
-        """Validate that all prerequisites for processing are met.
-        Returns (is_valid, error_message)."""
+        """Validate that all prerequisites for processing are met."""
         
         if not self.application_model.is_output_directory_set():
             return False, "Output directory not set or does not exist"
@@ -261,11 +266,9 @@ class ProcessingController(QObject):
     def get_processing_summary(self) -> Dict[str, Any]:
         """Get a summary of current processing state."""
         return {
-            "is_running": self.application_model.is_worker_running(),
-            "progress": self.application_model.get_worker_progress(),
-            "available_stages_count": len(self.application_model.get_stages_config()),
-            "selected_stages_count": len(self.application_model.get_selected_stages()),
-            "selected_stages": self.application_model.get_selected_stages(),
-            "output_directory_set": self.application_model.is_output_directory_set(),
-            "output_directory": self.application_model.get_output_directory()
+            'is_running': self.is_processing_running(),
+            'progress': self.get_processing_progress(),
+            'selected_stages': self.get_selected_stages(),
+            'available_stages': len(self.get_available_stages()),
+            'output_directory': self.application_model.get_output_directory()
         } 
