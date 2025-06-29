@@ -102,7 +102,8 @@ class SlicerFile:
                         electrode_name: str, 
                         electrode_type: str, 
                         contacts: List[Tuple[int, int, int]], 
-                        affine: np.ndarray) -> Dict:
+                        affine: np.ndarray,
+                        image_center: Optional[np.ndarray] = None) -> Dict:
         """Create a fiducial markup for an electrode."""
         color = self._generate_color_from_name(electrode_name)
         
@@ -123,7 +124,12 @@ class SlicerFile:
         for i, contact in enumerate(contacts):
             voxel_coords = np.array([contact[0], contact[1], contact[2], 1.0])
             physical_coords = np.dot(affine, voxel_coords)[:3]
-            ras_coords = physical_coords.tolist()
+            
+            # Apply center-relative transformation if image center is provided
+            if image_center is not None:
+                ras_coords = (physical_coords - image_center).tolist()
+            else:
+                ras_coords = physical_coords.tolist()
             
             control_point = self._create_control_point(
                 i, f"{electrode_name}{i+1}", electrode_type, ras_coords
@@ -134,7 +140,8 @@ class SlicerFile:
 
     def create_markup(self, 
                      electrodes: List[Dict], 
-                     affine: np.ndarray) -> Dict:
+                     affine: np.ndarray,
+                     image_center: Optional[np.ndarray] = None) -> Dict:
         """Create the complete markup structure for all electrodes."""
         markup = self.base_markup.copy()
         
@@ -146,7 +153,8 @@ class SlicerFile:
                 electrode['name'],
                 electrode['type'],
                 electrode['contacts'],
-                affine
+                affine,
+                image_center
             )
             markup["markups"].append(fiducial)
             

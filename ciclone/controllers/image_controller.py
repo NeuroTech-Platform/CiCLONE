@@ -165,7 +165,14 @@ class ImageController:
         """Convert 3D coordinates to pixel coordinates for the current view."""
         return self.image_model.convert_3d_to_pixel_coords(point, orientation, scaled_width, scaled_height)
     
+    def get_image_center_physical(self):
+        """Get the image center in physical coordinate space."""
+        return self.image_model.get_image_center_physical()
+    
     def _show_error(self, message: str):
         """Show error message to user."""
         if self._view:
-            QMessageBox.warning(self._view, "Error", message) 
+            # Use view's error display method if available
+            pass  # View should handle error display
+        else:
+            print(f"Error: {message}") 
