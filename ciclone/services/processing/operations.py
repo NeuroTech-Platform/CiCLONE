@@ -173,9 +173,17 @@ def transform_coordinates(input_json: Path, transformation_matrix: Path, output_
     Transform electrode coordinates from subject space to MNI space
     using the transformation matrix from the registration pipeline.
     
-    Note: This function assumes electrode coordinates are in image space
-    and intentionally ignores translations from the transformation matrix
-    since we only want to apply rotation and scaling components.
+    This function applies the registration transformation matrix to electrode coordinates
+    that were marked in subject image space, transforming them to MNI standard space.
+    
+    Note: This function assumes electrode coordinates are in image space and intentionally
+    ignores translations from the transformation matrix since we only want to apply 
+    rotation and scaling components for coordinate transformation.
+    
+    Args:
+        input_json: Path to input JSON file with electrode coordinates in subject space
+        transformation_matrix: Path to FSL transformation matrix (.mat file)
+        output_json: Path to output JSON file with coordinates transformed to MNI space
     """
     # Read the transformation matrix
     with open(transformation_matrix, 'r') as f:
@@ -218,12 +226,14 @@ def transform_coordinates(input_json: Path, transformation_matrix: Path, output_
 
 def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
     """
-    Register a T1 MRI image to MNI space using FSL FLIRT. The registration is done in two stages:
+    Register a T1 MRI brain image to MNI space using FSL FLIRT. The registration is done in two stages:
     1. Rigid registration (6 DOF) to get a rough alignment
     2. Affine registration (12 DOF) initialized with the rigid transform for fine-tuning
     
+    Uses MNI152_T1_2mm_brain template for brain-to-brain registration.
+    
     Args:
-        input_file: Path to the input T1 MRI image
+        input_file: Path to the input T1 brain image (brain-extracted)
         output_file_name: Name of the output file (without extension). Will create:
             - {output_file_name}_rigid.mat: Rigid transformation matrix
             - {output_file_name}_rigid: Rigidly registered image
@@ -231,7 +241,7 @@ def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
             - {output_file_name}: Final registered image
     """
     input_file = Path(input_file)
-    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_1mm.nii.gz")
+    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_2mm_brain.nii.gz")
 
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
@@ -275,7 +285,7 @@ def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:
     """
     Register a CT image to MNI space using FSL FLIRT.
     
-    This function performs affine registration (12 DOF) of a CT image to the MNI152 T1 1mm template,
+    This function performs affine registration (12 DOF) of a CT image to the MNI152 T1 2mm template,
     using normalized mutual information as the cost function and high quality sinc interpolation.
     The registration allows for full rotation search to handle any initial orientation.
     
@@ -286,7 +296,7 @@ def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:
             - {output_file_name}.mat: Affine transformation matrix from native to MNI space
     """
     input_file = Path(input_file)
-    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_1mm.nii.gz")
+    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_2mm.nii.gz")
 
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
