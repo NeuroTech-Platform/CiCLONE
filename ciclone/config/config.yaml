@@ -18,12 +18,14 @@ stage_outputs:
     - "MNI_*"             # MNI registration outputs
     - "*_rigid*"          # Rigid registration temp files
     - "norm_*"            # Normalized images
+    - "*_ref_brain*"      # Brain-extracted reference images
+    - "*_brain.mat"       # Brain registration matrices
   cortical_extraction:
     - "freesurfer_*"      # FreeSurfer outputs
 
 stages:
   - name: preprocessing
-    auto_clean: true      # Clean this stage + all downstream stages
+    auto_clean: true
     operations:
       - type: open_fsleyes
         workdir: preop/ct
@@ -54,7 +56,7 @@ stages:
         files: ["${name}_T1_C", "${subj_dir}/processed_tmp"]
 
   - name: coregisteration
-    auto_clean: true      # Clean this stage + all downstream stages
+    auto_clean: true
     operations:
       - type: coregister
         workdir: processed_tmp
@@ -67,7 +69,7 @@ stages:
         files: ["${name}_CT_Electrodes_C", "${name}_CT_Bone_C", "b_${name}_postimplant_ct"]
 
   - name: extract_electrodes
-    auto_clean: true      # Clean this stage + all downstream stages
+    auto_clean: true
     operations:
       - type: subtract
         workdir: processed_tmp
@@ -80,7 +82,7 @@ stages:
         files: ["b_${name}_seeg", "v_${name}_bone_mask.mat", "${name}_CT_Electrodes_C", "r_${name}_seeg"]
 
   - name: apply_mask
-    auto_clean: true      # Clean this stage + all downstream stages
+    auto_clean: true
     operations:
       - type: extract_brain
         workdir: processed_tmp
@@ -90,14 +92,17 @@ stages:
         files: ["r_${name}_seeg", "${name}_stripped_mask", "r_${name}_seeg_masked"]
 
   - name: mni_registration
-    auto_clean: true      # Clean this stage + all downstream stages
+    auto_clean: true
     operations:
+      - type: extract_brain2
+        workdir: processed_tmp
+        files: ["v_${name}_ref", "v_${name}_ref_brain"]
       - type: register_mri_to_mni
         workdir: processed_tmp
-        files: ["${name}_T1_C", "MNI_${name}_T1"]
+        files: ["v_${name}_ref_brain", "MNI_${name}_ref_brain"]
 
   - name: cortical_extraction
-    auto_clean: true      # Clean this stage + all downstream stages
+    auto_clean: true
     operations:
       - type: reconstruct
         workdir: processed_tmp
