@@ -510,6 +510,31 @@ class ImageModel:
         """Get the path of the currently loaded image."""
         return self._primary_image_path
     
+    def get_image_center_physical(self) -> Optional[np.ndarray]:
+        """Calculate the image center in physical coordinate space."""
+        if not self._images or not self._primary_image_path:
+            return None
+            
+        primary_img = self._images.get(self._primary_image_path)
+        if not primary_img:
+            return None
+            
+        # Get image dimensions
+        shape = primary_img.volume_data.shape
+        
+        # Calculate center in voxel space (0-based indexing)
+        center_voxel = np.array([
+            (shape[0] - 1) / 2.0,  # x center
+            (shape[1] - 1) / 2.0,  # y center  
+            (shape[2] - 1) / 2.0,  # z center
+            1.0  # homogeneous coordinate
+        ])
+        
+        # Transform to physical space using affine matrix
+        center_physical = np.dot(primary_img.affine, center_voxel)[:3]
+        
+        return center_physical
+    
     def is_point_visible_on_slice(self, point: Tuple[int, int, int], orientation: str, 
                                  current_slices: Dict[str, int]) -> bool:
         """Check if a 3D point is visible on the current slice."""

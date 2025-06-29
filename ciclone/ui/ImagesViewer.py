@@ -950,9 +950,16 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     'contacts': contacts
                 })
             
+            # Get image center for center-relative coordinates
+            image_center = self.image_controller.get_image_center_physical()
+            
             # Create and save the markup file
             slicer_file = SlicerFile()
-            markup = slicer_file.create_markup(electrodes_data, self.image_controller.get_affine_transform())
+            markup = slicer_file.create_markup(
+                electrodes_data, 
+                self.image_controller.get_affine_transform(),
+                image_center
+            )
             
             if slicer_file.save_to_file(file_path, markup):
                 QMessageBox.information(self, "Success", f"Electrode coordinates saved to {file_path} in 3D Slicer format")
