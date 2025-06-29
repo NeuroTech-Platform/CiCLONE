@@ -73,7 +73,40 @@ fsleyes --version     # Success: fsleyes/FSLeyes version 1.13.0
 - Elegant validation system operational
 - Advanced image overlay controls stable
 
-## Current Development State: **FEATURE ENHANCEMENT PHASE**
+### **LATEST ACHIEVEMENTS: CRITICAL FIXES COMPLETED** ✅
+
+#### **Electrode Positioning in Slicer** ✅ **MAJOR FIX COMPLETED**
+**Problem Solved**: Electrodes were not centered around (0,0,0) when exported to 3D Slicer
+
+**Root Cause**: NIFTI affine matrix transforms voxel coordinates to scanner space, where the image origin (0,0,0) may be far from the anatomical center.
+
+**Solution Implemented**:
+- ✅ **Image Center Calculation**: Added `get_image_center_physical()` method to calculate anatomical center
+- ✅ **Center-Relative Export**: Modified Slicer export to subtract image center from coordinates
+- ✅ **Coordinate System Integration**: Updated coordinate transformation pipeline for consistency
+- ✅ **Documentation Updates**: Enhanced docstrings for coordinate transformation functions
+
+**Files Modified**: `image_model.py`, `image_controller.py`, `slicer_file.py`, `ImagesViewer.py`, `operations.py`
+**Impact**: **Electrodes now correctly centered around (0,0,0) in Slicer** while maintaining anatomical accuracy
+
+#### **Enhanced MNI Registration Pipeline** ✅ **PIPELINE IMPROVEMENT**
+**Enhancement**: Improved MNI registration workflow with brain extraction and proper template usage
+
+**New Pipeline Steps**:
+1. **Brain Extraction**: Extract brain from reference image using FSL BET (`extract_brain2`)
+2. **MRI-to-MNI Registration**: Register brain-extracted reference to MNI brain template
+3. **CT-to-MNI Registration**: Register CT to MNI space using appropriate templates
+
+**Technical Updates**:
+- ✅ **Template Selection**: Updated to use `MNI152_T1_2mm_brain.nii.gz` for brain registrations
+- ✅ **Pipeline Configuration**: Enhanced `config.yaml` with brain extraction stage
+- ✅ **Operation Functions**: Updated `register_mri_to_mni()` and `register_ct_to_mni()` functions
+- ✅ **Output Management**: Added brain extraction outputs to stage management
+
+**Files Modified**: `config.yaml`, `operations.py`
+**Impact**: **More robust and accurate MNI registration** following best practices for neuroimaging pipelines
+
+## Current Development State: **PRODUCTION READY + ENHANCEMENT PHASE**
 
 ### **Architecture Phase: COMPLETE** ✅
 All planned architectural improvements have been successfully implemented:

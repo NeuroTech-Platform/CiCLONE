@@ -386,4 +386,109 @@ def transform_coordinates(
 **Benefit**: Business logic can be verified independently of UI/infrastructure
 **Regulatory Value**: Clear business logic separation supports compliance audits
 
+### **CRITICAL DISCOVERY: FSL Dependency Management** 🚨
+**Most Important Recent Learning**: FSL tools are completely self-contained!
+
+**The Problem We Solved:**
+- FSL was failing with "A module that was compiled using NumPy 1.x cannot be run in NumPy 2.2.3" errors
+- Initially thought FSL depended on system-wide NumPy installation
+- Spent time trying to coordinate NumPy versions between system and project
+
+**The Critical Discovery:**
+- **FSL is completely self-contained** with all dependencies bundled
+- **System-wide NumPy was interfering** with FSL's internal dependencies
+- **Removing system NumPy entirely** fixed all FSL compatibility issues
+- **Test proof**: `pip3 uninstall numpy` followed by `fsleyes --version` → SUCCESS
+
+**Key Learning Pattern**: Always test if external scientific tools are truly self-contained before assuming system dependency conflicts.
+
+**Implementation Strategy:**
+```bash
+# System level: No NumPy installation needed
+pip3 uninstall numpy  # Remove system NumPy entirely
+
+# Project level: Modern NumPy 2.x in Poetry environment  
+# pyproject.toml: numpy = "^2.2.0"
+
+# FSL level: Uses bundled dependencies, works independently
+fsleyes --version  # Success: fsleyes/FSLeyes version 1.13.0
+```
+
+**Project Intelligence**: Medical imaging tools (FSL, FreeSurfer, ANTs) often bundle their entire Python ecosystem to avoid exactly these version conflicts. Always check if they're self-contained before assuming system dependencies.
+
+### **CRITICAL: Coordinate System Architecture** 🎯
+**Most Important Medical Accuracy Discovery**: NIFTI coordinate origins vs anatomical centers
+
+**The Problem We Solved:**
+- Electrodes marked in CiCLONE appeared in wrong locations when exported to 3D Slicer
+- Root cause: NIFTI affine matrix transforms to scanner coordinate space, not anatomical center
+- Image origin (0,0,0) can be far from the actual anatomical center
+
+**The Critical Solution:**
+- **Center-Relative Coordinate System**: Transform coordinates relative to image center
+- **Anatomical Accuracy**: Electrodes now properly centered around (0,0,0) in 3D space
+- **Backward Compatibility**: Optional parameter system maintains existing functionality
+
+**Implementation Pattern:**
+```python
+# 1. Calculate image center in physical space
+def get_image_center_physical(self) -> Optional[np.ndarray]:
+    shape = primary_img.volume_data.shape
+    center_voxel = np.array([(shape[0]-1)/2.0, (shape[1]-1)/2.0, (shape[2]-1)/2.0, 1.0])
+    center_physical = np.dot(primary_img.affine_matrix, center_voxel)[:3]
+    return center_physical
+
+# 2. Export coordinates relative to image center
+def _create_fiducial(self, electrode_name, electrode_type, contacts, affine, image_center=None):
+    physical_coords = np.dot(affine, voxel_coords)[:3]
+    if image_center is not None:
+        physical_coords = physical_coords - image_center  # CENTER-RELATIVE
+    
+# 3. Coordinate transformation pipeline
+voxel_coords → physical_coords → center_relative_coords → export_format
+```
+
+**Key Medical Pattern**: **Always work in center-relative coordinates for 3D visualization**
+- **Voxel space**: Array indices from user clicks
+- **Physical space**: NIFTI affine transformation
+- **Center-relative space**: Subtract anatomical center for proper 3D positioning
+- **Export space**: Standardized formats (Slicer JSON, research data)
+
+**Files Modified**: `image_model.py`, `image_controller.py`, `slicer_file.py`, `ImagesViewer.py`, `operations.py`
+**Medical Impact**: **Electrodes now correctly positioned in 3D Slicer visualizations**
+
+### **Enhanced MNI Registration Pipeline Pattern** 🧠
+**Medical Improvement**: Brain extraction before MNI registration for better accuracy
+
+**Enhancement Implemented:**
+- **Step 1**: Brain extraction from reference image (`extract_brain2`)
+- **Step 2**: Brain-to-brain registration vs full head registration
+- **Step 3**: CT registration using appropriate MNI templates
+
+**Technical Pattern:**
+```yaml
+# Enhanced config.yaml pipeline
+- name: mni_registration
+  operations:
+    - type: extract_brain2      # Brain extraction first
+      files: ["v_${name}_ref", "v_${name}_ref_brain"]
+    - type: register_mri_to_mni # Brain-to-brain registration
+      files: ["v_${name}_ref_brain", "MNI_${name}_ref_brain"]
+    - type: register_ct_to_mni  # CT to MNI registration
+      files: ["b_${name}_postimplant_ct", "MNI_${name}_CT_implanted"]
+```
+
+**Medical Intelligence**: Use brain templates (`MNI152_T1_2mm_brain.nii.gz`) for brain tissue registration, not full head templates.
+
+## **COMPLETED: 4-Step MVC Improvement Plan** ✅
+**This architectural roadmap has been fully achieved!**
+
+**Step 1** ✅ **Create Dialog Service Layer** - COMPLETED
+- Created `ciclone/services/ui/dialog_service.py` 
+- Removed ALL QMessageBox, QInputDialog, QFileDialog from controllers
+- Clean MVC separation achieved for UI dialogs
+
+**Step 2** ✅ **Refactor Controller UI Logic** - COMPLETED  
+- Created `ciclone/services/ui/view_delegate.py`
+
 This project intelligence captures the unique aspects of developing medical imaging software, providing guidance for future development decisions and ensuring continued alignment with medical software requirements and best practices. 
