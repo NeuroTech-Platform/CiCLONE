@@ -64,18 +64,21 @@ CiCLONE integrates the entire electrode localization pipeline into a single appl
 - **Standardized Transformations**: Consistent coordinate conversion
 - **Quality Controls**: Built-in validation and error checking
 - **Reproducible Results**: Consistent processing across users
+- **Center-Relative Coordinates**: Anatomically accurate 3D positioning for visualization
 
 #### User Experience
 - **Intuitive Interface**: Medical professional-friendly design
 - **Visual Feedback**: Real-time image overlay and visualization
 - **Interactive Placement**: Direct coordinate setting on images
 - **Progress Tracking**: Clear feedback on processing status
+- **3D Slicer Integration**: Proper electrode positioning in external visualization tools
 
 #### Research Integration
 - **Standard Formats**: NIFTI, JSON, and 3D Slicer compatibility
 - **MNI Standardization**: Direct transformation to standard space
 - **Electrode Libraries**: Configurable electrode definitions
 - **Export Capabilities**: Research-ready coordinate data
+- **Enhanced Registration Pipeline**: Brain extraction and optimal template matching
 
 ### Clinical Workflow Integration
 

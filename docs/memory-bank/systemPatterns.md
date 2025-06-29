@@ -198,16 +198,29 @@ UI Updates ← Coordinate Model ← Business Logic
 **Detailed Flow:**
 1. User creates electrode or sets coordinates
 2. Controller validates input and coordinates operations
-3. Models store data and update state
-4. Domain objects maintain business rules
-5. Views automatically refresh through signal/slot connections
+3. Model stores electrode data and triggers state changes
+4. Views update to reflect new electrode information
 
-### 3. Processing Pipeline Execution
+### 3. Coordinate Transformation Pipeline
 ```
-Configuration → ProcessingController → Background Worker → External Tools
-      ↓                ↓                      ↓
-Progress Updates ← Qt Signals ← Process Management
+Voxel Coordinates → Physical Coordinates → Center-Relative Coordinates → Export Format
+      ↓                    ↓                        ↓                    ↓
+Image Clicking → Affine Transform → Image Center Subtraction → Slicer JSON
 ```
+
+**Coordinate System Flow:**
+1. **Voxel Space**: User clicks on image, generates voxel coordinates (array indices)
+2. **Physical Space**: NIFTI affine matrix transforms voxel to physical coordinates
+3. **Center-Relative Space**: Subtract image center for anatomical centering
+4. **Export Format**: Generate standardized output (Slicer JSON, research formats)
+
+**Key Pattern**: **Center-Relative Coordinate System**
+- **Problem**: NIFTI origins can be far from anatomical center (scanner coordinate system)
+- **Solution**: Transform to center-relative coordinates for proper 3D visualization
+- **Implementation**: `get_image_center_physical()` calculates anatomical center, coordinates adjusted relative to center
+- **Benefit**: Electrodes properly centered around (0,0,0) in 3D Slicer and other visualization tools
+
+### 4. Processing Pipeline Pattern
 
 ## Key Design Principles
 
