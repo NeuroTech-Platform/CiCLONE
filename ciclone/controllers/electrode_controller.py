@@ -74,6 +74,66 @@ class ElectrodeController:
             self._view.refresh_image_display()
         
         return success_count == len(electrode_names)
+
+    def rename_electrode(self, old_name: str, new_name: str) -> bool:
+        """
+        Rename an electrode and update all associated data.
+        
+        Args:
+            old_name: Current name of the electrode
+            new_name: New name for the electrode
+            
+        Returns:
+            bool: True if rename was successful, False otherwise
+        """
+        # Validate inputs
+        if not old_name or not new_name:
+            self._show_error("Electrode names cannot be empty.")
+            return False
+        
+        # Check if old electrode exists
+        if not self.electrode_model.electrode_exists(old_name):
+            self._show_error(f"Electrode '{old_name}' does not exist.")
+            return False
+        
+        # Check if new name already exists
+        if self.electrode_model.electrode_exists(new_name):
+            self._show_error(f"Electrode '{new_name}' already exists.")
+            return False
+        
+        try:
+            # Get the electrode object before renaming
+            electrode = self.electrode_model.get_electrode(old_name)
+            if not electrode:
+                return False
+            
+            # Rename in electrode model
+            if not self.electrode_model.rename_electrode(old_name, new_name):
+                return False
+            
+            # Update coordinates in coordinate model
+            self.coordinate_model.rename_electrode_coordinates(old_name, new_name)
+            
+            # Update contact labels within the electrode to match new name
+            for i, contact in enumerate(electrode.contacts):
+                contact.label = f"{new_name}{i+1}"
+            
+            # Update processed contacts if they exist
+            if old_name in self.electrode_model._processed_contacts:
+                self.electrode_model._processed_contacts[new_name] = self.electrode_model._processed_contacts.pop(old_name)
+            
+            # Update UI if view is available
+            if self._view:
+                self._view.refresh_electrode_list()
+                self._view.refresh_coordinate_display()
+                self._view.refresh_image_display()
+            
+            self._show_info(f"Successfully renamed electrode '{old_name}' to '{new_name}'.")
+            return True
+            
+        except Exception as e:
+            self._show_error(f"Failed to rename electrode: {str(e)}")
+            return False
     
     def load_electrodes_from_file(self, file_path: str, 
                                 image_center: Optional[np.ndarray] = None,

@@ -54,6 +54,29 @@ class ElectrodeModel:
             del self._processed_contacts[name]
         
         return True
+
+    def rename_electrode(self, old_name: str, new_name: str) -> bool:
+        """
+        Rename an electrode in the model.
+        
+        Args:
+            old_name: Current name of the electrode
+            new_name: New name for the electrode
+            
+        Returns:
+            bool: True if rename was successful, False otherwise
+        """
+        if old_name not in self._electrodes or new_name in self._electrodes:
+            return False
+        
+        # Get the electrode and update its name
+        electrode = self._electrodes[old_name]
+        electrode.name = new_name
+        
+        # Update the dictionary key
+        self._electrodes[new_name] = self._electrodes.pop(old_name)
+        
+        return True
     
     def get_electrode(self, name: str) -> Optional[Electrode]:
         """Get an electrode by name."""
