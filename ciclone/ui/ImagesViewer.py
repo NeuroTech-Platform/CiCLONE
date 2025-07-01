@@ -760,6 +760,28 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     self.ElectrodeTreeWidget.addTopLevelItem(tree_item)
                     tree_item.setExpanded(True)  # Expand to show contacts
 
+    def update_electrode_tree_item(self, old_name: str, new_name: str):
+        """Update a specific electrode tree item after rename."""
+        root = self.ElectrodeTreeWidget.invisibleRootItem()
+        
+        # Find and remove the old item
+        for i in range(root.childCount()):
+            item = root.child(i)
+            if item.text(0) == old_name:
+                # Remember if it was expanded
+                was_expanded = item.isExpanded()
+                
+                # Remove the old item
+                root.removeChild(item)
+                
+                # Get the renamed electrode and create new tree item
+                electrode = self.electrode_controller.get_electrode(new_name)
+                if electrode:
+                    new_item = self.electrode_controller.create_tree_item(electrode)
+                    root.insertChild(i, new_item)  # Insert at same position
+                    new_item.setExpanded(was_expanded)  # Preserve expansion state
+                break
+
     def refresh_image_display(self):
         """Refresh all image displays."""
         self.refresh_all_views()
@@ -1080,7 +1102,13 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         menu = QMenu()
         
-        # Show appropriate text based on selection count
+        # Add rename option only for single electrode selection
+        rename_action = None
+        if len(electrode_items) == 1:
+            rename_action = menu.addAction("Rename Electrode")
+            menu.addSeparator()
+        
+        # Show appropriate delete text based on selection count
         if len(electrode_items) == 1:
             delete_action = menu.addAction("Delete Electrode")
         else:
@@ -1089,7 +1117,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Show the menu and get the selected action
         action = menu.exec(self.ElectrodeTreeWidget.viewport().mapToGlobal(position))
         
-        if action == delete_action:
+        if action == rename_action:
+            self.rename_electrode(electrode_items[0])
+        elif action == delete_action:
             self.delete_electrodes(electrode_items)
 
     def delete_electrodes(self, items):
@@ -1100,6 +1130,51 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             # Remove from tree widget in reverse order to avoid index issues
             for item in reversed(items):
                 self.ElectrodeTreeWidget.takeTopLevelItem(self.ElectrodeTreeWidget.indexOfTopLevelItem(item))
+
+    def rename_electrode(self, item):
+        """Rename an electrode and update all related data."""
+        old_name = item.text(0)
+        
+        # Show input dialog to get new name
+        from PyQt6.QtWidgets import QInputDialog
+        new_name, ok = QInputDialog.getText(
+            self, 
+            "Rename Electrode", 
+            f"Enter new name for electrode '{old_name}':",
+            text=old_name
+        )
+        
+        if not ok or not new_name.strip():
+            return
+        
+        new_name = new_name.strip()
+        
+        # Check if new name is different
+        if new_name == old_name:
+            return
+        
+        # Check if new name already exists
+        if self.electrode_controller.electrode_model.electrode_exists(new_name):
+            QMessageBox.warning(self, "Warning", f"An electrode with the name '{new_name}' already exists.")
+            return
+        
+        # Perform the rename through the controller
+        if self.electrode_controller.rename_electrode(old_name, new_name):
+            # Update the specific tree item with the new name and contacts
+            self.update_electrode_tree_item(old_name, new_name)
+            
+            # Update combo box
+            self.refresh_electrode_list()
+            
+            # Update coordinate display if this electrode was selected
+            current_electrode = self.ElectrodesComboBox.currentText()
+            if current_electrode == new_name:
+                self.update_coordinate_display(new_name)
+            
+            # Refresh image display to update any markers
+            self.refresh_image_display()
+        else:
+            QMessageBox.critical(self, "Error", f"Failed to rename electrode '{old_name}' to '{new_name}'.")
 
     def on_set_entry_clicked(self):
         """Handle set entry button click."""

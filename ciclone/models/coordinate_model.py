@@ -51,6 +51,27 @@ class CoordinateModel:
             del self._electrode_points[electrode_name]
             return True
         return False
+
+    def rename_electrode_coordinates(self, old_name: str, new_name: str) -> bool:
+        """
+        Rename an electrode's coordinates.
+        
+        Args:
+            old_name: Current name of the electrode
+            new_name: New name for the electrode
+            
+        Returns:
+            bool: True if rename was successful, False otherwise
+        """
+        if old_name not in self._electrode_points:
+            return True  # No coordinates to rename, consider it successful
+        
+        if new_name in self._electrode_points:
+            return False  # New name already exists
+        
+        # Transfer coordinates to new name
+        self._electrode_points[new_name] = self._electrode_points.pop(old_name)
+        return True
     
     def clear_entry_point(self, electrode_name: str) -> None:
         """Clear entry point for an electrode."""
