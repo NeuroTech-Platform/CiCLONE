@@ -167,4 +167,116 @@ class SlicerFile:
                 json.dump(markup, f, indent=4)
             return True
         except Exception:
-            return False 
+            return False
+
+    def load_from_file(self, file_path: str) -> Dict:
+        """Load markup data from a Slicer JSON file."""
+        try:
+            with open(file_path, 'r') as f:
+                markup_data = json.load(f)
+            
+            # Validate basic structure
+            if not isinstance(markup_data, dict) or 'markups' not in markup_data:
+                raise ValueError("Invalid Slicer file format: missing 'markups' field")
+            
+            if not isinstance(markup_data['markups'], list):
+                raise ValueError("Invalid Slicer file format: 'markups' must be a list")
+            
+            return markup_data
+        
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Failed to load file: {str(e)}")
+
+    def parse_markup_to_electrodes(self, markup_data: Dict, 
+                                 image_center: Optional[np.ndarray] = None,
+                                 affine: Optional[np.ndarray] = None) -> List[Dict]:
+        """
+        Parse markup data into electrode format compatible with CiCLONE.
+        
+        Args:
+            markup_data: Parsed JSON data from Slicer file
+            image_center: Image center for coordinate transformation (if available)
+            affine: Affine transformation matrix (if available)
+            
+        Returns:
+            List of electrode dictionaries with format:
+            [{'name': str, 'type': str, 'contacts': [(x, y, z), ...]}, ...]
+        """
+        electrodes = []
+        
+        try:
+            markups = markup_data.get('markups', [])
+            
+            for markup in markups:
+                if markup.get('type') != 'Fiducial':
+                    continue  # Skip non-fiducial markups
+                
+                control_points = markup.get('controlPoints', [])
+                if not control_points:
+                    continue  # Skip empty markups
+                
+                # Extract electrode information from control points
+                contacts = []
+                electrode_name = None
+                electrode_type = "Unknown"  # Default type
+                
+                for control_point in control_points:
+                    # Extract position (center-relative coordinates from Slicer)
+                    position = control_point.get('position', [0, 0, 0])
+                    
+                    if len(position) < 3:
+                        continue  # Skip invalid positions
+                    
+                    # Convert to numpy array for processing
+                    center_relative_coords = np.array(position[:3])
+                    
+                    # Transform center-relative coordinates back to image space
+                    if image_center is not None and affine is not None:
+                        # Convert center-relative to physical coordinates
+                        physical_coords = center_relative_coords + image_center
+                        
+                        # Convert physical coordinates to voxel coordinates
+                        physical_coords_homogeneous = np.append(physical_coords, 1.0)
+                        try:
+                            voxel_coords = np.dot(np.linalg.inv(affine), physical_coords_homogeneous)[:3]
+                            image_coords = tuple(np.round(voxel_coords).astype(int))
+                        except np.linalg.LinAlgError:
+                            # Fallback: use center-relative coordinates directly as approximation
+                            image_coords = tuple(np.round(center_relative_coords).astype(int))
+                    else:
+                        # No transformation available, use coordinates as-is
+                        image_coords = tuple(np.round(center_relative_coords).astype(int))
+                    
+                    contacts.append(image_coords)
+                    
+                    # Extract electrode name from first control point label
+                    if electrode_name is None:
+                        label = control_point.get('label', '')
+                        # Extract electrode name by removing numeric suffix
+                        # e.g., "ElectrodeA1" -> "ElectrodeA"
+                        import re
+                        match = re.match(r'^(.+?)(\d+)$', label)
+                        if match:
+                            electrode_name = match.group(1)
+                        else:
+                            electrode_name = label or f"ImportedElectrode_{len(electrodes) + 1}"
+                    
+                    # Try to extract electrode type from description
+                    description = control_point.get('description', '')
+                    if description and electrode_type == "Unknown":
+                        electrode_type = description
+                
+                # Create electrode entry if we have valid data
+                if electrode_name and contacts:
+                    electrodes.append({
+                        'name': electrode_name,
+                        'type': electrode_type,
+                        'contacts': contacts
+                    })
+        
+        except Exception as e:
+            raise Exception(f"Failed to parse electrode data: {str(e)}")
+        
+        return electrodes 

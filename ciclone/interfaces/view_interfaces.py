@@ -145,6 +145,14 @@ class IImageView(Protocol):
         """Refresh the electrode list display."""
         ...
     
+    def rebuild_electrode_tree(self) -> None:
+        """Rebuild the electrode tree widget with all electrodes."""
+        ...
+    
+    def refresh_coordinate_display(self) -> None:
+        """Refresh coordinate display for current electrode."""
+        ...
+    
     def clear_electrode_input(self) -> None:
         """Clear electrode input fields."""
         ...
