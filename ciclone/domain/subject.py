@@ -10,6 +10,7 @@ class Subject:
         self.preop_ct = self.folder_path / 'images' / 'preop' / 'ct'
         self.preop_mri = self.folder_path / 'images' / 'preop' / 'mri'
         self.processed_tmp = self.folder_path / 'processed_tmp'
+        self.pipeline_output = self.folder_path / 'pipeline_output'
 
         self.folder_path.mkdir(parents=True, exist_ok=True)
         self.documents.mkdir(parents=True, exist_ok=True)
@@ -18,6 +19,7 @@ class Subject:
         self.preop_ct.mkdir(parents=True, exist_ok=True)
         self.preop_mri.mkdir(parents=True, exist_ok=True)
         self.processed_tmp.mkdir(parents=True, exist_ok=True)
+        self.pipeline_output.mkdir(parents=True, exist_ok=True)
 
     def get_subject_name(self):
         return self.folder_path.stem
