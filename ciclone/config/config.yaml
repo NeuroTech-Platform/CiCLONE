@@ -22,6 +22,10 @@ stage_outputs:
     - "*_brain.mat"       # Brain registration matrices
   cortical_extraction:
     - "freesurfer_*"      # FreeSurfer outputs
+  export_outputs:
+    - "*.nii*"            # Exported images
+    - "*.mat"             # Exported matrices
+    - "*.json"            # Exported JSONs
 
 stages:
   - name: preprocessing
@@ -107,3 +111,25 @@ stages:
       - type: reconstruct
         workdir: processed_tmp
         files: ["v_${name}_ref", "${subj_dir}/processed_tmp/freesurfer_${name}"]
+
+  - name: export_outputs
+    auto_clean: true
+    operations:
+      - type: move
+        workdir: processed_tmp
+        files: ["${name}_CT_Electrodes_C", "${subj_dir}/pipeline_output"]
+      - type: move
+        workdir: processed_tmp
+        files: ["${name}_T1_C", "${subj_dir}/pipeline_output"]
+      - type: move
+        workdir: processed_tmp
+        files: ["v_${name}_ref", "${subj_dir}/pipeline_output"]
+      - type: move
+        workdir: processed_tmp
+        files: ["r_${name}_seeg_masked", "${subj_dir}/pipeline_output"]
+      - type: move
+        workdir: processed_tmp
+        files: ["MNI_${name}_ref_brain", "${subj_dir}/pipeline_output"]
+      - type: move
+        workdir: processed_tmp
+        files: ["MNI_${name}_ref_brain.mat", "${subj_dir}/pipeline_output"]
