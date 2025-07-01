@@ -607,7 +607,7 @@
   <customwidget>
    <class>ClickableImageLabel</class>
    <extends>QLabel</extends>
-   <header>ClickableImageLabel.py</header>
+   <header>ciclone.ui.ClickableImageLabel</header>
   </customwidget>
  </customwidgets>
  <resources/>
