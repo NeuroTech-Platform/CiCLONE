@@ -1116,10 +1116,10 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         # Show the menu and get the selected action
         action = menu.exec(self.ElectrodeTreeWidget.viewport().mapToGlobal(position))
-        
-        if action == rename_action:
+
+        if action is not None and action is rename_action:
             self.rename_electrode(electrode_items[0])
-        elif action == delete_action:
+        elif action is not None and action is delete_action:
             self.delete_electrodes(electrode_items)
 
     def delete_electrodes(self, items):
