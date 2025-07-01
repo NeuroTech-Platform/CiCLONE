@@ -131,6 +131,11 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
         # Find and store the vertical spacer
         self.verticalSpacer = self.leftPanelLayout.itemAt(self.leftPanelLayout.count() - 1).spacerItem()
+        
+        # Optimize layout for compact tabs
+        # Make the toolbox compact and let the spacer expand to push content up
+        self.toolBox.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.verticalSpacer.changeSize(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
         # Style the image preview labels
         for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
@@ -676,6 +681,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
         # Button signals
         self.AddElectrodePushButton.clicked.connect(self.on_add_electrode_clicked)
+        self.LoadElectrodesPushButton.clicked.connect(self.on_load_electrodes_clicked)
         self.Viewer3dButton.clicked.connect(self.on_viewer3d_clicked)
         self.ProcessCoordinatesPushButton.clicked.connect(self.on_process_coordinates_clicked)
         self.SaveFilePushButton.clicked.connect(self.on_save_file_clicked)
@@ -686,11 +692,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Context menu signals
         self.ElectrodeTreeWidget.customContextMenuRequested.connect(self.on_electrode_context_menu_requested)
         self.DataTreeWidget.customContextMenuRequested.connect(self.on_data_tree_context_menu_requested)
-
-        # ToolBox signal
-        self.toolBox.currentChanged.connect(self.adjust_tab_heights)
-        self.toolBox.setCurrentIndex(1)
-        self.toolBox.setCurrentIndex(0)
 
         # Crosshair action from toolbar
         self.actionCrosshairs.triggered.connect(self.toggle_crosshairs)
@@ -740,6 +741,24 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     root.addChild(new_item)
                     new_item.setExpanded(True)
                     break
+
+    def rebuild_electrode_tree(self):
+        """Rebuild the entire electrode tree widget with all electrodes."""
+        # Get all existing electrode names in the tree
+        existing_names = set()
+        root = self.ElectrodeTreeWidget.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            existing_names.add(item.text(0))
+        
+        # Add any missing electrodes from the model
+        for electrode_name in self.electrode_controller.get_electrode_names():
+            if electrode_name not in existing_names:
+                electrode = self.electrode_controller.get_electrode(electrode_name)
+                if electrode:
+                    tree_item = self.electrode_controller.create_tree_item(electrode)
+                    self.ElectrodeTreeWidget.addTopLevelItem(tree_item)
+                    tree_item.setExpanded(True)  # Expand to show contacts
 
     def refresh_image_display(self):
         """Refresh all image displays."""
@@ -903,6 +922,46 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 item = self.electrode_controller.create_tree_item(electrode)
                 self.ElectrodeTreeWidget.addTopLevelItem(item)
                 QMessageBox.information(self, "Success", f"Electrode '{name}' of type '{electrode_type}' created successfully.")
+
+    def on_load_electrodes_clicked(self):
+        """Handle load electrodes button click."""
+        # Check if an image is loaded (required for coordinate transformation)
+        if not self.image_controller.is_image_loaded():
+            QMessageBox.warning(
+                self, 
+                "Warning", 
+                "Please load an image first. The image is required for proper coordinate transformation."
+            )
+            return
+        
+        # Open file dialog to select electrode file
+        default_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            "Load Electrode Coordinates", 
+            default_dir, 
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return  # User cancelled
+        
+        # Get transformation data (image center and affine transform)
+        image_center = self.image_controller.get_image_center_physical()
+        affine_transform = self.image_controller.get_affine_transform()
+        
+        # Load electrodes using the controller
+        success = self.electrode_controller.load_electrodes_from_file(
+            file_path, 
+            image_center, 
+            affine_transform
+        )
+        
+        if success:
+            # Update electrode combo box to include newly loaded electrodes
+            self.refresh_electrode_list()
+            # Update coordinate display to show entry/output coordinates for loaded electrodes
+            self.refresh_coordinate_display()
 
     def on_viewer3d_clicked(self):
         """Handle 3D viewer button click."""
@@ -1271,21 +1330,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         """Remove crosshairs from all views - called by crosshair controller."""
         for label in [self.Axial_ImagePreview, self.Sagittal_ImagePreview, self.Coronal_ImagePreview]:
             label.remove_crosshairs()
-
-    def adjust_tab_heights(self, index):
-        """Adjust tab heights based on selected tab."""
-        if index == 2:  # Coordinates tab
-            # Make the toolbox take up more space when Coordinates tab is active
-            self.toolBox.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-            self.verticalSpacer.changeSize(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
-        else:
-            # Make the toolbox compact for other tabs
-            self.toolBox.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-            self.verticalSpacer.changeSize(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-        
-        # Force layout update
-        self.leftPanelLayout.invalidate()
-        self.leftPanel.updateGeometry()
 
     def resizeEvent(self, event):
         """Handle window resize events to update the display."""

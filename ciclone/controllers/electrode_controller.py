@@ -1,11 +1,13 @@
 from typing import Optional, List, Tuple, Dict
 from PyQt6.QtWidgets import QMessageBox, QTreeWidgetItem
 from PyQt6.QtCore import QObject, pyqtSignal
+import numpy as np
 
 from ciclone.models.electrode_model import ElectrodeModel
 from ciclone.models.coordinate_model import CoordinateModel
 from ciclone.domain.electrodes import Electrode
 from ciclone.interfaces.view_interfaces import IImageView
+from ciclone.services.io.slicer_file import SlicerFile
 
 
 class ElectrodeController:
@@ -72,6 +74,179 @@ class ElectrodeController:
             self._view.refresh_image_display()
         
         return success_count == len(electrode_names)
+    
+    def load_electrodes_from_file(self, file_path: str, 
+                                image_center: Optional[np.ndarray] = None,
+                                affine_transform: Optional[np.ndarray] = None) -> bool:
+        """
+        Load electrodes from a Slicer JSON file and integrate them into the current session.
+        
+        Args:
+            file_path: Path to the Slicer JSON file
+            image_center: Image center for coordinate transformation
+            affine_transform: Affine transformation matrix
+            
+        Returns:
+            bool: True if loading was successful, False otherwise
+        """
+        try:
+            # Initialize the SlicerFile parser
+            slicer_file = SlicerFile()
+            
+            # Load and parse the file
+            markup_data = slicer_file.load_from_file(file_path)
+            electrodes_data = slicer_file.parse_markup_to_electrodes(
+                markup_data, image_center, affine_transform
+            )
+            
+            if not electrodes_data:
+                self._show_warning("No valid electrodes found in the file.")
+                return False
+            
+            # Handle electrode name conflicts by automatically renaming
+            conflicts = self._check_electrode_conflicts(electrodes_data)
+            if conflicts:
+                electrodes_data = self._rename_conflicting_electrodes(electrodes_data, conflicts)
+            
+            # Import the electrodes
+            imported_count = 0
+            skipped_count = 0
+            
+            for electrode_data in electrodes_data:
+                success = self._import_single_electrode(electrode_data)
+                if success:
+                    imported_count += 1
+                else:
+                    skipped_count += 1
+            
+            # Update the UI
+            if imported_count > 0:
+                if self._view:
+                    self._view.refresh_electrode_list()
+                    self._view.rebuild_electrode_tree()  # Use rebuild to add all new electrodes
+                    self._view.refresh_coordinate_display()  # Update coordinate display
+                    self._view.refresh_image_display()
+                
+                # Show success message
+                message = f"Successfully imported {imported_count} electrode(s)"
+                if skipped_count > 0:
+                    message += f" ({skipped_count} skipped due to errors)"
+                self._show_info(message)
+                
+                return True
+            else:
+                self._show_warning("No electrodes could be imported.")
+                return False
+                
+        except ValueError as e:
+            self._show_error(f"File format error: {str(e)}")
+            return False
+        except Exception as e:
+            self._show_error(f"Failed to load electrodes: {str(e)}")
+            return False
+
+    def _check_electrode_conflicts(self, electrodes_data: List[Dict]) -> List[str]:
+        """Check for electrode name conflicts with existing electrodes."""
+        conflicts = []
+        for electrode_data in electrodes_data:
+            if self.electrode_model.electrode_exists(electrode_data['name']):
+                conflicts.append(electrode_data['name'])
+        return conflicts
+
+
+    def _rename_conflicting_electrodes(self, electrodes_data: List[Dict], 
+                                     conflicts: List[str]) -> List[Dict]:
+        """Rename conflicting electrodes using pattern ElecName(1), ElecName(2), etc."""
+        resolved_data = []
+        
+        for electrode_data in electrodes_data:
+            if electrode_data['name'] in conflicts:
+                # Find a unique name using pattern ElecName(1), ElecName(2), etc.
+                base_name = electrode_data['name']
+                counter = 1
+                new_name = f"{base_name}({counter})"
+                
+                while self.electrode_model.electrode_exists(new_name):
+                    counter += 1
+                    new_name = f"{base_name}({counter})"
+                
+                # Create new electrode data with renamed electrode
+                new_electrode_data = electrode_data.copy()
+                new_electrode_data['name'] = new_name
+                resolved_data.append(new_electrode_data)
+            else:
+                resolved_data.append(electrode_data)
+        
+        return resolved_data
+
+    def _import_single_electrode(self, electrode_data: Dict) -> bool:
+        """
+        Import a single electrode with its processed contacts.
+        
+        Args:
+            electrode_data: Dictionary with 'name', 'type', and 'contacts' keys
+            
+        Returns:
+            bool: True if import was successful
+        """
+        try:
+            name = electrode_data['name']
+            electrode_type = electrode_data['type']
+            contacts = electrode_data['contacts']
+            
+            # Validate electrode type (use first available type if unknown)
+            available_types = self.electrode_model.get_available_electrode_types()
+            if electrode_type not in available_types:
+                if available_types:
+                    electrode_type = available_types[0]  # Use first available type
+                else:
+                    electrode_type = "Unknown"
+            
+            # Create the electrode in the model
+            if not self.electrode_model.add_electrode(name, electrode_type):
+                return False
+            
+            # Add the processed contacts directly to the electrode
+            electrode = self.electrode_model.get_electrode(name)
+            if not electrode:
+                return False
+            
+            # Clear any existing contacts and add the imported ones
+            electrode.contacts.clear()
+            for i, contact_coords in enumerate(contacts):
+                contact_label = f"{name}{i+1}"
+                electrode.add_contact(
+                    contact_label, 
+                    float(contact_coords[0]), 
+                    float(contact_coords[1]), 
+                    float(contact_coords[2])
+                )
+            
+            # Store the processed contacts in the model
+            self.electrode_model._processed_contacts[name] = contacts
+            
+            # Derive entry and output coordinates from the contacts
+            if len(contacts) >= 2:
+                # Use first contact as entry point and last contact as output point
+                entry_point = tuple(int(coord) for coord in contacts[0])
+                output_point = tuple(int(coord) for coord in contacts[-1])
+                
+                # Set the derived coordinates in the coordinate model
+                self.coordinate_model.set_entry_point(name, entry_point)
+                self.coordinate_model.set_output_point(name, output_point)
+            elif len(contacts) == 1:
+                # Single contact electrode - use the same point for both entry and output
+                single_point = tuple(int(coord) for coord in contacts[0])
+                self.coordinate_model.set_entry_point(name, single_point)
+                self.coordinate_model.set_output_point(name, single_point)
+            
+            # Tree widget will be updated by the view's refresh methods
+            
+            return True
+            
+        except Exception as e:
+            print(f"Failed to import electrode {electrode_data.get('name', 'Unknown')}: {str(e)}")
+            return False
     
     def set_entry_coordinate(self, electrode_name: str, coordinates: Tuple[int, int, int]) -> bool:
         """Set entry coordinates for an electrode."""

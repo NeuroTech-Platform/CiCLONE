@@ -107,7 +107,7 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>203</width>
+             <width>546</width>
              <height>123</height>
             </rect>
            </property>
@@ -188,12 +188,12 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>208</width>
-             <height>156</height>
+             <width>546</width>
+             <height>110</height>
             </rect>
            </property>
            <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+            <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
              <horstretch>0</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
@@ -207,11 +207,18 @@
            <attribute name="label">
             <string>Define Electrode Entry</string>
            </attribute>
-           <layout class="QGridLayout" name="gridLayout_3">
-            <item row="0" column="0">
-             <widget class="QComboBox" name="ElectrodesComboBox"/>
+           <layout class="QVBoxLayout" name="verticalLayout_5">
+            <item>
+             <widget class="QComboBox" name="ElectrodesComboBox">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+             </widget>
             </item>
-            <item row="1" column="0">
+            <item>
              <layout class="QHBoxLayout" name="horizontalLayout_6">
               <item>
                <widget class="QPushButton" name="SetEntryPushButton">
@@ -241,7 +248,7 @@
               </item>
              </layout>
             </item>
-            <item row="2" column="0">
+            <item>
              <layout class="QHBoxLayout" name="horizontalLayout_5">
               <item>
                <widget class="QPushButton" name="SetOutputPushButton">
@@ -271,7 +278,7 @@
               </item>
              </layout>
             </item>
-            <item row="3" column="0">
+            <item>
              <widget class="QPushButton" name="ProcessCoordinatesPushButton">
               <property name="text">
                <string>Process</string>
@@ -410,8 +417,8 @@
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>113</width>
-             <height>44</height>
+             <width>205</width>
+             <height>78</height>
             </rect>
            </property>
            <property name="sizePolicy">
@@ -429,7 +436,14 @@
            <attribute name="label">
             <string>Tools</string>
            </attribute>
-           <layout class="QHBoxLayout" name="horizontalLayout_3">
+           <layout class="QVBoxLayout" name="verticalLayout_3">
+            <item>
+             <widget class="QPushButton" name="LoadElectrodesPushButton">
+              <property name="text">
+               <string>Load Electrodes from file</string>
+              </property>
+             </widget>
+            </item>
             <item>
              <widget class="QPushButton" name="Viewer3dButton">
               <property name="text">
