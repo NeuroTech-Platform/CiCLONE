@@ -1,6 +1,19 @@
 import os
+from pathlib import Path
 from typing import Dict, Optional, List, Tuple
 import numpy as np
+import tempfile
+
+from ciclone.models.image_model import ImageModel
+from ciclone.controllers.image_controller import ImageController
+from ciclone.domain.electrodes import Electrode
+from ciclone.controllers.electrode_controller import ElectrodeController
+from ciclone.services.io.slicer_file import SlicerFile
+from ciclone.services.processing.operations import transform_coordinates
+from ciclone.ui.Viewer3D import Viewer3D
+from ciclone.forms.ImagesViewer_ui import Ui_ImagesViewer
+from ciclone.interfaces.view_interfaces import IImageView, IBaseView
+from ciclone.domain.subject import Subject
 
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -22,15 +35,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QStandardPaths, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QBrush, QMouseEvent, QAction, QCursor
-
-from ciclone.models.image_model import ImageModel
-from ciclone.controllers.image_controller import ImageController
-from ciclone.domain.electrodes import Electrode
-from ciclone.controllers.electrode_controller import ElectrodeController
-from ciclone.services.io.slicer_file import SlicerFile
-from ciclone.ui.Viewer3D import Viewer3D
-from ciclone.forms.ImagesViewer_ui import Ui_ImagesViewer
-from ciclone.interfaces.view_interfaces import IImageView, IBaseView
 
 # Import new MVC components
 from ciclone.models import ElectrodeModel, CoordinateModel, CrosshairModel
@@ -685,6 +689,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.Viewer3dButton.clicked.connect(self.on_viewer3d_clicked)
         self.ProcessCoordinatesPushButton.clicked.connect(self.on_process_coordinates_clicked)
         self.SaveFilePushButton.clicked.connect(self.on_save_file_clicked)
+        self.ExportMniPushButton.clicked.connect(self.on_export_mni_clicked)
 
         # Combo box signals
         self.ElectrodesComboBox.currentTextChanged.connect(self.update_coordinate_display)
@@ -1051,6 +1056,102 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             QMessageBox.critical(self, "Error", f"Failed to save coordinates: {str(e)}")
             import traceback
             traceback.print_exc()
+
+    def on_export_mni_clicked(self):
+        """Handle export to MNI button click with automatic subject detection."""
+        # Check if we have electrodes with contacts
+        if not self.electrode_controller.has_processed_contacts():
+            QMessageBox.warning(self, "Warning", "No processed electrode contacts to export.")
+            return
+
+        try:
+            # Save coordinates to temp file (reuse existing save logic)
+            temp_coord_file = os.path.join(tempfile.mkdtemp(), "temp_coordinates.json")
+            
+            # Prepare electrode data for the SlicerFile class
+            electrodes_data = []
+            for electrode in self.electrode_controller.get_electrodes_with_contacts():
+                contacts = [(contact.x, contact.y, contact.z) for contact in electrode.contacts]
+                electrodes_data.append({
+                    'name': electrode.name,
+                    'type': electrode.electrode_type,
+                    'contacts': contacts
+                })
+            
+            # Get image center for center-relative coordinates
+            image_center = self.image_controller.get_image_center_physical()
+            
+            # Create and save the markup file
+            slicer_file = SlicerFile()
+            markup = slicer_file.create_markup(
+                electrodes_data, 
+                self.image_controller.get_affine_transform(),
+                image_center
+            )
+            slicer_file.save_to_file(temp_coord_file, markup)
+            
+            # Auto-detect subject directory from loaded images
+            loaded_images = self.image_controller.get_loaded_images()
+            if not loaded_images:
+                QMessageBox.warning(self, "Warning", "No images loaded. Cannot detect subject directory.")
+                return
+            
+            # Use first loaded image to detect subject directory
+            image_path = Path(loaded_images[0])
+            subject_dir = self._detect_subject_directory(image_path)
+            
+            if not subject_dir:
+                # Fallback to manual selection
+                subject_dir = QFileDialog.getExistingDirectory(self, "Select subject directory")
+                if not subject_dir:
+                    return
+                subject_dir = Path(subject_dir)
+            
+            # Create Subject instance and get transformation matrix
+            subject = Subject(subject_dir)
+            subject_name = subject.get_subject_name()
+            transform_mat = subject.get_mni_transformation_matrix()
+            
+            if not transform_mat:
+                QMessageBox.critical(self, "Error", 
+                    f"Transformation matrix not found in pipeline_output.\n"
+                    f"Expected patterns: MNI_{subject_name}_*.mat")
+                return
+            
+            # Ask where to save output (default to pipeline_output folder)
+            default_path = str(subject.pipeline_output / f"MNI_{subject_name}_coordinates.json")
+            output_file, _ = QFileDialog.getSaveFileName(
+                self, "Save MNI Coordinates", 
+                default_path,
+                "JSON Files (*.json)"
+            )
+            if not output_file:
+                return
+            
+            # Call same function as CLI
+            transform_coordinates(temp_coord_file, transform_mat, output_file)
+            
+            QMessageBox.information(self, "Success", f"Coordinates exported to MNI space:\n{output_file}")
+            
+            # Cleanup
+            os.remove(temp_coord_file)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to export to MNI: {str(e)}")
+
+    def _detect_subject_directory(self, image_path: Path) -> Optional[Path]:
+        """Detect subject root directory by traversing upward from image path."""
+        current = image_path.parent
+        
+        # Traverse up to find directory containing expected subject structure
+        for _ in range(10):  # Limit traversal depth
+            if (current / 'images').exists() and (current / 'pipeline_output').exists():
+                return current
+            current = current.parent
+            if current == current.parent:  # Reached filesystem root
+                break
+        
+        return None
 
     def on_data_tree_context_menu_requested(self, position):
         """Handle right-click context menu for loaded images."""

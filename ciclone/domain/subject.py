@@ -1,6 +1,8 @@
 from pathlib import Path
 import re
 import shutil
+from typing import Optional
+
 class Subject:
     def __init__(self, folder_path):
         self.folder_path = Path(folder_path)
@@ -38,6 +40,15 @@ class Subject:
         pattern = re.compile(rf'.*{suffix}$')
         folders = [folder for folder in self.folder_path.rglob('*') if pattern.match(str(folder))]
         return folders[0] if folders else None
+    
+    def get_mni_transformation_matrix(self) -> Optional[Path]:
+        """Get the MNI transformation matrix from pipeline_output."""
+        if not self.pipeline_output.exists():
+            return None
+        
+        subject_name = self.get_subject_name()
+        mat_file = self.pipeline_output / f'MNI_{subject_name}_ref_brain.mat'
+        return mat_file if mat_file.exists() else None
     
     def clear_processed_tmp(self):
         """Clear all files in the processed_tmp directory"""

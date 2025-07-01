@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'ciclone/forms/ImagesViewer.ui'
+# Form implementation generated from reading ui file 'ImagesViewer.ui'
 #
 # Created by: PyQt6 UI code generator 6.9.1
 #
@@ -190,6 +190,9 @@ class Ui_ImagesViewer(object):
         self.SaveFilePushButton = QtWidgets.QPushButton(parent=self.page_7)
         self.SaveFilePushButton.setObjectName("SaveFilePushButton")
         self.horizontalLayout_4.addWidget(self.SaveFilePushButton)
+        self.ExportMniPushButton = QtWidgets.QPushButton(parent=self.page_7)
+        self.ExportMniPushButton.setObjectName("ExportMniPushButton")
+        self.horizontalLayout_4.addWidget(self.ExportMniPushButton)
         spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
         self.horizontalLayout_4.addItem(spacerItem1)
         self.verticalLayout_4.addLayout(self.horizontalLayout_4)
@@ -316,6 +319,7 @@ class Ui_ImagesViewer(object):
         self.ElectrodeTreeWidget.headerItem().setText(2, _translate("ImagesViewer", "Y"))
         self.ElectrodeTreeWidget.headerItem().setText(3, _translate("ImagesViewer", "Z"))
         self.SaveFilePushButton.setText(_translate("ImagesViewer", "Save File"))
+        self.ExportMniPushButton.setText(_translate("ImagesViewer", "Export to MNI"))
         self.toolBox.setItemText(self.toolBox.indexOf(self.page_7), _translate("ImagesViewer", "Coordinates"))
         self.LoadElectrodesPushButton.setText(_translate("ImagesViewer", "Load Electrodes from file"))
         self.Viewer3dButton.setText(_translate("ImagesViewer", "3DViewer"))
