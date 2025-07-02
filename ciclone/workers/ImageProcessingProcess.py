@@ -3,7 +3,7 @@ import shutil
 import signal
 import multiprocessing
 
-from ciclone.services.processing.stages import run_stage
+from ciclone.services.processing.stages import run_stage, run_stage_with_validation
 from ciclone.domain.subject import Subject
 from ciclone.utils.utility import clean_before_stage
 
@@ -64,17 +64,25 @@ def processImagesAnalysis(conn, output_directory: str, subject_list: list, confi
         subject = Subject(subject_folder)
         
         for stage in stages:
-            # Clean before stage if auto_clean is enabled
-            if stage.get('auto_clean', False):
-                conn.send({"type": "log", "level": "info", "message": f"Auto-cleaning before stage {stage['name']} for subject {subject_name}..."})
-                try:
-                    clean_before_stage(subject, stage['name'], config_data)
-                    conn.send({"type": "log", "level": "info", "message": f"Auto-cleaning completed for stage {stage['name']}"})
-                except Exception as e:
-                    conn.send({"type": "log", "level": "error", "message": f"Auto-cleaning failed for stage {stage['name']}: {e}"})
+            # Use the enhanced stage runner with validation and intelligent cleanup
+            conn.send({"type": "log", "level": "info", "message": f"Starting stage {stage['name']} for subject {subject_name}..."})
             
-            conn.send({"type": "log", "level": "info", "message": f"Running stage {stage['name']} for subject {subject_name}..."})
-            run_stage(stage, subject)
+            try:
+                # Use the new enhanced stage runner
+                success = run_stage_with_validation(stage, subject, config_data)
+                
+                if success:
+                    conn.send({"type": "log", "level": "info", "message": f"✅ Stage {stage['name']} completed successfully for {subject_name}"})
+                else:
+                    conn.send({"type": "log", "level": "error", "message": f"❌ Stage {stage['name']} failed for {subject_name}"})
+                    # Continue with next subject instead of stopping entire pipeline
+                    break
+                    
+            except Exception as e:
+                conn.send({"type": "log", "level": "error", "message": f"❌ Stage {stage['name']} failed with exception for {subject_name}: {e}"})
+                # Continue with next subject instead of stopping entire pipeline
+                break
+            
             completed_steps += 1
             progress_percent = int((completed_steps / total_steps) * 100)
             
