@@ -1,31 +1,88 @@
-# Define stage outputs and dependencies for automatic cleaning
+# Define stage dependencies and outputs for intelligent cleaning
+stage_dependencies:
+  preprocessing: []
+  coregisteration: [preprocessing]
+  extract_electrodes: [coregisteration]
+  apply_mask: [extract_electrodes]
+  mni_registration: [coregisteration]  # Fixed: needs v_${name}_ref from coregisteration
+  cortical_extraction: [coregisteration]  # Fixed: also needs v_${name}_ref from coregisteration
+  export_outputs: [preprocessing, coregisteration, apply_mask, mni_registration]  # Fixed: needs outputs from all 4 stages
+
+# Enhanced stage configuration with prerequisites and specific cleanup patterns
 stage_outputs:
   preprocessing:
-    - "*_C.nii*"          # Cropped images
-    - "*_C"               # Cropped directories
-  coregisteration: 
-    - "*.mat"             # Transformation matrices
-    - "v_*"               # Registration outputs
-    - "b_*"               # Registration outputs
+    required_inputs: []
+    outputs:
+      - "${name}_CT_Bone_C"
+      - "${name}_CT_Electrodes_C"  
+      - "${name}_T1_C"
+    cleanup_patterns:
+      - "*_C.nii*"
+      - "*_C"
+      
+  coregisteration:
+    required_inputs: ["${name}_CT_Bone_C", "${name}_CT_Electrodes_C", "${name}_T1_C"]
+    outputs:
+      - "v_${name}_bone_mask"
+      - "v_${name}_ref"
+      - "b_${name}_postimplant_ct"
+    cleanup_patterns:
+      - "v_${name}_bone_mask*"
+      - "v_${name}_ref*" 
+      - "b_${name}_postimplant_ct*"
+      
   extract_electrodes:
-    - "r_*"               # Applied transformation outputs
-    - "*_seeg*"           # SEEG outputs
-    - "*_sub*"            # Subtraction outputs
+    required_inputs: ["b_${name}_postimplant_ct", "${name}_CT_Bone_C", "v_${name}_bone_mask.mat"]
+    outputs:
+      - "b_${name}_postimplant_ct_sub"
+      - "b_${name}_seeg" 
+      - "r_${name}_seeg"
+    cleanup_patterns:
+      - "r_${name}_seeg*"
+      - "b_${name}_seeg*"
+      - "b_${name}_postimplant_ct_sub*"
+      
   apply_mask:
-    - "*_stripped*"       # Brain extraction outputs
-    - "*_masked*"         # Masked outputs
+    required_inputs: ["v_${name}_bone_mask", "r_${name}_seeg"]
+    outputs:
+      - "${name}_stripped"
+      - "${name}_stripped_mask"
+      - "r_${name}_seeg_masked"
+    cleanup_patterns:
+      - "*_stripped*"
+      - "*_masked*"
+      
   mni_registration:
-    - "MNI_*"             # MNI registration outputs
-    - "*_rigid*"          # Rigid registration temp files
-    - "norm_*"            # Normalized images
-    - "*_ref_brain*"      # Brain-extracted reference images
-    - "*_brain.mat"       # Brain registration matrices
+    required_inputs: ["v_${name}_ref"]
+    outputs:
+      - "v_${name}_ref_brain"
+      - "MNI_${name}_ref_brain"
+      - "MNI_${name}_ref_brain.mat"
+    cleanup_patterns:
+      - "MNI_*.nii*"
+      - "MNI_*.mat"
+      - "*_rigid*"
+      - "norm_*"
+      - "*_ref_brain*"
+      
   cortical_extraction:
-    - "freesurfer_*"      # FreeSurfer outputs
+    required_inputs: ["v_${name}_ref"]
+    outputs:
+      - "freesurfer_${name}"
+    cleanup_patterns:
+      - "freesurfer_*"
+      
   export_outputs:
-    - "*.nii*"            # Exported images
-    - "*.mat"             # Exported matrices
-    - "*.json"            # Exported JSONs
+    required_inputs: ["${name}_CT_Electrodes_C", "${name}_T1_C", "v_${name}_ref", "r_${name}_seeg_masked", "MNI_${name}_ref_brain", "MNI_${name}_ref_brain.mat"]
+    outputs:
+      - "pipeline_output/${name}_CT_Electrodes_C"
+      - "pipeline_output/${name}_T1_C"
+      - "pipeline_output/v_${name}_ref"
+      - "pipeline_output/r_${name}_seeg_masked"
+      - "pipeline_output/MNI_${name}_ref_brain"
+      - "pipeline_output/MNI_${name}_ref_brain.mat"
+    cleanup_patterns:
+      - "pipeline_output/*"
 
 stages:
   - name: preprocessing
@@ -115,21 +172,21 @@ stages:
   - name: export_outputs
     auto_clean: true
     operations:
-      - type: move
+      - type: copy
         workdir: processed_tmp
         files: ["${name}_CT_Electrodes_C", "${subj_dir}/pipeline_output"]
-      - type: move
+      - type: copy
         workdir: processed_tmp
         files: ["${name}_T1_C", "${subj_dir}/pipeline_output"]
-      - type: move
+      - type: copy
         workdir: processed_tmp
         files: ["v_${name}_ref", "${subj_dir}/pipeline_output"]
-      - type: move
+      - type: copy
         workdir: processed_tmp
         files: ["r_${name}_seeg_masked", "${subj_dir}/pipeline_output"]
-      - type: move
+      - type: copy
         workdir: processed_tmp
         files: ["MNI_${name}_ref_brain", "${subj_dir}/pipeline_output"]
-      - type: move
+      - type: copy
         workdir: processed_tmp
         files: ["MNI_${name}_ref_brain.mat", "${subj_dir}/pipeline_output"]

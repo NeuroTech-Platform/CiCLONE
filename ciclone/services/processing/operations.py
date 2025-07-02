@@ -39,6 +39,16 @@ def move_image(input_file: Path, output_file: str) -> None:
     print(f"Moving {input_file} => {output_file}")
     execute_command(["mv", input_file, output_file])
 
+def copy_image(input_file: Path, output_file: str) -> None:
+    input_file = Path(input_file)
+
+    if not input_file.exists():
+        print(f"Input file {input_file} does not exist.")
+        return
+
+    print(f"Copying {input_file} => {output_file}")
+    execute_command(["cp", input_file, output_file])
+
 def coregister_images(input_file: Path, ref_file: Path, output_file_name: str) -> None:
     input_file = Path(input_file)
     ref_file = Path(ref_file)
