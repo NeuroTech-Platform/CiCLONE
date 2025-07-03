@@ -229,12 +229,30 @@ def clean_dependent_stages(subject, stage_name: str, config_data: dict, single_s
         processed_tmp = subject.processed_tmp
         mode_desc = "single stage" if single_stage_mode else "pipeline"
         print(f"Intelligent cleanup for stage '{stage_name}' in subject {subject.get_subject_name()} ({mode_desc} mode)")
-        print(f"Cleaning dependents: {', '.join(stages_to_clean) if stages_to_clean else 'none (single stage mode)'}")
+        dependents_desc = ', '.join(stages_to_clean) if stages_to_clean else f"none ({'single stage mode' if single_stage_mode else 'no dependents'})"
+        print(f"Cleaning dependents: {dependents_desc}")
         print(f"Preserving inputs: {', '.join(current_stage_input_files) if current_stage_input_files else 'none'}")
         print(f"Cleanup patterns: {', '.join(substituted_patterns)}")
         
         # Use smart cleanup that preserves required inputs
-        clean_by_patterns_smart(processed_tmp, substituted_patterns, current_stage_input_files)
+        # Handle patterns that target directories other than processed_tmp
+        processed_tmp_patterns = []
+        other_patterns = []
+        
+        for pattern in substituted_patterns:
+            if pattern.startswith('pipeline_output/'):
+                # This targets pipeline_output directory, not processed_tmp
+                pipeline_output_dir = subject.folder_path / 'pipeline_output'
+                clean_pattern = pattern.replace('pipeline_output/', '')
+                if pipeline_output_dir.exists():
+                    clean_by_patterns(pipeline_output_dir, [clean_pattern])
+            else:
+                # This targets processed_tmp directory
+                processed_tmp_patterns.append(pattern)
+        
+        # Clean patterns that target processed_tmp
+        if processed_tmp_patterns:
+            clean_by_patterns_smart(processed_tmp, processed_tmp_patterns, current_stage_input_files)
         
     except Exception as e:
         print(f"Error during intelligent cleanup: {e}")

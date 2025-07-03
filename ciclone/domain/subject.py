@@ -26,15 +26,39 @@ class Subject:
     def get_subject_name(self):
         return self.folder_path.stem
     
-    def get_file(self, suffix):
+    def get_file(self, suffix, search_dir=None):
+        """
+        Find a file matching the suffix pattern.
+        
+        Args:
+            suffix: File suffix pattern to match
+            search_dir: Optional directory to search in first (defaults to processed_tmp)
+        
+        Returns:
+            Path to the first matching file, or None if not found
+        """
         if '.' in suffix:
             pattern = re.compile(rf'.*{suffix}$')
-            files = [file for file in self.folder_path.rglob('*') if pattern.match(str(file))]
-            return files[0] if files else None
         else:
             pattern = re.compile(rf'.*{suffix}\.nii(\.gz)?$')
-            files = [file for file in self.folder_path.rglob('*') if pattern.match(str(file))]
-            return files[0] if files else None
+        
+        # Search in specific directory first if provided
+        if search_dir:
+            search_path = self.folder_path / search_dir if isinstance(search_dir, str) else search_dir
+            if search_path.exists():
+                files = [file for file in search_path.rglob('*') if pattern.match(str(file))]
+                if files:
+                    return files[0]
+        
+        # Search in processed_tmp first (default priority)
+        if self.processed_tmp.exists():
+            files = [file for file in self.processed_tmp.rglob('*') if pattern.match(str(file))]
+            if files:
+                return files[0]
+        
+        # Fall back to global search
+        files = [file for file in self.folder_path.rglob('*') if pattern.match(str(file))]
+        return files[0] if files else None
             
     def get_folder(self, suffix):
         pattern = re.compile(rf'.*{suffix}$')

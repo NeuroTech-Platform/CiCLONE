@@ -31,11 +31,14 @@ def run_operation(operation, subject: Subject):
             print(f"Changing directory to {workdir}")
             os.chdir(workdir)
 
+        # Use workdir for file resolution to avoid conflicts between processed_tmp and pipeline_output
+        search_dir = operation.get('workdir', None)
+        
         if len(operation['files']) > 1:
-            files = [subject.get_file(f.replace("${name}", subject.get_subject_name())) for f in operation['files'][:-1]] + \
+            files = [subject.get_file(f.replace("${name}", subject.get_subject_name()), search_dir) for f in operation['files'][:-1]] + \
                     [operation['files'][-1].replace("${name}", subject.get_subject_name()).replace("${subj_dir}", str(subject.folder_path))]
         else:
-            files = [subject.get_file(f.replace("${name}", subject.get_subject_name())) for f in operation['files']]
+            files = [subject.get_file(f.replace("${name}", subject.get_subject_name()), search_dir) for f in operation['files']]
         
         if operation['type'] == 'crop':
             crop_image(*files)
