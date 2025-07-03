@@ -47,7 +47,7 @@ def copy_image(input_file: Path, output_file: str) -> None:
         return
 
     print(f"Copying {input_file} => {output_file}")
-    execute_command(["cp", input_file, output_file])
+    execute_command(["cp", "-f", input_file, output_file])
 
 def coregister_images(input_file: Path, ref_file: Path, output_file_name: str) -> None:
     input_file = Path(input_file)
