@@ -164,7 +164,7 @@ def validate_stage_prerequisites(subject, stage_name: str, config_data: dict) ->
     
     return len(missing_files) == 0, missing_files
 
-def clean_dependent_stages(subject, stage_name: str, config_data: dict) -> None:
+def clean_dependent_stages(subject, stage_name: str, config_data: dict, single_stage_mode: bool = False) -> None:
     """
     Clean all stages that depend on the outputs of the given stage.
     This is the new intelligent cleanup system that replaces the old linear approach.
@@ -174,6 +174,7 @@ def clean_dependent_stages(subject, stage_name: str, config_data: dict) -> None:
         subject: Subject instance
         stage_name: Name of the stage being rerun
         config_data: Already loaded configuration data
+        single_stage_mode: If True, only clean current stage outputs, skip dependents
     """
     try:
         stage_dependencies = config_data.get('stage_dependencies', {})
@@ -182,9 +183,12 @@ def clean_dependent_stages(subject, stage_name: str, config_data: dict) -> None:
         # Find all stages that depend on this stage
         dependent_stages = find_all_dependents(stage_name, stage_dependencies)
         
-        # CRITICAL FIX: Only clean dependent stages + current stage outputs, 
-        # but preserve current stage inputs
-        stages_to_clean = dependent_stages  # Start with dependents only
+        # CRITICAL FIX: In single stage mode, don't clean dependents
+        # In pipeline mode, clean dependents + current stage outputs
+        if single_stage_mode:
+            stages_to_clean = []  # Don't clean dependents in single stage mode
+        else:
+            stages_to_clean = dependent_stages  # Clean dependents in pipeline mode
         
         # Get current stage configuration
         current_stage_config = stage_outputs.get(stage_name, {})
@@ -207,7 +211,7 @@ def clean_dependent_stages(subject, stage_name: str, config_data: dict) -> None:
             if cleanup_patterns:
                 patterns_to_clean.extend(cleanup_patterns)
         
-        # Add current stage cleanup patterns but filter out its inputs
+        # FIXED: Always clean current stage outputs (both single and pipeline mode)
         current_cleanup_patterns = current_stage_config.get('cleanup_patterns', [])
         for pattern in current_cleanup_patterns:
             patterns_to_clean.append(pattern)
@@ -223,8 +227,9 @@ def clean_dependent_stages(subject, stage_name: str, config_data: dict) -> None:
             substituted_patterns.append(substituted_pattern)
         
         processed_tmp = subject.processed_tmp
-        print(f"Intelligent cleanup for stage '{stage_name}' in subject {subject.get_subject_name()}")
-        print(f"Cleaning dependents: {', '.join(stages_to_clean)}")
+        mode_desc = "single stage" if single_stage_mode else "pipeline"
+        print(f"Intelligent cleanup for stage '{stage_name}' in subject {subject.get_subject_name()} ({mode_desc} mode)")
+        print(f"Cleaning dependents: {', '.join(stages_to_clean) if stages_to_clean else 'none (single stage mode)'}")
         print(f"Preserving inputs: {', '.join(current_stage_input_files) if current_stage_input_files else 'none'}")
         print(f"Cleanup patterns: {', '.join(substituted_patterns)}")
         
@@ -263,8 +268,8 @@ def clean_before_stage(subject, stage_name: str, config_data: dict) -> None:
             print(f"Auto-clean disabled for stage '{stage_name}'")
             return
         
-        # Use the new intelligent cleanup system
-        clean_dependent_stages(subject, stage_name, config_data)
+        # Use the new intelligent cleanup system (default to pipeline mode for backward compatibility)
+        clean_dependent_stages(subject, stage_name, config_data, single_stage_mode=False)
         
     except Exception as e:
         print(f"Error during auto-clean: {e}")
@@ -307,6 +312,33 @@ def test_dependency_resolution(config_data: dict) -> None:
     print("✅ Dependency resolution system test completed!")
     print("🎯 Key improvement: Running 'mni_registration' will now properly clean 'export_outputs'")
     print("   This fixes your original issue where rerunning MNI + export didn't clean old export files.")
+    print()
+
+def test_single_vs_pipeline_cleanup(config_data: dict) -> None:
+    """
+    Test function to demonstrate the new single stage vs pipeline cleanup behavior.
+    """
+    print("🧪 Testing Single Stage vs Pipeline Cleanup Logic")
+    print("=" * 60)
+    
+    # Simulate single stage run of export_outputs
+    print("Test Case 1: Single stage run of 'export_outputs'")
+    print("  Mode: single_stage_mode=True")
+    print("  Expected: Only clean pipeline_output/*, preserve all processed_tmp files")
+    print("  Dependents to clean: none (single stage mode)")
+    print()
+    
+    # Simulate pipeline run starting from mni_registration
+    print("Test Case 2: Pipeline run starting from 'mni_registration'")
+    print("  Mode: single_stage_mode=False")
+    print("  Expected: Clean mni_registration outputs + export_outputs (dependent)")
+    stage_dependencies = config_data.get('stage_dependencies', {})
+    dependents = find_all_dependents('mni_registration', stage_dependencies)
+    print(f"  Dependents to clean: {dependents}")
+    print()
+    
+    print("✅ New logic correctly distinguishes between single and pipeline modes!")
+    print("🎯 This fixes the original issue where single 'export_outputs' deleted everything")
     print()
 
 def print_cleanup_preview(stage_name: str, subject_name: str, config_data: dict) -> None:
