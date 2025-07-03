@@ -68,8 +68,8 @@ def processImagesAnalysis(conn, output_directory: str, subject_list: list, confi
             conn.send({"type": "log", "level": "info", "message": f"Starting stage {stage['name']} for subject {subject_name}..."})
             
             try:
-                # Use the new enhanced stage runner
-                success = run_stage_with_validation(stage, subject, config_data)
+                # Use the new enhanced stage runner with stage count for single vs pipeline detection
+                success = run_stage_with_validation(stage, subject, config_data, len(stages))
                 
                 if success:
                     conn.send({"type": "log", "level": "info", "message": f"✅ Stage {stage['name']} completed successfully for {subject_name}"})

@@ -104,7 +104,7 @@ def run_stage(stage, subject):
     for operation in stage['operations']:
         run_operation(operation, subject)
 
-def run_stage_with_validation(stage, subject, config_data):
+def run_stage_with_validation(stage, subject, config_data, total_stages_count: int = None):
     """
     Run a stage with comprehensive validation, cleanup, and error handling.
     
@@ -112,6 +112,7 @@ def run_stage_with_validation(stage, subject, config_data):
         stage: Stage configuration dictionary
         subject: Subject instance
         config_data: Full configuration data including dependencies
+        total_stages_count: Total number of stages being run (for single vs pipeline detection)
         
     Returns:
         bool: True if stage completed successfully, False otherwise
@@ -133,8 +134,10 @@ def run_stage_with_validation(stage, subject, config_data):
         
         # 2. Perform intelligent cleanup if auto_clean is enabled
         if stage.get('auto_clean', False):
+            # Detect if this is single stage mode (only 1 stage being run)
+            single_stage_mode = total_stages_count == 1
             print(f"🧹 Performing intelligent cleanup for stage '{stage_name}'")
-            clean_dependent_stages(subject, stage_name, config_data)
+            clean_dependent_stages(subject, stage_name, config_data, single_stage_mode)
         
         # 3. Create snapshot for potential rollback
         snapshot_files = create_file_snapshot(subject.processed_tmp)
