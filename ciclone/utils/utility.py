@@ -237,7 +237,6 @@ def clean_dependent_stages(subject, stage_name: str, config_data: dict, single_s
         # Use smart cleanup that preserves required inputs
         # Handle patterns that target directories other than processed_tmp
         processed_tmp_patterns = []
-        other_patterns = []
         
         for pattern in substituted_patterns:
             if pattern.startswith('pipeline_output/'):
@@ -292,73 +291,6 @@ def clean_before_stage(subject, stage_name: str, config_data: dict) -> None:
     except Exception as e:
         print(f"Error during auto-clean: {e}")
 
-def test_dependency_resolution(config_data: dict) -> None:
-    """
-    Test function to validate the new dependency resolution system.
-    This demonstrates how the improved cleanup works for your use case.
-    """
-    stage_dependencies = config_data.get('stage_dependencies', {})
-    
-    print("🧪 Testing Dependency Resolution System")
-    print("=" * 50)
-    
-    # Test case 1: Your specific scenario - running mni_registration should clean export_outputs
-    print("Test Case 1: Running 'mni_registration' stage")
-    dependents = find_all_dependents('mni_registration', stage_dependencies)
-    print(f"  Direct + Indirect dependents: {dependents}")
-    print(f"  Expected: ['export_outputs'] ✅" if 'export_outputs' in dependents else "  ❌ Missing export_outputs")
-    print()
-    
-    # Test case 2: Running preprocessing should clean everything downstream
-    print("Test Case 2: Running 'preprocessing' stage")
-    dependents = find_all_dependents('preprocessing', stage_dependencies)
-    print(f"  Direct + Indirect dependents: {dependents}")
-    expected = ['coregisteration', 'extract_electrodes', 'apply_mask', 'mni_registration', 'cortical_extraction', 'export_outputs']
-    all_found = all(dep in dependents for dep in expected)
-    print(f"  Expected all downstream stages ✅" if all_found else f"  ❌ Missing some dependencies")
-    print()
-    
-    # Test case 3: Running a middle stage
-    print("Test Case 3: Running 'extract_electrodes' stage")
-    dependents = find_all_dependents('extract_electrodes', stage_dependencies)
-    print(f"  Direct + Indirect dependents: {dependents}")
-    expected = ['apply_mask', 'mni_registration', 'cortical_extraction', 'export_outputs']
-    all_found = all(dep in dependents for dep in expected)
-    print(f"  Expected downstream stages ✅" if all_found else f"  ❌ Missing some dependencies")
-    print()
-    
-    print("✅ Dependency resolution system test completed!")
-    print("🎯 Key improvement: Running 'mni_registration' will now properly clean 'export_outputs'")
-    print("   This fixes your original issue where rerunning MNI + export didn't clean old export files.")
-    print()
-
-def test_single_vs_pipeline_cleanup(config_data: dict) -> None:
-    """
-    Test function to demonstrate the new single stage vs pipeline cleanup behavior.
-    """
-    print("🧪 Testing Single Stage vs Pipeline Cleanup Logic")
-    print("=" * 60)
-    
-    # Simulate single stage run of export_outputs
-    print("Test Case 1: Single stage run of 'export_outputs'")
-    print("  Mode: single_stage_mode=True")
-    print("  Expected: Only clean pipeline_output/*, preserve all processed_tmp files")
-    print("  Dependents to clean: none (single stage mode)")
-    print()
-    
-    # Simulate pipeline run starting from mni_registration
-    print("Test Case 2: Pipeline run starting from 'mni_registration'")
-    print("  Mode: single_stage_mode=False")
-    print("  Expected: Clean mni_registration outputs + export_outputs (dependent)")
-    stage_dependencies = config_data.get('stage_dependencies', {})
-    dependents = find_all_dependents('mni_registration', stage_dependencies)
-    print(f"  Dependents to clean: {dependents}")
-    print()
-    
-    print("✅ New logic correctly distinguishes between single and pipeline modes!")
-    print("🎯 This fixes the original issue where single 'export_outputs' deleted everything")
-    print()
-
 def print_cleanup_preview(stage_name: str, subject_name: str, config_data: dict) -> None:
     """
     Preview what files would be cleaned when running a specific stage.
@@ -392,5 +324,3 @@ def print_cleanup_preview(stage_name: str, subject_name: str, config_data: dict)
         
     except Exception as e:
         print(f"Error generating cleanup preview: {e}")
-
-
