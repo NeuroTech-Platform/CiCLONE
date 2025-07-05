@@ -65,6 +65,9 @@ CiCLONE (Cico Cardinale's Localization Of Neuro-electrodes) is an application fo
 3. **Check the Interfaces**: Review `ciclone/interfaces/view_interfaces.py` for type contracts
 4. **Run the Application**: Launch both GUI and CLI versions to understand functionality
 5. **Read the Processing Pipeline**: Understand how medical image processing works in `ciclone/services/processing/`
+6. **Study Component Architecture**: Read detailed guides for specific components:
+   - **[MainWindow](./mainwindow.md)**: Subject management and processing pipeline
+   - **[ImagesViewer](./imagesviewer.md)**: Medical image viewing and electrode localization
 
 ## Project Structure
 
@@ -143,6 +146,27 @@ CiCLONE/
 - **Main UI**: `ui/MainWindow.py` and `ui/ImagesViewer.py` for primary user interfaces
 - **Processing Pipeline**: `services/processing/operations.py` for medical image operations
 - **Dependencies**: `pyproject.toml` defines all package dependencies and scripts
+
+## Component Architecture Documentation
+
+For detailed architecture information about specific components, see:
+
+### 🏠 [MainWindow Architecture](./mainwindow.md)
+- Central application interface and coordination patterns
+- Subject management and processing pipeline architecture
+- Form validation system and controller coordination
+- MainController and child controller specifications
+
+### 🖼️ [ImagesViewer Architecture](./imagesviewer.md)  
+- Medical image viewer and electrode localization architecture
+- Multi-controller coordination (Image, Electrode, Crosshair)
+- Advanced overlay system and coordinate transformation
+- MVC patterns specific to medical image processing
+
+### 📋 [Architecture Overview](./README.md)
+- Documentation navigation and quick reference
+- Component responsibilities and reading guide
+- Best practices and development patterns
 
 ## Architecture Layers
 
@@ -260,19 +284,17 @@ Coordinate between models and views, handling user interactions with clean separ
 #### Views (`ciclone/ui/`)
 Handle user interface and presentation logic with elegant validation feedback.
 
-- **`MainWindow.py`**: Main application window
+- **`MainWindow.py`**: Main application window - **[See detailed architecture](./mainwindow.md)**
   - Subject management and directory browsing
-  - Processing pipeline execution
-  - Integration with ImagesViewer
+  - Processing pipeline execution with real-time feedback
+  - Integration with ImagesViewer for medical image viewing
   - Elegant validation indicators (colored dots) for professional UX
-  - Fixed method name mismatches
-- **`ImagesViewer.py`**: Medical image viewer with advanced overlay controls
+- **`ImagesViewer.py`**: Medical image viewer - **[See detailed architecture](./imagesviewer.md)**
   - Multi-planar reconstruction (axial, sagittal, coronal)
   - Interactive electrode coordinate setting with push-button workflow
-  - **Gear Button Overlay System**: buttons for advanced image overlay controls
+  - Advanced gear button overlay system for image management
   - Real-time opacity control with percentage feedback
-  - Base + overlay image system with visibility toggles
-  - Synchronized updates across all three views
+  - Professional medical imaging interface optimized for neurosurgical workflows
 - **`Viewer3D.py`**: 3D visualization component
 - **`ClickableImageLabel.py`**: Custom widget for image interaction
 - **`PreviewDialog.py`**: Preview dialogs for data validation
@@ -335,52 +357,25 @@ Configuration files and electrode definitions.
 
 ## Data Flow
 
-### Image Loading and Display
-1. User selects image file in MainWindow or ImagesViewer
-2. ImageController delegates to DialogService for file selection
-3. ImageController.load_image() validates and delegates to ImageModel
-4. ImageModel loads and processes NIFTI data via NiBabel
-5. ImageController updates view through type-safe interface
-6. Views refresh to display updated slices with overlay capabilities
+CiCLONE implements sophisticated data flow patterns across its two main UI components. For detailed data flow examples specific to each component, see:
 
-### Advanced Image Overlay System
-1. User clicks gear button next to image sliders
-2. Popup menu displays with base/overlay image dropdowns
-3. User selects base and overlay images with real-time preview
-4. Opacity slider provides immediate feedback with percentage display
-5. Eye icon toggles provide visibility control
-6. All three views (axial, sagittal, coronal) update simultaneously
-7. Overlay blending performed efficiently for smooth interaction
+- **[MainWindow Data Flow](./mainwindow.md#data-flow-patterns)**: Subject creation, processing pipeline, and form validation flows
+- **[ImagesViewer Data Flow](./imagesviewer.md#data-flow-patterns)**: Image loading, electrode coordinate setting, overlay system, and crosshair synchronization flows
 
-### Electrode Management with Validation
-1. User creates electrode through ImagesViewer UI
-2. ElectrodeController validates input and delegates to ElectrodeModel
-3. ElectrodeModel stores electrode data with proper state management
-4. ElectrodeController updates view through interface contract
-5. User sets coordinates using push-button workflow (medical professional optimized)
-6. CoordinateModel stores coordinate data with validation
-7. Processing generates contact positions along electrode trajectory
-8. Views refresh to display electrode contacts with visual feedback
+### General Application Data Flow Pattern
 
-### Form Validation with Feedback
-1. User enters data in form fields
-2. SubjectFormModel performs real-time validation
-3. SubjectFormController coordinates validation state changes
-4. Visual indicators (colored dots) provide immediate feedback:
-   - **Red**: Validation errors requiring attention
-   - **Orange**: Warnings or incomplete fields
-   - **Green**: Valid, complete entries
-5. Form state prevents submission until all validations pass
-6. Professional, non-intrusive UX suitable for medical environments
+```
+User Interaction → View → Controller → Model/Service → External Tools/Storage
+      ↓                                                        ↓
+  UI Updates ← View ← Controller ← Model/Service ← Results/Data
+```
 
-### Processing Pipeline with Clean Termination
-1. User selects subjects and stages in MainWindow
-2. ProcessingController validates selection and starts ImageProcessingWorker
-3. Worker executes in background thread with external tool integration
-4. Processing services execute FSL/FreeSurfer operations with proper environment isolation
-5. Progress updates sent to UI through Qt signals
-6. User can cleanly stop processing with professional feedback (no message spam)
-7. Results stored in subject directory structure with proper cleanup
+### Cross-Component Integration
+
+1. **MainWindow → ImagesViewer**: Subject creation triggers medical image viewer for NIFTI files
+2. **Processing Pipeline**: Coordinates between subject management and medical image processing
+3. **Service Layer**: Shared services (DialogService, Processing Services) coordinate across components
+4. **Configuration**: Central ApplicationModel provides configuration to all components
 
 ## Dependency Management Strategy
 
