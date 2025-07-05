@@ -19,6 +19,7 @@ from ciclone.services.processing.operations import (
 )
 from ciclone.utils.utility import read_config_file
 from ciclone.domain.subject import Subject
+from ciclone.services.io.subject_file_service import SubjectFileService
 
 def run_operation(operation, subject: Subject):    
     # Store the original working directory
@@ -133,6 +134,7 @@ Use ciclone -h to see all available commands''',
     if args.subjects:
         for subject_name in args.subjects:
             subject_folder = output_directory_path / subject_name
+            SubjectFileService.create_subject_directories(subject_folder)
             subject = Subject(subject_folder)
 
             stages = config_data['stages']
@@ -148,7 +150,7 @@ Use ciclone -h to see all available commands''',
                 print(f"{subject_name}: Finished running all stages")
                 print(f"{subject_name}: You can now mark your electrodes using 3D slicer.")
             else:
-                subject.clear_processed_tmp()
+                SubjectFileService.clear_processed_tmp(subject.folder_path)
                 for stage in stages:
                     run_stage(stage, subject)
 

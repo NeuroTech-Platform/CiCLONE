@@ -12,6 +12,7 @@ import shutil
 import re
 from pathlib import Path
 from ciclone.domain.subject import Subject
+from ciclone.services.io.subject_file_service import SubjectFileService
 
 from ciclone.services.io.schema_processor import SchemaProcessor
 
@@ -75,6 +76,7 @@ class SubjectImporter:
         
         # Create subject folder
         subject_path = Path(output_directory) / subject_data["name"]
+        SubjectFileService.create_subject_directories(subject_path)
         subject = Subject(subject_path)
         
         subject_name = subject_data["name"]
