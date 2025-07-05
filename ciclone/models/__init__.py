@@ -16,5 +16,6 @@ from .image_model import ImageModel
 from .crosshair_model import CrosshairModel
 from .subject_model import SubjectModel, SubjectData, SubjectValidationResult
 from .application_model import ApplicationModel, WorkerState, UIState
+from .subject_data_factory import SubjectDataFactory
 
-__all__ = ['ElectrodeModel', 'CoordinateModel', 'ImageModel', 'CrosshairModel', 'SubjectModel', 'SubjectData', 'SubjectValidationResult', 'ApplicationModel', 'WorkerState', 'UIState'] 
+__all__ = ['ElectrodeModel', 'CoordinateModel', 'ImageModel', 'CrosshairModel', 'SubjectModel', 'SubjectData', 'SubjectValidationResult', 'ApplicationModel', 'WorkerState', 'UIState', 'SubjectDataFactory'] 

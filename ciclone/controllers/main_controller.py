@@ -4,6 +4,7 @@ from PyQt6.QtCore import QObject
 
 from ciclone.models.application_model import ApplicationModel
 from ciclone.models.subject_model import SubjectModel, SubjectData
+from ciclone.models.subject_data_factory import SubjectDataFactory
 from ciclone.controllers.subject_controller import SubjectController
 from ciclone.controllers.processing_controller import ProcessingController
 from ciclone.controllers.tree_view_controller import TreeViewController
@@ -237,19 +238,8 @@ class MainController(QObject):
     
     def create_subject_from_form_data(self, form_data: Dict[str, Any]) -> bool:
         """Create a subject from form data (MVC-compliant method)."""
-        # Create subject data object in controller (not view)
-        subject_data = SubjectData(
-            name=form_data['name'],
-            schema=form_data.get('schema', ''),
-            pre_ct=form_data.get('pre_ct', ''),
-            pre_mri=form_data.get('pre_mri', ''),
-            post_ct=form_data.get('post_ct', ''),
-            post_mri=form_data.get('post_mri', '')
-        )
-        
-        # Set schema files if provided
-        if 'schema_files' in form_data:
-            subject_data.set_schema_files(form_data['schema_files'])
+        # Use factory to create subject data object (business logic in model layer)
+        subject_data = SubjectDataFactory.create_from_form_data(form_data)
         
         # Use existing subject creation logic
         return self.subject_controller.create_subject(subject_data)

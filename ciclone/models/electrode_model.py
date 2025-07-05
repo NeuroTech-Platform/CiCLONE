@@ -2,38 +2,19 @@ import os
 import pickle
 import numpy as np
 from typing import Dict, List, Tuple, Optional
-from PyQt6.QtWidgets import QTreeWidgetItem
-from PyQt6.QtCore import Qt, QObject, pyqtSignal
 
 from ciclone.domain.electrodes import Electrode
+from ciclone.services.io.electrode_file_service import ElectrodeFileService
 
 
 class ElectrodeModel:
     """Model for managing electrode data and business logic."""
     
-    def __init__(self):
+    def __init__(self, electrode_file_service: ElectrodeFileService = None):
         self._electrodes: Dict[str, Electrode] = {}
         self._processed_contacts: Dict[str, List[Tuple[int, int, int]]] = {}
-        self._electrode_definitions = self._load_electrode_definitions()
+        self._electrode_file_service = electrode_file_service or ElectrodeFileService()
     
-    def _load_electrode_definitions(self) -> Dict[str, str]:
-        """Load electrode definition files from the config directory."""
-        electrode_files = []
-        config_path = os.path.realpath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "electrodes"))
-        print(f"Loading electrode definitions from {config_path}")
-
-        if not os.path.exists(config_path):
-            return {}
-        
-        for file in os.listdir(config_path):
-            if file.endswith(".elecdef"):
-                name = file.replace(".elecdef", "")
-                full_path = os.path.join(config_path, file)
-                electrode_files.append((name, full_path))
-        
-        # Sort electrode files alphabetically by name
-        electrode_files.sort(key=lambda x: x[0])
-        return dict(electrode_files)
     
     def add_electrode(self, name: str, electrode_type: str) -> bool:
         """Add a new electrode to the model."""
@@ -96,7 +77,7 @@ class ElectrodeModel:
     
     def get_available_electrode_types(self) -> List[str]:
         """Get list of available electrode types."""
-        return list(self._electrode_definitions.keys())
+        return self._electrode_file_service.list_available_electrode_types()
     
     def process_electrode_contacts(self, 
                                  electrode_name: str, 
@@ -109,9 +90,10 @@ class ElectrodeModel:
         
         try:
             # Load electrode definition
-            elec_def_path = self._electrode_definitions.get(electrode.electrode_type)
-            if not elec_def_path or not os.path.exists(elec_def_path):
+            if not self._electrode_file_service.electrode_definition_exists(electrode.electrode_type):
                 return False
+                
+            elec_def_path = self._electrode_file_service.get_electrode_definition_path(electrode.electrode_type)
             
             with open(elec_def_path, 'rb') as f:
                 elec_def = pickle.load(f)
@@ -184,25 +166,6 @@ class ElectrodeModel:
                 ]
         return contacts_dict
     
-    def create_tree_item(self, electrode: Electrode) -> QTreeWidgetItem:
-        """Create a tree widget item for an electrode."""
-        item = QTreeWidgetItem()
-        item.setText(0, electrode.name)
-        item.setTextAlignment(0, Qt.AlignmentFlag.AlignCenter)
-        
-        # Add contact sub-items
-        for contact in electrode.contacts:
-            contact_item = QTreeWidgetItem(item)
-            contact_item.setText(0, contact.label)
-            contact_item.setText(1, str(int(contact.x)))
-            contact_item.setText(2, str(int(contact.y)))
-            contact_item.setText(3, str(int(contact.z)))
-            contact_item.setTextAlignment(0, Qt.AlignmentFlag.AlignCenter)
-            contact_item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
-            contact_item.setTextAlignment(2, Qt.AlignmentFlag.AlignCenter)
-            contact_item.setTextAlignment(3, Qt.AlignmentFlag.AlignCenter)
-        
-        return item
     
     def has_processed_contacts(self) -> bool:
         """Check if any electrodes have processed contacts."""

@@ -8,15 +8,19 @@ from ciclone.models.coordinate_model import CoordinateModel
 from ciclone.domain.electrodes import Electrode
 from ciclone.interfaces.view_interfaces import IImageView
 from ciclone.services.io.slicer_file import SlicerFile
+from ciclone.services.ui.electrode_view_delegate import ElectrodeViewDelegate
+from ciclone.services.ui.dialog_service import DialogService
 
 
 class ElectrodeController:
     """Controller for managing electrode operations and coordinating between models and views."""
     
-    def __init__(self, electrode_model: ElectrodeModel, coordinate_model: CoordinateModel):
+    def __init__(self, electrode_model: ElectrodeModel, coordinate_model: CoordinateModel, dialog_service: DialogService = None):
         self.electrode_model = electrode_model
         self.coordinate_model = coordinate_model
         self._view = None
+        self._electrode_view_delegate = ElectrodeViewDelegate()
+        self._dialog_service = dialog_service
     
     def set_view(self, view: IImageView):
         """Set the view reference for UI updates."""
@@ -387,7 +391,7 @@ class ElectrodeController:
     
     def create_tree_item(self, electrode: Electrode) -> QTreeWidgetItem:
         """Create a tree widget item for an electrode."""
-        return self.electrode_model.create_tree_item(electrode)
+        return self._electrode_view_delegate.create_tree_item(electrode)
     
     def get_electrode_types(self) -> List[str]:
         """Get available electrode types."""
@@ -403,49 +407,65 @@ class ElectrodeController:
     
     def _show_error(self, message: str):
         """Show error message to user."""
-        if self._view:
+        if self._dialog_service:
+            self._dialog_service.show_error("Error", message)
+        elif self._view:
             QMessageBox.critical(self._view, "Error", message)
     
     def _show_warning(self, message: str):
         """Show warning message to user."""
-        if self._view:
+        if self._dialog_service:
+            self._dialog_service.show_warning("Warning", message)
+        elif self._view:
             QMessageBox.warning(self._view, "Warning", message)
     
     def _show_info(self, message: str):
         """Show info message to user."""
-        if self._view:
+        if self._dialog_service:
+            self._dialog_service.show_information("Success", message)
+        elif self._view:
             QMessageBox.information(self._view, "Success", message)
     
     def _confirm_deletion(self, electrode_name: str) -> bool:
         """Confirm electrode deletion with user."""
-        if not self._view:
-            return False
-        
-        reply = QMessageBox.question(
-            self._view,
-            "Confirm Deletion",
-            f"Are you sure you want to delete electrode '{electrode_name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        
-        return reply == QMessageBox.StandardButton.Yes
+        if self._dialog_service:
+            return self._dialog_service.show_confirmation(
+                "Confirm Deletion",
+                f"Are you sure you want to delete electrode '{electrode_name}'?",
+                default_no=True
+            )
+        elif self._view:
+            reply = QMessageBox.question(
+                self._view,
+                "Confirm Deletion",
+                f"Are you sure you want to delete electrode '{electrode_name}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            return reply == QMessageBox.StandardButton.Yes
+        return False
     
     def _confirm_multiple_deletion(self, electrode_names: List[str]) -> bool:
         """Confirm multiple electrode deletion with user."""
-        if not self._view:
-            return False
-        
         if len(electrode_names) == 1:
             return self._confirm_deletion(electrode_names[0])
         
         electrode_list = '\n'.join([f"  • {name}" for name in electrode_names])
-        reply = QMessageBox.question(
-            self._view,
-            "Confirm Multiple Deletion",
-            f"Are you sure you want to delete the following {len(electrode_names)} electrodes?\n\n{electrode_list}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
+        message = f"Are you sure you want to delete the following {len(electrode_names)} electrodes?\n\n{electrode_list}"
         
-        return reply == QMessageBox.StandardButton.Yes 
+        if self._dialog_service:
+            return self._dialog_service.show_confirmation(
+                "Confirm Multiple Deletion",
+                message,
+                default_no=True
+            )
+        elif self._view:
+            reply = QMessageBox.question(
+                self._view,
+                "Confirm Multiple Deletion",
+                message,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            return reply == QMessageBox.StandardButton.Yes
+        return False 

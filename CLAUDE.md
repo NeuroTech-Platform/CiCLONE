@@ -35,17 +35,30 @@ make design file=forms/MainWindow.ui
 ```
 
 ### Testing and Quality
-No specific test/lint commands found in project configuration. Check with maintainers for preferred testing approach.
+```bash
+# Run all unit tests
+python tests/run_tests.py
+
+# Run specific test module
+python tests/run_tests.py test_subject_file_service
+
+# Run individual test files
+python -m unittest tests.test_subject_file_service
+python -m unittest tests.test_electrode_view_delegate
+python -m unittest tests.test_subject_data_factory
+python -m unittest tests.test_subject_domain
+```
 
 ## Architecture Overview
 
 ### MVC Pattern with Service Layer
 - **Domain Layer** (`ciclone/domain/`): Pure business entities (electrodes, subjects)
 - **Service Layer** (`ciclone/services/`): Business logic organized by domain
-  - `ui/`: Dialog service and view delegates for UI abstraction
+  - `ui/`: Dialog service and view delegates for UI abstraction (DialogService, ElectrodeViewDelegate)
   - `processing/`: Medical image processing operations (FSL/FreeSurfer integration)
-  - `io/`: File I/O operations for medical data formats
+  - `io/`: File I/O operations for medical data formats (SubjectFileService, ElectrodeFileService)
 - **Models** (`ciclone/models/`): Application state and data management with Qt signals
+  - **Factories**: Business logic for object creation (SubjectDataFactory)
 - **Controllers** (`ciclone/controllers/`): Coordinate between models and views
 - **Views** (`ciclone/ui/`): PyQt6 GUI components with professional medical UI
 - **Interfaces** (`ciclone/interfaces/`): Type-safe Protocol-based view contracts
@@ -102,9 +115,31 @@ No specific test/lint commands found in project configuration. Check with mainta
 4. Background processing pipeline execution with FSL/FreeSurfer
 5. Results export to subject-specific directories
 
+### MVC Compliance Improvements
+
+The codebase has been enhanced with strict MVC compliance through the following refactoring:
+
+#### Domain Purity
+- **Subject Domain Object**: Extracted file I/O operations to `SubjectFileService`
+- **Pure Business Logic**: Domain objects contain only business rules, no infrastructure concerns
+
+#### Service Layer Enhancement
+- **SubjectFileService**: Handles all Subject-related file operations with proper dependency injection
+- **ElectrodeFileService**: Manages electrode definition file access with testable abstraction
+- **ElectrodeViewDelegate**: Removed UI dependencies from ElectrodeModel
+
+#### Controller Improvements
+- **Dialog Service Integration**: Standardized dialog usage across controllers with dependency injection
+- **Business Logic Extraction**: Moved subject data creation to `SubjectDataFactory` in model layer
+
+#### Testing Infrastructure
+- **Comprehensive Unit Tests**: All refactored components have full test coverage
+- **Dependency Injection**: Services support mocking for isolated testing
+- **Backward Compatibility**: All changes maintain existing functionality
+
 ## Important Notes
 
 - **Production Ready Status**: Complete MVC implementation with medical-grade stability
-- **No Test Framework Discovered**: Verify testing approach with maintainers before adding tests
+- **Comprehensive Test Suite**: Unit tests available for all refactored MVC components
 - **Medical Domain Focus**: UI and workflows optimized for neurosurgical procedures
 - **Cross-Platform**: Designed for macOS/Linux, Windows compatibility via Qt6
