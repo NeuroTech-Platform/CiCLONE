@@ -9,6 +9,7 @@ from ciclone.services.processing.operations import (
     subtract_image,
     threshold_image,
     apply_transformation2image,
+    apply_nudgetransformation2image,
     extract_brain,
     extract_brain2,
     mask_image,
@@ -54,6 +55,8 @@ def run_operation(operation, subject: Subject):
             threshold_image(*files)
         elif operation['type'] == 'apply_transformation':
             apply_transformation2image(*files)
+        elif operation['type'] == 'apply_nudgetransformation':
+            apply_nudgetransformation2image(*files)
         elif operation['type'] == 'extract_brain':
             extract_brain(*files)
         elif operation['type'] == 'extract_brain2':

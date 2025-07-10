@@ -40,8 +40,11 @@ def move_image(input_file: Path, output_file: str) -> None:
     execute_command(["mv", input_file, output_file])
 
 def copy_image(input_file: Path, output_file: str) -> None:
+    if input_file is None:
+        print("Input file is None, not doing anything.")
+        return
+    
     input_file = Path(input_file)
-
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
         return
@@ -119,6 +122,33 @@ def apply_transformation2image(input_file: Path, transformation_file: Path, ref_
         print(f"Reference file {ref_file} does not exist.")
         return
     
+    print(f"Applying transformation {transformation_file.stem} to {input_file.stem} using for ref {ref_file.stem} => {output_file_name}")
+    execute_command([
+        tool_config.get_fsl_tool_path("flirt"), "-in", input_file.stem, "-applyxfm", "-init", transformation_file, 
+        "-out", output_file_name, "-paddingsize", "0.0", "-interp", "sinc", 
+        "-ref", ref_file.stem, "-bins", "256", "-cost", "mutualinfo", 
+        "-searchrx", "-180", "180", "-searchry", "-180", "180", "-searchrz", "-180", "180", 
+        "-dof", "6", "-interp", "sinc", "-datatype", "int"
+    ])
+
+def apply_nudgetransformation2image(input_file: Path, transformation_file: Path | None, ref_file:Path, output_file_name: str) -> None:
+    input_file = Path(input_file)
+    if not input_file.exists():
+        print(f"Input file {input_file} does not exist.")
+        return
+    ref_file = Path(ref_file)
+    if not ref_file.exists():
+        print(f"Reference file {ref_file} does not exist.")
+        return
+    
+    if transformation_file is None:
+        print(f"Transformation file is None, copying input file as output file")
+        output_file = str(input_file).replace(".nii", "_N.nii")
+        execute_command(["cp", "-f", input_file, output_file])
+        return
+        
+    transformation_file = Path(transformation_file)
+
     print(f"Applying transformation {transformation_file.stem} to {input_file.stem} using for ref {ref_file.stem} => {output_file_name}")
     execute_command([
         tool_config.get_fsl_tool_path("flirt"), "-in", input_file.stem, "-applyxfm", "-init", transformation_file, 
