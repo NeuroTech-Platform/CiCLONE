@@ -1016,10 +1016,33 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             QMessageBox.warning(self, "Warning", "No image loaded or missing affine transform.")
             return
         
-        # Ask for the output file
-        default_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
+        # Auto-detect subject directory from loaded images
+        loaded_images = self.image_controller.get_loaded_images()
+        if not loaded_images:
+            QMessageBox.warning(self, "Warning", "No images loaded. Cannot detect subject directory.")
+            return
+            
+        # Use first loaded image to detect subject directory
+        image_path = Path(loaded_images[0])
+        subject_dir = self._detect_subject_directory(image_path)
+        
+        if not subject_dir:
+            # Fallback to manual selection
+            subject_dir = QFileDialog.getExistingDirectory(self, "Select subject directory")
+            if not subject_dir:
+                return
+            subject_dir = Path(subject_dir)
+        
+        # Create Subject instance and get transformation matrix
+        subject = Subject(subject_dir)
+        subject_name = subject.get_subject_name()
+
+        # Ask where to save output (default to pipeline_output folder)
+        default_path = str(subject.pipeline_output / f"{subject_name}_coordinates.json")
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Electrode Coordinates", default_dir, "JSON Files (*.json)"
+            self, "Save Subject Coordinates", 
+            default_path,
+            "JSON Files (*.json)"
         )
         
         if not file_path:
