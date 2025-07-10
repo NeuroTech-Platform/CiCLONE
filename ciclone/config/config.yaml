@@ -1,22 +1,24 @@
 # Define stage dependencies and outputs for intelligent cleaning
 stage_dependencies:
-  preprocessing: []
-  coregisteration: [preprocessing]
+  visual_inspection : []
+  coregisteration: [visual_inspection ]
   extract_electrodes: [coregisteration]
   apply_mask: [extract_electrodes]
   mni_registration: [coregisteration]  # Fixed: needs v_${name}_ref from coregisteration
   cortical_extraction: [coregisteration]  # Fixed: also needs v_${name}_ref from coregisteration
-  export_outputs: [preprocessing, coregisteration, apply_mask, mni_registration]  # Fixed: needs outputs from all 4 stages
+  export_outputs: [visual_inspection , coregisteration, apply_mask, mni_registration]  # Fixed: needs outputs from all 4 stages
 
 # Enhanced stage configuration with prerequisites and specific cleanup patterns
 stage_outputs:
-  preprocessing:
+  visual_inspection :
     required_inputs: []
     outputs:
       - "${name}_CT_Bone_C"
       - "${name}_CT_Electrodes_C"  
       - "${name}_T1_C"
     cleanup_patterns:
+      - "*_N.nii*"
+      - "*_N"
       - "*_C.nii*"
       - "*_C"
       
@@ -73,7 +75,8 @@ stage_outputs:
       - "freesurfer_*"
       
   export_outputs:
-    required_inputs: ["${name}_CT_Electrodes_C", "${name}_T1_C", "v_${name}_ref", "r_${name}_seeg_masked", "MNI_${name}_ref_brain", "MNI_${name}_ref_brain.mat"]
+    #required_inputs: ["${name}_CT_Electrodes_C", "${name}_T1_C", "v_${name}_ref", "r_${name}_seeg_masked", "MNI_${name}_ref_brain", "MNI_${name}_ref_brain.mat"]
+    required_inputs: ["${name}_CT_Electrodes_C", "${name}_T1_C", "v_${name}_ref", "r_${name}_seeg_masked"]
     outputs:
       - "pipeline_output/${name}_CT_Electrodes_C"
       - "pipeline_output/${name}_T1_C"
@@ -85,33 +88,42 @@ stage_outputs:
       - "pipeline_output/*"
 
 stages:
-  - name: preprocessing
+  - name: visual_inspection 
     auto_clean: true
     operations:
       - type: open_fsleyes
         workdir: preop/ct
         files: ["${name}_CT_Bone"]
+      - type: apply_nudgetransformation
+        workdir: preop/ct
+        files: ["${name}_CT_Bone", "${name}_CT_Bone.mat", "${name}_CT_Bone", "${name}_CT_Bone_N"]
       - type: crop
         workdir: preop/ct
-        files: ["${name}_CT_Bone", "${name}_CT_Bone_C"]
+        files: ["${name}_CT_Bone_N", "${name}_CT_Bone_C"]
       - type: move
         workdir: preop/ct
         files: ["${name}_CT_Bone_C", "${subj_dir}/processed_tmp"]
       - type: open_fsleyes
-        workdir: preop/ct
+        workdir: postop/ct
         files: ["${name}_CT_Electrodes"]
+      - type: apply_nudgetransformation
+        workdir: postop/ct
+        files: ["${name}_CT_Electrodes", "${name}_CT_Electrodes.mat", "${name}_CT_Electrodes", "${name}_CT_Electrodes_N"]
       - type: crop
         workdir: postop/ct
-        files: ["${name}_CT_Electrodes", "${name}_CT_Electrodes_C"]
+        files: ["${name}_CT_Electrodes_N", "${name}_CT_Electrodes_C"]
       - type: move
         workdir: postop/ct
         files: ["${name}_CT_Electrodes_C", "${subj_dir}/processed_tmp"]
       - type: open_fsleyes
         workdir: preop/mri
         files: ["${name}_T1"]
+      - type: apply_nudgetransformation
+        workdir: preop/mri
+        files: ["${name}_T1", "${name}_T1.mat", "${name}_T1", "${name}_T1_N"]
       - type: crop
         workdir: preop/mri
-        files: ["${name}_T1", "${name}_T1_C"]
+        files: ["${name}_T1_N", "${name}_T1_C"]
       - type: move
         workdir: preop/mri
         files: ["${name}_T1_C", "${subj_dir}/processed_tmp"]
