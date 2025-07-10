@@ -1507,7 +1507,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     )
                     if pixel_coords:
                         x, y = pixel_coords
-                        label.add_marker(x, y, electrode_color, radius=5)
+                        label.add_marker(x, y, electrode_color, radius=0.5)
         
         # Add processed contact markers
         for electrode_name, contacts in processed_contacts.items():
@@ -1523,7 +1523,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     )
                     if pixel_coords:
                         x, y = pixel_coords
-                        label.add_marker(x, y, contact_color, radius=5)
+                        label.add_marker(x, y, contact_color, radius=0.5)
     
     def remove_all_crosshairs(self):
         """Remove crosshairs from all views - called by crosshair controller."""
