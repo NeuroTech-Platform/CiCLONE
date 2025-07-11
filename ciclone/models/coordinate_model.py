@@ -6,6 +6,7 @@ class CoordinateModel:
     
     def __init__(self):
         self._electrode_points: Dict[str, Dict[str, Tuple[int, int, int]]] = {}
+        self._movement_enabled: Dict[str, bool] = {}
     
     def set_entry_point(self, electrode_name: str, point: Tuple[int, int, int]) -> None:
         """Set entry point for an electrode."""
@@ -49,8 +50,11 @@ class CoordinateModel:
         """Remove all coordinates for an electrode."""
         if electrode_name in self._electrode_points:
             del self._electrode_points[electrode_name]
-            return True
-        return False
+        
+        if electrode_name in self._movement_enabled:
+            del self._movement_enabled[electrode_name]
+        
+        return True
 
     def rename_electrode_coordinates(self, old_name: str, new_name: str) -> bool:
         """
@@ -71,6 +75,11 @@ class CoordinateModel:
         
         # Transfer coordinates to new name
         self._electrode_points[new_name] = self._electrode_points.pop(old_name)
+        
+        # Transfer movement state to new name
+        if old_name in self._movement_enabled:
+            self._movement_enabled[new_name] = self._movement_enabled.pop(old_name)
+        
         return True
     
     def clear_entry_point(self, electrode_name: str) -> None:
@@ -94,4 +103,40 @@ class CoordinateModel:
     
     def get_electrode_names_with_coordinates(self) -> list[str]:
         """Get names of electrodes that have coordinates set."""
-        return [name for name, coords in self._electrode_points.items() if coords] 
+        return [name for name, coords in self._electrode_points.items() if coords]
+    
+    def set_movement_enabled(self, electrode_name: str, enabled: bool) -> None:
+        """Set movement enabled state for an electrode."""
+        self._movement_enabled[electrode_name] = enabled
+    
+    def is_movement_enabled(self, electrode_name: str) -> bool:
+        """Check if movement is enabled for an electrode."""
+        return self._movement_enabled.get(electrode_name, False)
+    
+    def move_entry_point(self, electrode_name: str, new_coordinates: Tuple[int, int, int]) -> bool:
+        """Move entry point for an electrode if movement is enabled."""
+        if not self.is_movement_enabled(electrode_name):
+            return False
+        
+        if electrode_name not in self._electrode_points:
+            return False
+        
+        if 'entry' not in self._electrode_points[electrode_name]:
+            return False
+        
+        self._electrode_points[electrode_name]['entry'] = new_coordinates
+        return True
+    
+    def move_output_point(self, electrode_name: str, new_coordinates: Tuple[int, int, int]) -> bool:
+        """Move output point for an electrode if movement is enabled."""
+        if not self.is_movement_enabled(electrode_name):
+            return False
+        
+        if electrode_name not in self._electrode_points:
+            return False
+        
+        if 'output' not in self._electrode_points[electrode_name]:
+            return False
+        
+        self._electrode_points[electrode_name]['output'] = new_coordinates
+        return True 

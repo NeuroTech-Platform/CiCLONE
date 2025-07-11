@@ -50,7 +50,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/ciclone/ui/ImagesViewer.py",
             "args": [
-                "/Users/fl6985/Desktop/ciclone/subject_test_viewer/ct_scan.nii.gz"
+                "/Users/fl6985/Documents/Data/DataCiclone/subject_test_viewer/ct_scan.nii.gz"
             ],
             "console": "integratedTerminal",
             "justMyCode": true,

@@ -173,4 +173,53 @@ class ElectrodeModel:
     
     def get_electrodes_with_contacts(self) -> List[Electrode]:
         """Get all electrodes that have processed contacts."""
-        return [electrode for electrode in self.get_all_electrodes() if electrode.contacts] 
+        return [electrode for electrode in self.get_all_electrodes() if electrode.contacts]
+    
+    def move_contact_coordinate(self, electrode_name: str, contact_index: int, new_coordinates: Tuple[int, int, int]) -> bool:
+        """
+        Move a specific contact coordinate for an electrode.
+        
+        Args:
+            electrode_name: Name of the electrode
+            contact_index: Index of the contact to move (0-based)
+            new_coordinates: New coordinates for the contact
+            
+        Returns:
+            bool: True if move was successful, False otherwise
+        """
+        electrode = self.get_electrode(electrode_name)
+        if not electrode or not electrode.contacts:
+            return False
+        
+        if contact_index < 0 or contact_index >= len(electrode.contacts):
+            return False
+        
+        # Update the contact coordinates in the electrode object
+        contact = electrode.contacts[contact_index]
+        contact.x, contact.y, contact.z = new_coordinates
+        
+        # Update the processed contacts cache
+        if electrode_name in self._processed_contacts:
+            if contact_index < len(self._processed_contacts[electrode_name]):
+                self._processed_contacts[electrode_name][contact_index] = new_coordinates
+        
+        return True
+    
+    def get_contact_count(self, electrode_name: str) -> int:
+        """Get the number of contacts for an electrode."""
+        electrode = self.get_electrode(electrode_name)
+        if not electrode:
+            return 0
+        return len(electrode.contacts)
+    
+    def get_contact_coordinates(self, electrode_name: str, contact_index: int) -> Optional[Tuple[int, int, int]]:
+        """Get coordinates for a specific contact."""
+        electrode = self.get_electrode(electrode_name)
+        if not electrode or not electrode.contacts:
+            return None
+        
+        if contact_index < 0 or contact_index >= len(electrode.contacts):
+            return None
+        
+        contact = electrode.contacts[contact_index]
+        return (contact.x, contact.y, contact.z) 

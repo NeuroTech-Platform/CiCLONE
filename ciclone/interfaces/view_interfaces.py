@@ -165,6 +165,14 @@ class IImageView(Protocol):
         """Enable or disable electrode control widgets."""
         ...
     
+    def update_electrode_movement_state(self, electrode_name: str, enabled: bool) -> None:
+        """Update electrode movement state in the UI."""
+        ...
+    
+    def refresh_image_display(self) -> None:
+        """Refresh image display with current electrode markers."""
+        ...
+    
     # =============================================================================
     # Crosshair Interface
     # =============================================================================

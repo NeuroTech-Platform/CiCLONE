@@ -4,6 +4,8 @@ from PyQt6.QtGui import QPixmap, QWheelEvent, QMouseEvent, QPainter, QTransform,
 
 class ClickableImageLabel(QGraphicsView):
     clicked = pyqtSignal(int, int)  # x, y in original image coordinates
+    marker_drag_started = pyqtSignal(str, str, int)  # electrode_name, coord_type, contact_index
+    marker_drag_ended = pyqtSignal(str, str, int, int, int)  # electrode_name, coord_type, contact_index, x, y
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -58,6 +60,14 @@ class ClickableImageLabel(QGraphicsView):
         
         # Track markers separately from the image
         self.markers = []  # List to keep track of marker items
+        self.marker_data = {}  # Maps marker to electrode data: {marker: {'electrode_name': str, 'coord_type': str, 'contact_index': int}}
+        
+        # Drag state
+        self.drag_mode = False
+        self.dragged_marker = None
+        self.drag_start_pos = None
+        self.drag_offset = None  # Offset from marker center to mouse click
+        self.drag_tolerance = 5  # pixels - reduced for more precise selection
         
         # Track crosshair elements separately
         self.crosshair_horizontal = None
@@ -292,6 +302,28 @@ class ClickableImageLabel(QGraphicsView):
             # Convert view coordinates to scene coordinates
             scene_pos = self.mapToScene(event.position().toPoint())
             
+            # Check if click is near a marker
+            nearby_marker = self.get_marker_at_position(scene_pos, self.drag_tolerance)
+            
+            if nearby_marker and nearby_marker in self.marker_data and self.is_movement_enabled_for_marker(nearby_marker):
+                # Start drag mode
+                self.drag_mode = True
+                self.dragged_marker = nearby_marker
+                self.drag_start_pos = scene_pos
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                
+                # Emit drag started signal
+                marker_data = self.marker_data[nearby_marker]
+                self.marker_drag_started.emit(
+                    marker_data['electrode_name'],
+                    marker_data['coord_type'],
+                    marker_data['contact_index']
+                )
+                
+                # Accept the event to prevent further processing
+                event.accept()
+                return
+            
             # Convert scene coordinates to original image coordinates
             if self.pixmap_item and self.original_pixmap:
                 # Get the position relative to the pixmap item
@@ -316,8 +348,86 @@ class ClickableImageLabel(QGraphicsView):
     
     def mouseMoveEvent(self, event: QMouseEvent):
         """Handle mouse move events."""
+        if self.drag_mode and self.dragged_marker and self.dragged_marker in self.marker_data:
+            # Convert view coordinates to scene coordinates
+            scene_pos = self.mapToScene(event.position().toPoint())
+            
+            # Convert to image coordinates - same as marker creation
+            if self.pixmap_item and self.original_pixmap:
+                # Get the position relative to the pixmap item
+                item_pos = self.pixmap_item.mapFromScene(scene_pos)
+                
+                # Ensure coordinates are within image bounds
+                pixmap_rect = self.pixmap_item.boundingRect()
+                if pixmap_rect.contains(item_pos):
+                    # Convert to integer coordinates for the original image
+                    x = int(item_pos.x())
+                    y = int(item_pos.y())
+                    
+                    # Get the original radius from marker data, with fallback
+                    marker_data = self.marker_data[self.dragged_marker]
+                    radius = marker_data.get('original_radius', 0.5)
+                    
+                    # Update marker position using same coordinate system as creation
+                    self.dragged_marker.setRect(x - radius, y - radius, radius * 2, radius * 2)
+            
+            # Accept the event to prevent further processing
+            event.accept()
+            return
+        elif self.drag_mode and self.dragged_marker:
+            # Safety: Reset drag mode if marker has no data
+            self.drag_mode = False
+            self.dragged_marker = None
+            self.drag_start_pos = None
+            self.drag_offset = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        
         # No need to track mouse position here since _apply_zoom gets it directly
         super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Handle mouse release events."""
+        if event.button() == Qt.MouseButton.LeftButton and self.drag_mode and self.dragged_marker:
+            # Only process if marker has data
+            if self.dragged_marker in self.marker_data:
+                # Convert view coordinates to scene coordinates
+                scene_pos = self.mapToScene(event.position().toPoint())
+                
+                # Convert to image coordinates - same as normal click
+                if self.pixmap_item and self.original_pixmap:
+                    # Get the position relative to the pixmap item
+                    item_pos = self.pixmap_item.mapFromScene(scene_pos)
+                    
+                    # Ensure coordinates are within image bounds
+                    pixmap_rect = self.pixmap_item.boundingRect()
+                    if pixmap_rect.contains(item_pos):
+                        # Convert to integer coordinates for the original image
+                        x = int(item_pos.x())
+                        y = int(item_pos.y())
+                        
+                        
+                        # Emit drag ended signal - this is like a click at the new position
+                        marker_data = self.marker_data[self.dragged_marker]
+                        self.marker_drag_ended.emit(
+                            marker_data['electrode_name'],
+                            marker_data['coord_type'],
+                            marker_data['contact_index'],
+                            x, y
+                        )
+            
+            # Reset drag state
+            self.drag_mode = False
+            self.dragged_marker = None
+            self.drag_start_pos = None
+            self.drag_offset = None
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            
+            # Accept the event to prevent further processing
+            event.accept()
+            return
+        
+        # Call parent for other events
+        super().mouseReleaseEvent(event)
     
     def resizeEvent(self, event):
         """Handle resize events."""
@@ -371,7 +481,7 @@ class ClickableImageLabel(QGraphicsView):
             # Exit fitted mode - this is a manual 1:1 zoom
             self._is_fitted_mode = False
     
-    def add_marker(self, x, y, color=QColor(255, 0, 0), radius=3):
+    def add_marker(self, x, y, color=QColor(255, 0, 0), radius=3, electrode_name=None, coord_type=None, contact_index=-1):
         """Add a marker at the specified image coordinates without affecting the image."""
         if not self.pixmap_item:
             return None
@@ -392,6 +502,15 @@ class ClickableImageLabel(QGraphicsView):
         self.scene.addItem(marker)
         self.markers.append(marker)
         
+        # Store electrode data if provided
+        if electrode_name and coord_type:
+            self.marker_data[marker] = {
+                'electrode_name': electrode_name,
+                'coord_type': coord_type,
+                'contact_index': contact_index,
+                'original_radius': radius
+            }
+        
         return marker
     
     def remove_marker(self, marker):
@@ -399,16 +518,78 @@ class ClickableImageLabel(QGraphicsView):
         if marker in self.markers:
             self.scene.removeItem(marker)
             self.markers.remove(marker)
+            # Remove marker data if it exists
+            if marker in self.marker_data:
+                del self.marker_data[marker]
     
     def clear_markers(self):
         """Remove all markers from the scene."""
         for marker in self.markers:
             self.scene.removeItem(marker)
         self.markers.clear()
+        self.marker_data.clear()
     
     def get_markers(self):
         """Get all current markers."""
         return self.markers.copy()
+    
+    def get_marker_at_position(self, scene_pos, tolerance=10):
+        """Get marker at or near the specified scene position."""
+        tolerance_squared = tolerance * tolerance
+        
+        # Find the closest marker within tolerance
+        closest_marker = None
+        closest_distance = float('inf')
+        
+        for marker in self.markers:
+            # Get marker center position in scene coordinates
+            marker_rect = marker.boundingRect()
+            marker_center = marker_rect.center()
+            # Add the marker's position to get the actual scene position
+            marker_scene_center = marker.scenePos() + marker_center
+            
+            # Calculate distance from click point
+            dx = scene_pos.x() - marker_scene_center.x()
+            dy = scene_pos.y() - marker_scene_center.y()
+            distance_squared = dx * dx + dy * dy
+            
+            if distance_squared <= tolerance_squared and distance_squared < closest_distance:
+                closest_marker = marker
+                closest_distance = distance_squared
+        
+        
+        return closest_marker
+    
+    def is_movement_enabled_for_marker(self, marker):
+        """Check if movement is enabled for a specific marker."""
+        if marker not in self.marker_data:
+            return False
+        
+        # This will be set by the parent/controller
+        return getattr(self, '_movement_enabled_callback', lambda *args: False)(
+            self.marker_data[marker]['electrode_name']
+        )
+    
+    def set_movement_enabled_callback(self, callback):
+        """Set callback function to check if movement is enabled for an electrode."""
+        self._movement_enabled_callback = callback
+    
+    def debug_marker_data(self):
+        """Debug method to check marker data consistency."""
+        print(f"Total markers: {len(self.markers)}")
+        print(f"Markers with data: {len(self.marker_data)}")
+        for i, marker in enumerate(self.markers):
+            if marker in self.marker_data:
+                data = self.marker_data[marker]
+                radius = data.get('original_radius', 'N/A')
+                pos = marker.pos()
+                rect = marker.rect()
+                print(f"  Marker {i}: {data['electrode_name']} {data['coord_type']} {data['contact_index']} radius={radius}")
+                print(f"    Position: ({pos.x():.1f}, {pos.y():.1f})")
+                print(f"    Rect: ({rect.x():.1f}, {rect.y():.1f}, {rect.width():.1f}, {rect.height():.1f})")
+            else:
+                print(f"  Marker {i}: NO DATA")
+        return len(self.markers), len(self.marker_data)
 
     def add_crosshairs(self, center_x, center_y, color=QColor(255, 255, 0), line_width=1):
         """Add crosshairs centered at the specified coordinates."""
