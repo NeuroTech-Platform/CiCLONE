@@ -51,6 +51,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         # Initialize UI state
         self.last_clicked_coordinates = None  # Store coordinates of last image click
+        self.drag_electrode_info = None
         
         # Setup UI components
         self._setup_ui_components()
@@ -110,16 +111,19 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.setup_image_opacity_controls()
         
         # Configure column sizing for ElectrodeTreeWidget
+        # Add the Move column header
+        self.ElectrodeTreeWidget.setHeaderLabels(["Name", "X", "Y", "Z", "Move"])
+        
         self.ElectrodeTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.ElectrodeTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.ElectrodeTreeWidget.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.ElectrodeTreeWidget.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         self.ElectrodeTreeWidget.setColumnWidth(0, 80)
         self.ElectrodeTreeWidget.setColumnWidth(1, 80)
         self.ElectrodeTreeWidget.setColumnWidth(2, 70)
         self.ElectrodeTreeWidget.setColumnWidth(3, 70)
-        self.ElectrodeTreeWidget.setColumnWidth(4, 70)
+        self.ElectrodeTreeWidget.setColumnWidth(4, 60)  # Fixed width for toggle button
 
         # Enable context menu for ElectrodeTreeWidget
         self.ElectrodeTreeWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -682,6 +686,21 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.Axial_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('axial', x, y))
         self.Sagittal_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('sagittal', x, y))
         self.Coronal_ImagePreview.clicked.connect(lambda x, y: self.on_image_clicked('coronal', x, y))
+        
+        # Electrode drag signals
+        self.Axial_ImagePreview.marker_drag_started.connect(lambda e, c, i: self.on_marker_drag_started('axial', e, c, i))
+        self.Sagittal_ImagePreview.marker_drag_started.connect(lambda e, c, i: self.on_marker_drag_started('sagittal', e, c, i))
+        self.Coronal_ImagePreview.marker_drag_started.connect(lambda e, c, i: self.on_marker_drag_started('coronal', e, c, i))
+        
+        self.Axial_ImagePreview.marker_drag_ended.connect(lambda e, c, i, x, y: self.on_marker_drag_ended('axial', e, c, i, x, y))
+        self.Sagittal_ImagePreview.marker_drag_ended.connect(lambda e, c, i, x, y: self.on_marker_drag_ended('sagittal', e, c, i, x, y))
+        self.Coronal_ImagePreview.marker_drag_ended.connect(lambda e, c, i, x, y: self.on_marker_drag_ended('coronal', e, c, i, x, y))
+        
+        # Set movement enabled callback for each image label
+        if self.electrode_controller:
+            self.Axial_ImagePreview.set_movement_enabled_callback(self.electrode_controller.is_electrode_movement_enabled)
+            self.Sagittal_ImagePreview.set_movement_enabled_callback(self.electrode_controller.is_electrode_movement_enabled)
+            self.Coronal_ImagePreview.set_movement_enabled_callback(self.electrode_controller.is_electrode_movement_enabled)
 
         # Button signals
         self.AddElectrodePushButton.clicked.connect(self.on_add_electrode_clicked)
@@ -726,9 +745,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         self.update_coordinate_display()
 
-    def refresh_electrode_tree(self):
+    def refresh_electrode_tree(self, specific_electrode_name=None):
         """Refresh the electrode tree widget."""
-        electrode_name = self.ElectrodesComboBox.currentText()
+        electrode_name = specific_electrode_name or self.ElectrodesComboBox.currentText()
         if not electrode_name:
             return
 
@@ -739,12 +758,23 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             for i in range(root.childCount()):
                 item = root.child(i)
                 if item.text(0) == electrode_name:
+                    # Remember movement state and expansion state
+                    movement_enabled = False
+                    was_expanded = item.isExpanded()
+                    if self.electrode_controller:
+                        movement_enabled = self.electrode_controller.is_electrode_movement_enabled(electrode_name)
+                    
                     # Remove old item
                     root.removeChild(item)
                     # Add new item with updated contacts
                     new_item = self.electrode_controller.create_tree_item(electrode)
-                    root.addChild(new_item)
-                    new_item.setExpanded(True)
+                    root.insertChild(i, new_item)  # Insert at same position
+                    new_item.setExpanded(was_expanded)  # Preserve expansion state
+                    
+                    # Add movement toggle button and restore state
+                    self.add_movement_toggle_button(new_item, electrode_name)
+                    if movement_enabled:
+                        self.update_electrode_movement_state(electrode_name, True)
                     break
 
     def rebuild_electrode_tree(self):
@@ -764,6 +794,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     tree_item = self.electrode_controller.create_tree_item(electrode)
                     self.ElectrodeTreeWidget.addTopLevelItem(tree_item)
                     tree_item.setExpanded(True)  # Expand to show contacts
+                    
+                    # Add movement toggle button
+                    self.add_movement_toggle_button(tree_item, electrode_name)
 
     def update_electrode_tree_item(self, old_name: str, new_name: str):
         """Update a specific electrode tree item after rename."""
@@ -785,7 +818,133 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     new_item = self.electrode_controller.create_tree_item(electrode)
                     root.insertChild(i, new_item)  # Insert at same position
                     new_item.setExpanded(was_expanded)  # Preserve expansion state
+                    
+                    # Add movement toggle button
+                    self.add_movement_toggle_button(new_item, new_name)
                 break
+    
+    def add_movement_toggle_button(self, tree_item, electrode_name):
+        """Add movement toggle button to a tree item."""
+        button = QPushButton()
+        button.setCheckable(True)
+        button.setChecked(False)  # Default: movement disabled
+        button.setMaximumSize(50, 25)
+        button.setToolTip("Enable/disable electrode movement")
+        
+        # Set button text and style
+        self.update_toggle_button_appearance(button, False)
+        
+        # Connect button to handler
+        button.clicked.connect(lambda checked, name=electrode_name: self.on_movement_toggle_clicked(name, checked))
+        
+        # Add button to tree widget
+        self.ElectrodeTreeWidget.setItemWidget(tree_item, 4, button)
+    
+    def update_toggle_button_appearance(self, button, enabled):
+        """Update the appearance of a movement toggle button."""
+        if enabled:
+            button.setText("🔓")
+            button.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: 1px solid #45a049;
+                    border-radius: 3px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+        else:
+            button.setText("🔐")
+            button.setStyleSheet("""
+                QPushButton {
+                    background-color: #f0f0f0;
+                    color: #666;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                }
+                QPushButton:hover {
+                    background-color: #e0e0e0;
+                }
+            """)
+    
+    def on_movement_toggle_clicked(self, electrode_name, enabled):
+        """Handle movement toggle button click."""
+        if self.electrode_controller:
+            success = self.electrode_controller.toggle_electrode_movement(electrode_name, enabled)
+            if success:
+                # Update button appearance
+                button = self.get_movement_toggle_button(electrode_name)
+                if button:
+                    self.update_toggle_button_appearance(button, enabled)
+                
+                # Show visual feedback
+                status = "enabled" if enabled else "disabled"
+                self.show_status_message(f"Movement {status} for electrode '{electrode_name}'", 2000)
+    
+    def get_movement_toggle_button(self, electrode_name):
+        """Get the movement toggle button for a specific electrode."""
+        root = self.ElectrodeTreeWidget.invisibleRootItem()
+        for i in range(root.childCount()):
+            item = root.child(i)
+            if item.text(0) == electrode_name:
+                return self.ElectrodeTreeWidget.itemWidget(item, 4)
+        return None
+    
+    def update_electrode_movement_state(self, electrode_name, enabled):
+        """Update electrode movement state in the UI."""
+        button = self.get_movement_toggle_button(electrode_name)
+        if button:
+            button.setChecked(enabled)
+            self.update_toggle_button_appearance(button, enabled)
+    
+    def show_status_message(self, message: str, timeout: int = 0) -> None:
+        """Show status message in the status bar."""
+        if hasattr(self, 'statusbar'):
+            self.statusbar.showMessage(message, timeout)
+    
+    def on_marker_drag_started(self, orientation, electrode_name, coord_type, contact_index):
+        """Handle marker drag started event."""
+        # Visual feedback (orientation and contact_index are used for interface consistency)
+        self.show_status_message(f"Dragging {electrode_name} {coord_type} point", 0)
+    
+    
+    def on_marker_drag_ended(self, orientation, electrode_name, coord_type, contact_index, x, y):
+        """Handle marker drag ended event - treat it like a click at the new position."""
+        # Store the coordinates and electrode info for use in the simulated click
+        self.last_clicked_coordinates = None
+        self.drag_electrode_info = {
+            'electrode_name': electrode_name,
+            'coord_type': coord_type,
+            'contact_index': contact_index
+        }
+        
+        # Simulate a click at the drag end position - this uses the exact same logic as normal clicks
+        self.on_image_clicked(orientation, x, y)
+        
+        # Now use the coordinates that were calculated by on_image_clicked
+        if self.last_clicked_coordinates and self.electrode_controller:
+            coords = self.last_clicked_coordinates
+            
+            # Update the electrode coordinate - same as setting it manually
+            if coord_type in ['entry', 'output']:
+                # Update entry/output point
+                success = self.electrode_controller.move_electrode_coordinate(electrode_name, coord_type, coords)
+            else:
+                # Update individual contact point
+                success = self.electrode_controller.move_contact_coordinate(electrode_name, contact_index, coords)
+            
+            if success:
+                self.show_status_message(f"Moved {electrode_name} {coord_type} point to {coords}", 3000)
+            else:
+                self.show_status_message(f"Failed to move {electrode_name} {coord_type} point", 3000)
+        else:
+            self.show_status_message("No coordinates calculated", 3000)
+        
+        # Clean up
+        self.drag_electrode_info = None
 
     def refresh_image_display(self):
         """Refresh all image displays."""
@@ -915,8 +1074,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         # Update combo boxes after removing image
         self.update_image_combo_boxes()
-
-    # Old opacity methods removed - replaced with new two-image overlay system
 
     def remove_image(self, file_path: str):
         """Remove an image from the viewer."""
@@ -1507,7 +1664,10 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     )
                     if pixel_coords:
                         x, y = pixel_coords
-                        label.add_marker(x, y, electrode_color, radius=0.5)
+                        label.add_marker(x, y, electrode_color, radius=0.5, 
+                                       electrode_name=electrode_name, 
+                                       coord_type=point_type, 
+                                       contact_index=-1)
         
         # Add processed contact markers
         for electrode_name, contacts in processed_contacts.items():
@@ -1516,14 +1676,17 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             contact_color = QColor()
             contact_color.setHsv(hue, 200, 255, 180)
             
-            for contact_point in contacts:
+            for contact_index, contact_point in enumerate(contacts):
                 if self.image_controller.is_point_visible_on_slice(contact_point, orientation, current_slices):
                     pixel_coords = self.image_controller.convert_3d_to_pixel_coords(
                         contact_point, orientation, scaled_width, scaled_height
                     )
                     if pixel_coords:
                         x, y = pixel_coords
-                        label.add_marker(x, y, contact_color, radius=0.5)
+                        label.add_marker(x, y, contact_color, radius=0.5,
+                                       electrode_name=electrode_name,
+                                       coord_type='contact',
+                                       contact_index=contact_index)
     
     def remove_all_crosshairs(self):
         """Remove crosshairs from all views - called by crosshair controller."""

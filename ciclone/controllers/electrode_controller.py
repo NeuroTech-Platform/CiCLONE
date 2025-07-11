@@ -361,7 +361,7 @@ class ElectrodeController:
         
         if success:
             if self._view:
-                self._view.refresh_electrode_tree()
+                self._view.refresh_electrode_tree(electrode_name)
                 self._view.refresh_image_display()
             self._show_info(f"Successfully processed contacts for electrode {electrode_name}.")
         else:
@@ -404,6 +404,83 @@ class ElectrodeController:
     def get_electrodes_with_contacts(self) -> List:
         """Get all electrodes that have processed contacts."""
         return self.electrode_model.get_electrodes_with_contacts()
+    
+    def toggle_electrode_movement(self, electrode_name: str, enabled: bool) -> bool:
+        """Toggle movement enabled state for an electrode."""
+        if not electrode_name:
+            return False
+        
+        self.coordinate_model.set_movement_enabled(electrode_name, enabled)
+        if self._view:
+            self._view.update_electrode_movement_state(electrode_name, enabled)
+        
+        return True
+    
+    def is_electrode_movement_enabled(self, electrode_name: str) -> bool:
+        """Check if movement is enabled for an electrode."""
+        return self.coordinate_model.is_movement_enabled(electrode_name)
+    
+    def move_electrode_coordinate(self, electrode_name: str, coord_type: str, new_coordinates: Tuple[int, int, int]) -> bool:
+        """
+        Move an electrode coordinate (entry or output point).
+        
+        Args:
+            electrode_name: Name of the electrode
+            coord_type: Type of coordinate ('entry' or 'output')
+            new_coordinates: New coordinates
+            
+        Returns:
+            bool: True if move was successful, False otherwise
+        """
+        if not electrode_name:
+            return False
+        
+        success = False
+        if coord_type == 'entry':
+            success = self.coordinate_model.move_entry_point(electrode_name, new_coordinates)
+        elif coord_type == 'output':
+            success = self.coordinate_model.move_output_point(electrode_name, new_coordinates)
+        
+        if success:
+            # If both entry and output points exist, reprocess contacts
+            coordinates = self.coordinate_model.get_coordinates(electrode_name)
+            if 'entry' in coordinates and 'output' in coordinates:
+                self.electrode_model.process_electrode_contacts(
+                    electrode_name, 
+                    coordinates['entry'], 
+                    coordinates['output']
+                )
+            
+            if self._view:
+                self._view.refresh_coordinate_display()
+                self._view.refresh_electrode_tree(electrode_name)  # Update tree widget to show new contacts
+                self._view.refresh_image_display()
+        
+        return success
+    
+    def move_contact_coordinate(self, electrode_name: str, contact_index: int, new_coordinates: Tuple[int, int, int]) -> bool:
+        """
+        Move a specific contact coordinate for an electrode.
+        
+        Args:
+            electrode_name: Name of the electrode
+            contact_index: Index of the contact to move (0-based)
+            new_coordinates: New coordinates for the contact
+            
+        Returns:
+            bool: True if move was successful, False otherwise
+        """
+        if not electrode_name or not self.is_electrode_movement_enabled(electrode_name):
+            return False
+        
+        success = self.electrode_model.move_contact_coordinate(electrode_name, contact_index, new_coordinates)
+        
+        if success and self._view:
+            self._view.refresh_coordinate_display()
+            self._view.refresh_electrode_tree(electrode_name)  # Update tree widget to show new contact coordinates
+            self._view.refresh_image_display()
+        
+        return success
     
     def _show_error(self, message: str):
         """Show error message to user."""
