@@ -1,4 +1,3 @@
-output_directory: /path/to/output/folder
 stages:
   - name: stage1_name
     operations:
