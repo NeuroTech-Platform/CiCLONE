@@ -32,6 +32,7 @@ The pipeline consists of multiple stages that can be run independently or all at
 - `register_ct_to_mni` - Register CT to MNI space [Input_File, Output_File]
 - `register_mri_to_mni` - Register MRI to MNI space [Input_File, Output_File]
 - `reconstruct` - Run FreeSurfer reconstruction [Input_File, Output_Dir]
+- `open_fsleyes` - Open FSLeyes viewer [Input_File]
 
 The pipeline configuration is defined in YAML format. Each stage has a name and a list of operations. For example:
 
@@ -47,34 +48,38 @@ stages:
         files: ["${name}_CT_Bone_C", "${subj_dir}/processed_tmp"]
 ```
 
-## Step 1 : Update the output directory
+## Usage
+
+All commands require the `--directory` flag to specify where subject data will be stored. For example:
 
 ```console
-$ ciclone --update-output-directory /path/to/output/directory
+$ ciclone --directory /path/to/output/directory [command] [options]
 ```
 
-## Step 2 : Create a folder for each subject
+## Step 1 : Create a folder for each subject
 
 ```console
-$ ciclone --subjects subject1 subject<N> --create-folder
+$ ciclone --directory /path/to/output/directory --create-folder subject1 subject<N>
 ```
 
-## Step 3 : Run all stages or a specific one
+## Step 2 : Run all stages or a specific one
 
 ```console
-$ ciclone --subjects subject1 subject<N>
+$ ciclone --directory /path/to/output/directory --subjects subject1 subject<N>
 ```
 or 
 ```console
-$ ciclone --subjects subject1 subject<N> --stages <NAME_OF_THE_STAGE>
+$ ciclone --directory /path/to/output/directory --subjects subject1 subject<N> --stages <NAME_OF_THE_STAGE>
 ```
 
-## Step 4 : Mark your electrodes in 3D Slicer
+## Step 3 : Mark your electrodes in 3D Slicer
 
 Here you are on your own. You need to mark your electrodes in 3D Slicer using the **r_SUBJECTID_seeg_masked** file and your subject CT and/ or MRI and save the coordinates in a JSON file.
 
-## Step 5 : Transform coordinates from Subject space to MNI space
+## Step 4 : Transform coordinates from Subject space to MNI space
 
 ```console
-$ ciclone --subjects subject1 subject<N> --transform-coordinates /path/to/3D-SlicerJSON/file
+$ ciclone --directory /path/to/output/directory --subjects subject1 subject<N> --transform-coordinates /path/to/3D-SlicerJSON/file
 ```
+
+The transformed coordinates will be saved in the same directory as the input JSON file with the prefix "MNI_".
