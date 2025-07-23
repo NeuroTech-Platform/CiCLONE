@@ -1,6 +1,4 @@
 import os
-import shutil
-from pathlib import Path
 from ciclone.services.processing.operations import (
     crop_image,
     move_image,
@@ -76,29 +74,6 @@ def run_operation(operation, subject: Subject):
         # Always return to the original directory
         os.chdir(original_dir)
 
-def create_file_snapshot(processed_tmp_dir: Path) -> list[Path]:
-    """Create a snapshot of current files for rollback capability."""
-    if not processed_tmp_dir.exists():
-        return []
-    return list(processed_tmp_dir.glob("*"))
-
-def rollback_to_snapshot(processed_tmp_dir: Path, snapshot_files: list[Path]) -> None:
-    """Rollback the directory to the state captured in the snapshot."""
-    try:
-        if processed_tmp_dir.exists():
-            # Remove all current files
-            for item in processed_tmp_dir.glob("*"):
-                if item.is_file():
-                    item.unlink()
-                elif item.is_dir():
-                    shutil.rmtree(item)
-        
-        # Note: We cannot restore deleted files, but we can at least clean up
-        # any partial files that were created during the failed stage
-        print(f"Rolled back {processed_tmp_dir.name} to clean state")
-        
-    except Exception as e:
-        print(f"Error during rollback: {e}")
 
 def run_stage(stage, subject):
     """
@@ -145,10 +120,7 @@ def run_stage_with_validation(stage, subject, config_data, total_stages_count: i
             print(f"🧹 Performing intelligent cleanup for stage '{stage_name}'")
             clean_dependent_stages(subject, stage_name, config_data, single_stage_mode)
         
-        # 3. Create snapshot for potential rollback
-        snapshot_files = create_file_snapshot(subject.processed_tmp)
-        
-        # 4. Run the stage operations
+        # 3. Run the stage operations
         print(f"🚀 Executing stage: {stage_name}")
         for i, operation in enumerate(stage['operations'], 1):
             print(f"   Operation {i}/{len(stage['operations'])}: {operation['type']}")
@@ -158,13 +130,5 @@ def run_stage_with_validation(stage, subject, config_data, total_stages_count: i
         return True
         
     except Exception as e:
-        print(f"❌ Stage '{stage_name}' failed: {e}")
-        
-        # Attempt rollback on failure
-        try:
-            print(f"🔄 Attempting rollback for stage '{stage_name}'")
-            rollback_to_snapshot(subject.processed_tmp, snapshot_files)
-        except Exception as rollback_error:
-            print(f"⚠️  Rollback failed: {rollback_error}")
-        
+        print(f"❌ Stage '{stage_name}' failed: {e}")        
         return False
