@@ -72,6 +72,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self._resize_timer = QTimer()
         self._resize_timer.setSingleShot(True)
         self._resize_timer.timeout.connect(self.refresh_all_views)
+        
+        # Cleanup callback for when window is closed
+        self._cleanup_callback = None
 
     def _initialize_mvc_components(self):
         """Initialize the MVC architecture components."""
@@ -1700,6 +1703,12 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self._resize_timer.stop()
         self._resize_timer.start(100)  # 100ms delay
     
+    def closeEvent(self, event):
+        """Handle window close event."""
+        if self._cleanup_callback:
+            self._cleanup_callback()
+        super().closeEvent(event)
+    
     # =============================================================================
     # IImageView Interface Implementation
     # =============================================================================
@@ -1721,12 +1730,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         
         slider.setMinimum(min_slice)
         slider.setMaximum(max_slice)
-    
-    def set_overlay_visibility(self, visible: bool) -> None:
-        """Set overlay visibility."""
-        # Implementation depends on current overlay system
-        # This would update overlay visibility state
-        pass
     
     def update_overlay_opacity(self, opacity: float) -> None:
         """Update overlay opacity."""

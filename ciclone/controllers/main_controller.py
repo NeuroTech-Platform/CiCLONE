@@ -47,7 +47,6 @@ class MainController(QObject):
         
         # Connect to application model signals for coordination
         self.application_model.output_directory_changed.connect(self._on_output_directory_changed)
-        self.application_model.images_viewer_state_changed.connect(self._on_images_viewer_state_changed)
     
     def set_view(self, view: IMainView):
         """Set the main view and propagate to child controllers."""
@@ -114,11 +113,10 @@ class MainController(QObject):
         
         self._log_message("debug", f"Output directory changed to: {directory_path}")
     
-    def _on_images_viewer_state_changed(self, is_active: bool):
-        """Handle images viewer state changes."""
-        if not is_active:
-            # Clear the reference when viewer is closed
-            self.application_model.set_images_viewer_instance(None)
+    def _on_viewer_closed(self):
+        """Handle ImageViewer close event to clear the reference."""
+        self.application_model.set_images_viewer_instance(None)
+        self._log_message("info", "Images viewer closed")
     
     # Directory Management
     def create_output_directory(self) -> Optional[str]:
@@ -312,6 +310,7 @@ class MainController(QObject):
             if not current_viewer:
                 # Create new viewer
                 images_viewer = ImagesViewer(file_path)
+                images_viewer._cleanup_callback = self._on_viewer_closed
                 self.application_model.set_images_viewer_instance(images_viewer)
                 self._log_message("info", f"Created new images viewer for: {os.path.basename(file_path)}")
             else:
