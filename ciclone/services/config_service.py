@@ -86,13 +86,23 @@ class ConfigService:
         if not isinstance(stages, list) or not stages:
             return False
         
-        # Check each stage has name and operations
-        return all(
-            isinstance(stage, dict) and 
-            'name' in stage and 
-            isinstance(stage.get('operations', []), list)
-            for stage in stages
-        )
+        # Check each stage has required fields
+        for stage in stages:
+            if not isinstance(stage, dict):
+                return False
+            if 'name' not in stage:
+                return False
+            if not isinstance(stage.get('operations', []), list):
+                return False
+            # Check new inline format fields
+            if 'depends_on' in stage and not isinstance(stage['depends_on'], list):
+                return False
+            if 'outputs' in stage and not isinstance(stage['outputs'], list):
+                return False
+            if 'cleanup_patterns' in stage and not isinstance(stage['cleanup_patterns'], list):
+                return False
+        
+        return True
     
     def get_config_info(self, name: str) -> Optional[ConfigInfo]:
         """Get information about a specific configuration.

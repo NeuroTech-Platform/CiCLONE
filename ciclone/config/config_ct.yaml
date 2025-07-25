@@ -1,19 +1,8 @@
 name: "CTpre / CTpost"
 
-# Define stage dependencies and outputs for intelligent cleaning
-stage_dependencies:
-  visual_inspection : []
-  coregisteration: [visual_inspection ]
-  extract_electrodes: [coregisteration]
-  apply_mask: [extract_electrodes]
-  mni_registration: [coregisteration]  # Fixed: needs v_${name}_ref from coregisteration
-  cortical_extraction: [coregisteration]  # Fixed: also needs v_${name}_ref from coregisteration
-  export_outputs: [visual_inspection , coregisteration, apply_mask, mni_registration]  # Fixed: needs outputs from all 4 stages
-
-# Enhanced stage configuration with prerequisites and specific cleanup patterns
-stage_outputs:
-  visual_inspection :
-    required_inputs: []
+stages:
+  - name: visual_inspection
+    depends_on: []
     outputs:
       - "${name}_CT_Bone_C"
       - "${name}_CT_Electrodes_C"  
@@ -23,74 +12,6 @@ stage_outputs:
       - "*_N"
       - "*_C.nii*"
       - "*_C"
-      
-  coregisteration:
-    required_inputs: ["${name}_CT_Bone_C", "${name}_CT_Electrodes_C", "${name}_T1_C"]
-    outputs:
-      - "v_${name}_bone_mask"
-      - "v_${name}_ref"
-      - "b_${name}_postimplant_ct"
-    cleanup_patterns:
-      - "v_${name}_bone_mask*"
-      - "v_${name}_ref*" 
-      - "b_${name}_postimplant_ct*"
-      
-  extract_electrodes:
-    required_inputs: ["b_${name}_postimplant_ct", "${name}_CT_Bone_C", "v_${name}_bone_mask.mat"]
-    outputs:
-      - "b_${name}_postimplant_ct_sub"
-      - "b_${name}_seeg" 
-      - "r_${name}_seeg"
-    cleanup_patterns:
-      - "r_${name}_seeg*"
-      - "b_${name}_seeg*"
-      - "b_${name}_postimplant_ct_sub*"
-      
-  apply_mask:
-    required_inputs: ["v_${name}_bone_mask", "r_${name}_seeg"]
-    outputs:
-      - "${name}_stripped"
-      - "${name}_stripped_mask"
-      - "r_${name}_seeg_masked"
-    cleanup_patterns:
-      - "*_stripped*"
-      - "*_masked*"
-      
-  mni_registration:
-    required_inputs: ["v_${name}_ref"]
-    outputs:
-      - "v_${name}_ref_brain"
-      - "MNI_${name}_ref_brain"
-      - "MNI_${name}_ref_brain.mat"
-    cleanup_patterns:
-      - "MNI_*.nii*"
-      - "MNI_*.mat"
-      - "*_rigid*"
-      - "norm_*"
-      - "*_ref_brain*"
-      
-  cortical_extraction:
-    required_inputs: ["v_${name}_ref"]
-    outputs:
-      - "freesurfer_${name}"
-    cleanup_patterns:
-      - "freesurfer_*"
-      
-  export_outputs:
-    #required_inputs: ["${name}_CT_Electrodes_C", "${name}_T1_C", "v_${name}_ref", "r_${name}_seeg_masked", "MNI_${name}_ref_brain", "MNI_${name}_ref_brain.mat"]
-    required_inputs: ["${name}_CT_Electrodes_C", "${name}_T1_C", "v_${name}_ref", "r_${name}_seeg_masked"]
-    outputs:
-      - "pipeline_output/${name}_CT_Electrodes_C"
-      - "pipeline_output/${name}_T1_C"
-      - "pipeline_output/v_${name}_ref"
-      - "pipeline_output/r_${name}_seeg_masked"
-      - "pipeline_output/MNI_${name}_ref_brain"
-      - "pipeline_output/MNI_${name}_ref_brain.mat"
-    cleanup_patterns:
-      - "pipeline_output/*"
-
-stages:
-  - name: visual_inspection 
     auto_clean: true
     operations:
       - type: open_fsleyes
@@ -131,6 +52,15 @@ stages:
         files: ["${name}_T1_C", "${subj_dir}/processed_tmp"]
 
   - name: coregisteration
+    depends_on: [visual_inspection]
+    outputs:
+      - "v_${name}_bone_mask"
+      - "v_${name}_ref"
+      - "b_${name}_postimplant_ct"
+    cleanup_patterns:
+      - "v_${name}_bone_mask*"
+      - "v_${name}_ref*" 
+      - "b_${name}_postimplant_ct*"
     auto_clean: true
     operations:
       - type: coregister
@@ -144,6 +74,15 @@ stages:
         files: ["${name}_CT_Electrodes_C", "${name}_CT_Bone_C", "b_${name}_postimplant_ct"]
 
   - name: extract_electrodes
+    depends_on: [coregisteration]
+    outputs:
+      - "b_${name}_postimplant_ct_sub"
+      - "b_${name}_seeg" 
+      - "r_${name}_seeg"
+    cleanup_patterns:
+      - "r_${name}_seeg*"
+      - "b_${name}_seeg*"
+      - "b_${name}_postimplant_ct_sub*"
     auto_clean: true
     operations:
       - type: subtract
@@ -157,6 +96,14 @@ stages:
         files: ["b_${name}_seeg", "v_${name}_bone_mask.mat", "${name}_CT_Electrodes_C", "r_${name}_seeg"]
 
   - name: apply_mask
+    depends_on: [extract_electrodes]
+    outputs:
+      - "${name}_stripped"
+      - "${name}_stripped_mask"
+      - "r_${name}_seeg_masked"
+    cleanup_patterns:
+      - "*_stripped*"
+      - "*_masked*"
     auto_clean: true
     operations:
       - type: extract_brain
@@ -167,6 +114,17 @@ stages:
         files: ["r_${name}_seeg", "${name}_stripped_mask", "r_${name}_seeg_masked"]
 
   - name: mni_registration
+    depends_on: [coregisteration]
+    outputs:
+      - "v_${name}_ref_brain"
+      - "MNI_${name}_ref_brain"
+      - "MNI_${name}_ref_brain.mat"
+    cleanup_patterns:
+      - "MNI_*.nii*"
+      - "MNI_*.mat"
+      - "*_rigid*"
+      - "norm_*"
+      - "*_ref_brain*"
     auto_clean: true
     operations:
       - type: extract_brain2
@@ -177,6 +135,11 @@ stages:
         files: ["v_${name}_ref_brain", "MNI_${name}_ref_brain"]
 
   - name: cortical_extraction
+    depends_on: [coregisteration]
+    outputs:
+      - "freesurfer_${name}"
+    cleanup_patterns:
+      - "freesurfer_*"
     auto_clean: true
     operations:
       - type: reconstruct
@@ -184,6 +147,16 @@ stages:
         files: ["v_${name}_ref", "${subj_dir}/processed_tmp/freesurfer_${name}"]
 
   - name: export_outputs
+    depends_on: [visual_inspection, coregisteration, apply_mask, mni_registration]
+    outputs:
+      - "pipeline_output/${name}_CT_Electrodes_C"
+      - "pipeline_output/${name}_T1_C"
+      - "pipeline_output/v_${name}_ref"
+      - "pipeline_output/r_${name}_seeg_masked"
+      - "pipeline_output/MNI_${name}_ref_brain"
+      - "pipeline_output/MNI_${name}_ref_brain.mat"
+    cleanup_patterns:
+      - "pipeline_output/*"
     auto_clean: true
     operations:
       - type: copy
