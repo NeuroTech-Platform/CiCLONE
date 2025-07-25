@@ -15,7 +15,8 @@ from ciclone.services.processing.operations import (
     transform_coordinates,
     register_ct_to_mni,
     register_mri_to_mni,
-    open_fsleyes
+    open_fsleyes,
+    reorient_to_standard
 )
 from ciclone.domain.subject import Subject
 from ciclone.utils.utility import validate_stage_prerequisites, clean_dependent_stages
@@ -69,6 +70,8 @@ def run_operation(operation, subject: Subject):
             register_mri_to_mni(*files)
         elif operation['type'] == 'open_fsleyes':
             open_fsleyes(*files)
+        elif operation['type'] == 'reorient_to_standard':
+            reorient_to_standard(*files)
 
     finally:
         # Always return to the original directory
