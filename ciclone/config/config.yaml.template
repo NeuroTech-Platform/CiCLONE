@@ -1,3 +1,5 @@
+name: "Name of pipeline"
+
 stages:
   - name: stage1_name
     operations:

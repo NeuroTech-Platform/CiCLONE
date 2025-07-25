@@ -1,3 +1,5 @@
+name: "CTpre / CTpost"
+
 # Define stage dependencies and outputs for intelligent cleaning
 stage_dependencies:
   visual_inspection : []
