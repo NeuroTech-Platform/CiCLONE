@@ -3,15 +3,6 @@ name: "MRIpre / MRIpost"
 stages:
   - name: visual_inspection
     depends_on: []
-    outputs:
-      - "${name}_CT_Bone_R2S_C"
-      - "${name}_CT_Electrodes_R2S_C"  
-      - "${name}_T1_R2S_C"
-    cleanup_patterns:
-      - "*_N.nii*"
-      - "*_N"
-      - "*_C.nii*"
-      - "*_C"
     auto_clean: true
     operations:
       - type: reorient_to_standard
@@ -62,10 +53,6 @@ stages:
 
   - name: coregisteration
     depends_on: [visual_inspection]
-    outputs:
-      - "postT1_${name}"
-    cleanup_patterns:
-      - "postT1_${name}*"
     auto_clean: true
     operations:
       - type: coregister
@@ -74,15 +61,6 @@ stages:
 
   - name: mni_registration
     depends_on: [coregisteration]
-    outputs:
-      - "MNI_${name}"
-      - "MNI_${name}.mat"
-    cleanup_patterns:
-      - "MNI_*.nii*"
-      - "MNI_*.mat"
-      - "*_rigid*"
-      - "norm_*"
-      - "*_brain*"
     auto_clean: true
     operations:
       - type: extract_brain2
@@ -94,10 +72,6 @@ stages:
 
   - name: cortical_extraction
     depends_on: [coregisteration]
-    outputs:
-      - "freesurfer_${name}"
-    cleanup_patterns:
-      - "freesurfer_*"
     auto_clean: true
     operations:
       - type: reconstruct
@@ -106,15 +80,7 @@ stages:
 
   - name: export_outputs
     depends_on: [visual_inspection, coregisteration, mni_registration, cortical_extraction]
-    outputs:
-      - "pipeline_output/${name}_CT_Electrodes_C"
-      - "pipeline_output/${name}_T1_C"
-      - "pipeline_output/postT1_${name}"
-      - "pipeline_output/MNI_${name}_ref_brain"
-      - "pipeline_output/MNI_${name}_ref_brain.mat"
-    cleanup_patterns:
-      - "pipeline_output/*"
-    auto_clean: true
+    auto_clean: false
     operations:
       - type: copy
         workdir: processed_tmp

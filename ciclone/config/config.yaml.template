@@ -1,13 +1,40 @@
-name: "Name of pipeline"
+name: "My Pipeline Name"
 
 stages:
-  - name: stage1_name
+  - name: preprocessing
+    depends_on: []
+    auto_clean: true
     operations:
       - type: crop
-        workdir: postop/ct
-        files: ["${name}_CT_Bone", "${name}_CT_Bone_C"]
-  - name: stage2_name
+        workdir: preop/ct
+        files: ["${name}_CT_Raw", "${name}_CT_Cropped"]
+      - type: move
+        workdir: preop/ct
+        files: ["${name}_CT_Cropped", "${subj_dir}/processed_tmp"]
+
+  - name: registration
+    depends_on: [preprocessing]
+    auto_clean: true
     operations:
-      - type: crop
-        workdir: postop/ct
-        files: ["${name}_CT_Bone", "${name}_CT_Bone_C"]
+      - type: coregister
+        workdir: processed_tmp
+        files: ["${name}_CT_Cropped", "${name}_MRI", "${name}_Registered"]
+
+  - name: export_results
+    depends_on: [registration]
+    auto_clean: false
+    operations:
+      - type: copy
+        workdir: processed_tmp
+        files: ["${name}_Registered", "${subj_dir}/pipeline_output"]
+
+# Configuration Structure:
+# - name: Display name for this pipeline configuration
+# - stages: List of processing stages that run in dependency order
+#   - name: Unique identifier for this stage
+#   - depends_on: List of stage names that must complete before this stage
+#   - auto_clean: true = clean this stage's outputs when rerunning, false = preserve outputs
+#   - operations: List of processing operations to execute
+#     - type: Operation type (crop, coregister, move, copy, etc.)
+#     - workdir: Working directory relative to subject folder
+#     - files: Input files followed by output file. Use ${name} for subject name, ${subj_dir} for subject path

@@ -94,12 +94,11 @@ class ConfigService:
                 return False
             if not isinstance(stage.get('operations', []), list):
                 return False
-            # Check new inline format fields
+            
+            # Validate simplified format fields
             if 'depends_on' in stage and not isinstance(stage['depends_on'], list):
                 return False
-            if 'outputs' in stage and not isinstance(stage['outputs'], list):
-                return False
-            if 'cleanup_patterns' in stage and not isinstance(stage['cleanup_patterns'], list):
+            if 'auto_clean' in stage and not isinstance(stage['auto_clean'], bool):
                 return False
         
         return True

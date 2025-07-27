@@ -110,7 +110,7 @@ def clean_by_patterns_smart(processed_tmp_dir: Path, patterns: list[str], preser
         print(f"Smart cleanup: {removed_count} items removed, {preserved_count} items preserved")
 
 def extract_stage_dependencies_from_config(config_data: dict) -> dict:
-    """Extract stage dependencies from new inline format or old format.
+    """Extract stage dependencies from config.
     
     Args:
         config_data: Configuration dictionary
@@ -118,11 +118,6 @@ def extract_stage_dependencies_from_config(config_data: dict) -> dict:
     Returns:
         Dictionary mapping stage names to their dependencies
     """
-    # Check if old format exists
-    if 'stage_dependencies' in config_data:
-        return config_data['stage_dependencies']
-    
-    # Extract from new inline format
     dependencies = {}
     stages = config_data.get('stages', [])
     for stage in stages:
@@ -133,7 +128,7 @@ def extract_stage_dependencies_from_config(config_data: dict) -> dict:
     return dependencies
 
 def extract_stage_outputs_from_config(config_data: dict) -> dict:
-    """Extract stage outputs from new inline format or old format.
+    """Extract stage outputs from operations (auto-detects from files).
     
     Args:
         config_data: Configuration dictionary
@@ -141,21 +136,36 @@ def extract_stage_outputs_from_config(config_data: dict) -> dict:
     Returns:
         Dictionary mapping stage names to their outputs configuration
     """
-    # Check if old format exists
-    if 'stage_outputs' in config_data:
-        return config_data['stage_outputs']
-    
-    # Extract from new inline format
     outputs = {}
     stages = config_data.get('stages', [])
+    
     for stage in stages:
         stage_name = stage.get('name')
-        if stage_name:
-            outputs[stage_name] = {
-                'required_inputs': [],  # Not used in new format
-                'outputs': stage.get('outputs', []),
-                'cleanup_patterns': stage.get('cleanup_patterns', [])
-            }
+        if not stage_name:
+            continue
+            
+        # Auto-detect outputs from operations
+        detected_outputs = []
+        cleanup_patterns = []
+        
+        for operation in stage.get('operations', []):
+            files = operation.get('files', [])
+            if len(files) >= 2:
+                # Last file is the output
+                output_file = files[-1]
+                detected_outputs.append(output_file)
+                
+                # Generate cleanup pattern if auto_clean is enabled
+                if stage.get('auto_clean', False):
+                    # Create pattern to match output with extensions
+                    pattern = output_file + '*'
+                    cleanup_patterns.append(pattern)
+        
+        outputs[stage_name] = {
+            'required_inputs': [],  # Stage inputs come from dependencies
+            'outputs': detected_outputs,
+            'cleanup_patterns': cleanup_patterns
+        }
     
     return outputs
 

@@ -3,15 +3,6 @@ name: "CTpre / CTpost"
 stages:
   - name: visual_inspection
     depends_on: []
-    outputs:
-      - "${name}_CT_Bone_C"
-      - "${name}_CT_Electrodes_C"  
-      - "${name}_T1_C"
-    cleanup_patterns:
-      - "*_N.nii*"
-      - "*_N"
-      - "*_C.nii*"
-      - "*_C"
     auto_clean: true
     operations:
       - type: open_fsleyes
@@ -53,14 +44,6 @@ stages:
 
   - name: coregisteration
     depends_on: [visual_inspection]
-    outputs:
-      - "v_${name}_bone_mask"
-      - "v_${name}_ref"
-      - "b_${name}_postimplant_ct"
-    cleanup_patterns:
-      - "v_${name}_bone_mask*"
-      - "v_${name}_ref*" 
-      - "b_${name}_postimplant_ct*"
     auto_clean: true
     operations:
       - type: coregister
@@ -75,14 +58,6 @@ stages:
 
   - name: extract_electrodes
     depends_on: [coregisteration]
-    outputs:
-      - "b_${name}_postimplant_ct_sub"
-      - "b_${name}_seeg" 
-      - "r_${name}_seeg"
-    cleanup_patterns:
-      - "r_${name}_seeg*"
-      - "b_${name}_seeg*"
-      - "b_${name}_postimplant_ct_sub*"
     auto_clean: true
     operations:
       - type: subtract
@@ -97,13 +72,6 @@ stages:
 
   - name: apply_mask
     depends_on: [extract_electrodes]
-    outputs:
-      - "${name}_stripped"
-      - "${name}_stripped_mask"
-      - "r_${name}_seeg_masked"
-    cleanup_patterns:
-      - "*_stripped*"
-      - "*_masked*"
     auto_clean: true
     operations:
       - type: extract_brain
@@ -115,16 +83,6 @@ stages:
 
   - name: mni_registration
     depends_on: [coregisteration]
-    outputs:
-      - "v_${name}_ref_brain"
-      - "MNI_${name}_ref_brain"
-      - "MNI_${name}_ref_brain.mat"
-    cleanup_patterns:
-      - "MNI_*.nii*"
-      - "MNI_*.mat"
-      - "*_rigid*"
-      - "norm_*"
-      - "*_ref_brain*"
     auto_clean: true
     operations:
       - type: extract_brain2
@@ -136,10 +94,6 @@ stages:
 
   - name: cortical_extraction
     depends_on: [coregisteration]
-    outputs:
-      - "freesurfer_${name}"
-    cleanup_patterns:
-      - "freesurfer_*"
     auto_clean: true
     operations:
       - type: reconstruct
@@ -148,16 +102,7 @@ stages:
 
   - name: export_outputs
     depends_on: [visual_inspection, coregisteration, apply_mask, mni_registration]
-    outputs:
-      - "pipeline_output/${name}_CT_Electrodes_C"
-      - "pipeline_output/${name}_T1_C"
-      - "pipeline_output/v_${name}_ref"
-      - "pipeline_output/r_${name}_seeg_masked"
-      - "pipeline_output/MNI_${name}_ref_brain"
-      - "pipeline_output/MNI_${name}_ref_brain.mat"
-    cleanup_patterns:
-      - "pipeline_output/*"
-    auto_clean: true
+    auto_clean: false
     operations:
       - type: copy
         workdir: processed_tmp
