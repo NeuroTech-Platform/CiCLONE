@@ -10,6 +10,19 @@ import subprocess
 
 
 def open_fsleyes(input_file: Path):
+    """
+    Opens a NIFTI image file in FSLEyes viewer for visual inspection.
+    
+    This operation launches the FSLEyes application to display the specified
+    medical image file. Used for manual quality control and visual inspection
+    of processing results at various pipeline stages.
+    
+    Files:
+        input_file: NIFTI image file to open in FSLEyes viewer
+    
+    Example:
+        Input: ${name}_CT_Bone_R2S
+    """
     input_file = Path(input_file)
     print(f"Opening {input_file} with fsleyes")
     if not input_file.exists():
@@ -20,6 +33,21 @@ def open_fsleyes(input_file: Path):
     execute_command([tool_config.get_fsl_tool_path("fsleyes"), input_file])
 
 def reorient_to_standard(input_file: Path, output_file: str) -> None:
+    """
+    Reorients a NIFTI image to standard neurological orientation using FSL.
+    
+    This operation uses FSL's fslreorient2std tool to reorient medical images
+    to a standard coordinate system orientation. This ensures consistent
+    orientation across different acquisition protocols and scanners.
+    
+    Files:
+        input_file: Source NIFTI image to reorient
+        output_file: Reoriented image in standard orientation
+    
+    Example:
+        Input: ${name}_CT_Bone
+        Output: ${name}_CT_Bone_R2S
+    """
     input_file = Path(input_file)
 
     if not input_file.exists():
@@ -30,6 +58,21 @@ def reorient_to_standard(input_file: Path, output_file: str) -> None:
     execute_command([tool_config.get_fsl_tool_path("fslreorient2std"), input_file, output_file])
 
 def crop_image(input_file: Path, output_filename: str) -> Path:
+    """
+    Crops a NIFTI image to remove excess background using robust field of view detection.
+    
+    This operation uses FSL's robustfov tool to automatically detect and crop
+    the image to the smallest bounding box that contains the main anatomical
+    structures, removing unnecessary background areas and reducing file size.
+    
+    Files:
+        input_file: Source NIFTI image to crop
+        output_filename: Cropped image with reduced field of view
+    
+    Example:
+        Input: ${name}_CT_Bone_R2S_N
+        Output: ${name}_CT_Bone_C
+    """
     input_file = Path(input_file)
 
     if not input_file.exists():
@@ -40,6 +83,21 @@ def crop_image(input_file: Path, output_filename: str) -> Path:
     execute_command([tool_config.get_fsl_tool_path("robustfov"),"-v","-i", input_file,"-r", output_filename], silent=True)
 
 def move_image(input_file: Path, output_file: str) -> None:
+    """
+    Moves a file from one location to another using system move command.
+    
+    This operation relocates a file from its current path to a new destination,
+    removing it from the original location. Commonly used to organize processed
+    files into appropriate directory structures during pipeline execution.
+    
+    Files:
+        input_file: Source file to move
+        output_file: Destination path for the moved file
+    
+    Example:
+        Input: ${name}_CT_Bone_C
+        Output: ${subj_dir}/processed_tmp
+    """
     input_file = Path(input_file)
 
     if not input_file.exists():
@@ -50,6 +108,21 @@ def move_image(input_file: Path, output_file: str) -> None:
     execute_command(["mv", input_file, output_file])
 
 def copy_image(input_file: Path, output_file: str) -> None:
+    """
+    Copies a file from one location to another, preserving the original.
+    
+    This operation creates a duplicate of the source file at the specified
+    destination path while keeping the original file intact. Used for creating
+    backups or duplicating files for different processing stages.
+    
+    Files:
+        input_file: Source file to copy
+        output_file: Destination path for the copied file
+    
+    Example:
+        Input: ${name}_CT_Electrodes_C
+        Output: ${subj_dir}/pipeline_output
+    """
     if input_file is None:
         print("Input file is None, not doing anything.")
         return
@@ -63,6 +136,23 @@ def copy_image(input_file: Path, output_file: str) -> None:
     execute_command(["cp", "-f", input_file, output_file])
 
 def coregister_images(input_file: Path, ref_file: Path, output_file_name: str) -> None:
+    """
+    Coregisters two medical images using FSL FLIRT with mutual information.
+    
+    This operation aligns a moving image to a reference image using rigid body
+    registration (6 degrees of freedom). Uses mutual information cost function
+    and creates both the registered image and transformation matrix for further use.
+    
+    Files:
+        input_file: Moving image to be registered to reference
+        ref_file: Reference image that serves as registration target
+        output_file_name: Registered image and transformation matrix (.mat)
+    
+    Example:
+        Input: ${name}_CT_Electrodes_C
+        Reference: ${name}_CT_Bone_C
+        Output: b_${name}_postimplant_ct
+    """
     input_file = Path(input_file)
     ref_file = Path(ref_file)
 
@@ -91,6 +181,23 @@ def coregister_images(input_file: Path, ref_file: Path, output_file_name: str) -
     ])
 
 def subtract_image(input_file: Path, mask_file: Path, output_file_name: str) -> None:
+    """
+    Subtracts one image from another using FSL mathematical operations.
+    
+    This operation performs voxel-wise subtraction between two images using
+    FSLmaths. Commonly used to isolate electrode artifacts by subtracting
+    pre-operative from post-operative images.
+    
+    Files:
+        input_file: Primary image (minuend)
+        mask_file: Image to subtract (subtrahend)
+        output_file_name: Result of subtraction operation
+    
+    Example:
+        Input: b_${name}_postimplant_ct
+        Mask: ${name}_CT_Bone_C
+        Output: b_${name}_postimplant_ct_sub
+    """
     input_file = Path(input_file)
     mask_file = Path(mask_file)
 
@@ -107,6 +214,21 @@ def subtract_image(input_file: Path, mask_file: Path, output_file_name: str) -> 
     ])
 
 def threshold_image(input_file: Path, output_file_name: str) -> None:
+    """
+    Applies intensity thresholding to isolate high-density structures.
+    
+    This operation uses FSLmaths to threshold the image at value 1600,
+    effectively isolating metallic electrode artifacts from surrounding
+    tissue by removing voxels below the threshold intensity.
+    
+    Files:
+        input_file: Source image to threshold
+        output_file_name: Thresholded image with only high-intensity voxels
+    
+    Example:
+        Input: b_${name}_postimplant_ct_sub
+        Output: b_${name}_seeg
+    """
     input_file = Path(input_file)
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
@@ -118,6 +240,25 @@ def threshold_image(input_file: Path, output_file_name: str) -> None:
     ])
 
 def apply_transformation2image(input_file: Path, transformation_file: Path, ref_file:Path, output_file_name: str) -> None:
+    """
+    Applies a pre-computed transformation matrix to transform an image.
+    
+    This operation uses FSL FLIRT to apply an existing transformation matrix
+    to an image, warping it to match the coordinate space of a reference image.
+    Uses high-quality sinc interpolation for accurate resampling.
+    
+    Files:
+        input_file: Source image to transform
+        transformation_file: FSL transformation matrix (.mat file)
+        ref_file: Reference image defining target coordinate space
+        output_file_name: Transformed image in reference space
+    
+    Example:
+        Input: b_${name}_seeg
+        Transformation: v_${name}_bone_mask.mat
+        Reference: ${name}_CT_Electrodes_C
+        Output: r_${name}_seeg
+    """
     input_file = Path(input_file)
     transformation_file = Path(transformation_file)
     ref_file = Path(ref_file)
@@ -142,6 +283,25 @@ def apply_transformation2image(input_file: Path, transformation_file: Path, ref_
     ])
 
 def apply_nudgetransformation2image(input_file: Path, transformation_file: Path | None, ref_file:Path, output_file_name: str) -> None:
+    """
+    Applies a manual nudge transformation or copies file if no transformation exists.
+    
+    This operation applies a user-defined manual adjustment transformation to an image.
+    If no transformation file is provided, it simply copies the input file with a
+    modified name to indicate the nudge step was completed.
+    
+    Files:
+        input_file: Source image to transform
+        transformation_file: Manual nudge transformation matrix (.mat file) or None
+        ref_file: Reference image defining target coordinate space
+        output_file_name: Transformed or copied image
+    
+    Example:
+        Input: ${name}_CT_Bone_R2S
+        Transformation: ${name}_CT_Bone_R2S.mat (or None)
+        Reference: ${name}_CT_Bone_R2S
+        Output: ${name}_CT_Bone_R2S_N
+    """
     input_file = Path(input_file)
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
@@ -169,6 +329,21 @@ def apply_nudgetransformation2image(input_file: Path, transformation_file: Path 
     ])
 
 def extract_brain(input_file: Path, output_file: Path):
+    """
+    Extracts brain tissue using FSL BET with parameters optimized for electrode visibility.
+    
+    This operation uses FSL's Brain Extraction Tool (BET) to remove skull and
+    non-brain tissue while preserving electrode artifacts. Uses conservative
+    parameters to maintain visibility of metallic structures and screws.
+    
+    Files:
+        input_file: Source image with skull
+        output_file: Brain-extracted image with mask
+    
+    Example:
+        Input: v_${name}_bone_mask
+        Output: ${name}_stripped
+    """
     input_file = Path(input_file)
     output_file = Path(output_file)
 
@@ -178,6 +353,21 @@ def extract_brain(input_file: Path, output_file: Path):
     ])
 
 def extract_brain2(input_file: Path, output_file: Path):
+    """
+    Extracts brain tissue using FSL BET with more aggressive skull stripping.
+    
+    This operation uses FSL's Brain Extraction Tool (BET) with more aggressive
+    parameters for cleaner brain extraction. Uses lower fractional intensity
+    threshold for better removal of non-brain tissue.
+    
+    Files:
+        input_file: Source image with skull
+        output_file: Brain-extracted image
+    
+    Example:
+        Input: postT1_${name}
+        Output: postT1_${name}_brain
+    """
     input_file = Path(input_file)
     output_file = Path(output_file)
 
@@ -187,6 +377,23 @@ def extract_brain2(input_file: Path, output_file: Path):
     ])
 
 def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
+    """
+    Applies a binary mask to an image using FSLmaths masking operation.
+    
+    This operation uses FSLmaths to apply a binary mask to an image,
+    setting voxels to zero where the mask is zero and preserving values
+    where the mask is non-zero. Used to restrict analysis to brain regions.
+    
+    Files:
+        input_file: Source image to mask
+        mask_file: Binary mask image
+        output_file_name: Masked image with values only in mask regions
+    
+    Example:
+        Input: r_${name}_seeg
+        Mask: ${name}_stripped_mask
+        Output: r_${name}_seeg_masked
+    """
     input_file = Path(input_file)
     mask_file = Path(mask_file)
 
@@ -203,6 +410,21 @@ def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
     ])
 
 def cortical_reconstruction(input_file: Path, fs_output_dir: str):
+    """
+    Performs complete cortical surface reconstruction using FreeSurfer.
+    
+    This operation runs FreeSurfer's recon-all pipeline to generate cortical
+    surface meshes, parcellations, and anatomical statistics from a T1-weighted
+    MRI image. Creates comprehensive surface-based analysis data.
+    
+    Files:
+        input_file: T1-weighted MRI image for reconstruction
+        fs_output_dir: FreeSurfer subject directory for output data
+    
+    Example:
+        Input: ${name}_T1_C
+        Output: ${subj_dir}/processed_tmp/freesurfer_${name}
+    """
     input_file = Path(input_file)
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
@@ -220,20 +442,21 @@ def cortical_reconstruction(input_file: Path, fs_output_dir: str):
 
 def transform_coordinates(input_json: Path, transformation_matrix: Path, output_json: str) -> None:
     """
-    Transform electrode coordinates from subject space to MNI space
-    using the transformation matrix from the registration pipeline.
+    Transforms electrode coordinates from subject space to MNI space using transformation matrix.
     
-    This function applies the registration transformation matrix to electrode coordinates
+    This operation applies the registration transformation matrix to electrode coordinates
     that were marked in subject image space, transforming them to MNI standard space.
+    Intentionally ignores translations and applies only rotation/scaling components.
     
-    Note: This function assumes electrode coordinates are in image space and intentionally
-    ignores translations from the transformation matrix since we only want to apply 
-    rotation and scaling components for coordinate transformation.
+    Files:
+        input_json: JSON file with electrode coordinates in subject space
+        transformation_matrix: FSL transformation matrix (.mat file)
+        output_json: JSON file with coordinates transformed to MNI space
     
-    Args:
-        input_json: Path to input JSON file with electrode coordinates in subject space
-        transformation_matrix: Path to FSL transformation matrix (.mat file)
-        output_json: Path to output JSON file with coordinates transformed to MNI space
+    Example:
+        Input: electrodes_${name}.json
+        Matrix: MNI_${name}.mat
+        Output: electrodes_${name}_mni.json
     """
     # Read the transformation matrix
     with open(transformation_matrix, 'r') as f:
@@ -276,19 +499,19 @@ def transform_coordinates(input_json: Path, transformation_matrix: Path, output_
 
 def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
     """
-    Register a T1 MRI brain image to MNI space using FSL FLIRT. The registration is done in two stages:
-    1. Rigid registration (6 DOF) to get a rough alignment
-    2. Affine registration (12 DOF) initialized with the rigid transform for fine-tuning
+    Registers a T1 MRI brain image to MNI space using two-stage FSL FLIRT registration.
     
-    Uses MNI152_T1_2mm_brain template for brain-to-brain registration.
+    This operation performs high-quality registration to MNI standard space using
+    a two-stage approach: rigid registration (6 DOF) for rough alignment followed
+    by affine registration (12 DOF) for fine-tuning. Uses MNI152_T1_2mm_brain template.
     
-    Args:
-        input_file: Path to the input T1 brain image (brain-extracted)
-        output_file_name: Name of the output file (without extension). Will create:
-            - {output_file_name}_rigid.mat: Rigid transformation matrix
-            - {output_file_name}_rigid: Rigidly registered image
-            - {output_file_name}.mat: Final affine transformation matrix  
-            - {output_file_name}: Final registered image
+    Files:
+        input_file: T1 brain image (brain-extracted) to register
+        output_file_name: Base name for output files (creates multiple outputs)
+    
+    Example:
+        Input: postT1_${name}_brain
+        Output: MNI_${name} (plus _rigid and .mat files)
     """
     input_file = Path(input_file)
     ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_2mm_brain.nii.gz")
@@ -333,17 +556,19 @@ def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
 
 def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:
     """
-    Register a CT image to MNI space using FSL FLIRT.
+    Registers a CT image to MNI space using FSL FLIRT with affine transformation.
     
-    This function performs affine registration (12 DOF) of a CT image to the MNI152 T1 2mm template,
-    using normalized mutual information as the cost function and high quality sinc interpolation.
-    The registration allows for full rotation search to handle any initial orientation.
+    This operation performs affine registration (12 DOF) of a CT image to the MNI152 T1 2mm template
+    using normalized mutual information cost function and high-quality sinc interpolation.
+    Allows full rotation search to handle any initial orientation.
     
-    Args:
-        input_file: Path to the input CT image
-        output_file_name: Name of the output file (without extension). Will create:
-            - {output_file_name}: Final registered image in MNI space
-            - {output_file_name}.mat: Affine transformation matrix from native to MNI space
+    Files:
+        input_file: CT image to register to MNI space
+        output_file_name: Base name for registered image and transformation matrix
+    
+    Example:
+        Input: ${name}_CT_brain
+        Output: MNI_${name}_CT (plus .mat file)
     """
     input_file = Path(input_file)
     ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_2mm.nii.gz")
@@ -373,12 +598,20 @@ def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:
 
 def register_to_mni_ants(input_file: Path, output_file_name: str, normalize: bool = True) -> None:
     """
-    Register a single image (T1 or CT) to MNI space using ANTs
+    Registers a T1 or CT image to MNI space using ANTs advanced normalization tools.
     
-    Args:
-        input_file: Path to the input image (T1 or CT)
-        output_file_name: Name of the output file
-        normalize: Whether to normalize the image intensities before registration
+    This operation performs high-quality nonlinear registration to MNI standard space
+    using ANTs (Advanced Normalization Tools). Includes optional intensity normalization
+    and produces both registered images and transformation matrices.
+    
+    Files:
+        input_file: Source T1 or CT image to register
+        output_file_name: Base name for output files (creates multiple outputs)
+        normalize: Whether to apply intensity normalization before registration
+    
+    Example:
+        Input: ${name}_T1_brain
+        Output: MNI_${name} (plus transformation files)
     """
     input_file = Path(input_file)
     ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_1mm.nii.gz")
