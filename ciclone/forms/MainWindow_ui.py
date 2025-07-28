@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'MainWindow.ui'
+# Form implementation generated from reading ui file 'ciclone/forms/MainWindow.ui'
 #
 # Created by: PyQt6 UI code generator 6.9.1
 #
@@ -207,6 +207,8 @@ class Ui_MainWindow(object):
         self.menubar.setObjectName("menubar")
         self.menuFile = QtWidgets.QMenu(parent=self.menubar)
         self.menuFile.setObjectName("menuFile")
+        self.menuConfiguration = QtWidgets.QMenu(parent=self.menubar)
+        self.menuConfiguration.setObjectName("menuConfiguration")
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QtWidgets.QStatusBar(parent=MainWindow)
         self.statusbar.setObjectName("statusbar")
@@ -215,9 +217,13 @@ class Ui_MainWindow(object):
         self.actionNew_Output_Directory.setObjectName("actionNew_Output_Directory")
         self.actionOpen_Output_Directory = QtGui.QAction(parent=MainWindow)
         self.actionOpen_Output_Directory.setObjectName("actionOpen_Output_Directory")
+        self.actionManage_Pipelines = QtGui.QAction(parent=MainWindow)
+        self.actionManage_Pipelines.setObjectName("actionManage_Pipelines")
         self.menuFile.addAction(self.actionNew_Output_Directory)
         self.menuFile.addAction(self.actionOpen_Output_Directory)
+        self.menuConfiguration.addAction(self.actionManage_Pipelines)
         self.menubar.addAction(self.menuFile.menuAction())
+        self.menubar.addAction(self.menuConfiguration.menuAction())
 
         self.retranslateUi(MainWindow)
         self.tabWidget.setCurrentIndex(0)
@@ -298,5 +304,9 @@ class Ui_MainWindow(object):
         self.stopProcessing_pushButton.setText(_translate("MainWindow", "Stop Processing"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("MainWindow", "Pipeline"))
         self.menuFile.setTitle(_translate("MainWindow", "File"))
+        self.menuConfiguration.setTitle(_translate("MainWindow", "Configuration"))
         self.actionNew_Output_Directory.setText(_translate("MainWindow", "New Output Directory"))
         self.actionOpen_Output_Directory.setText(_translate("MainWindow", "Open Output Directory"))
+        self.actionManage_Pipelines.setText(_translate("MainWindow", "Manage Pipelines..."))
+        self.actionManage_Pipelines.setShortcut(_translate("MainWindow", "Ctrl+P"))
+        self.actionManage_Pipelines.setToolTip(_translate("MainWindow", "Open pipeline configuration manager"))
