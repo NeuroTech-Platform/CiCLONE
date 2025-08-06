@@ -108,27 +108,6 @@ class ConfigService:
         
         return True
     
-    def get_config_info(self, name: str) -> Optional[ConfigInfo]:
-        """Get information about a specific configuration.
-        
-        Args:
-            name: Name of the configuration
-            
-        Returns:
-            ConfigInfo object or None if not found
-        """
-        config_path = self.config_dir / f"{name}.yaml"
-        if not config_path.exists():
-            return None
-        
-        try:
-            config_data = self._load_config_file(config_path)
-            if self.validate_config(config_data):
-                return self._create_config_info(config_path, config_data)
-        except Exception:
-            return None
-        
-        return None
     
     def get_default_config_name(self) -> Optional[str]:
         """Get the default configuration name.
@@ -208,14 +187,17 @@ class ConfigService:
             if not is_valid:
                 raise ValueError(f"Invalid configuration structure: {error_msg}")
             
+            # Sanitize config name for filesystem
+            safe_config_name = self._sanitize_filename(config_name)
+            
             # Clean the config data (remove metadata if present)
             clean_config = self._clean_config_for_save(config_data)
             
             # Ensure config directory exists
             self.config_dir.mkdir(parents=True, exist_ok=True)
             
-            # Determine file path
-            config_path = self.config_dir / f"{config_name}.yaml"
+            # Determine file path using sanitized name
+            config_path = self.config_dir / f"{safe_config_name}.yaml"
             
             # Save to temporary file first, then rename (atomic operation)
             temp_path = config_path.with_suffix('.yaml.tmp')
@@ -227,42 +209,20 @@ class ConfigService:
             # Atomic rename
             temp_path.rename(config_path)
             
-            # Clear cache to force reload
-            self._config_cache.pop(config_name, None)
+            # Clear cache to force reload (use sanitized name)
+            self._config_cache.pop(safe_config_name, None)
             
             return True
             
         except Exception as e:
             print(f"Error saving config {config_name}: {e}")
-            # Clean up temp file if it exists
-            temp_path = self.config_dir / f"{config_name}.yaml.tmp"
+            # Clean up temp file if it exists (use sanitized name for cleanup)
+            safe_config_name = self._sanitize_filename(config_name)
+            temp_path = self.config_dir / f"{safe_config_name}.yaml.tmp"
             if temp_path.exists():
                 temp_path.unlink()
             return False
     
-    def create_new_config(self, config_name: str, base_template: Optional[str] = None) -> Dict[str, Any]:
-        """Create a new pipeline configuration.
-        
-        Args:
-            config_name: Name for the new configuration
-            base_template: Optional base template to copy from
-            
-        Returns:
-            New configuration dictionary
-        """
-        if base_template and base_template != "scratch":
-            # Load base template
-            base_config = self.load_config(base_template)
-            if base_config:
-                new_config = base_config.copy()
-                new_config['name'] = config_name
-                return new_config
-        
-        # Create from scratch
-        return {
-            'name': config_name,
-            'stages': []
-        }
     
     def delete_config(self, config_name: str) -> bool:
         """Delete a pipeline configuration.
@@ -288,118 +248,9 @@ class ConfigService:
             print(f"Error deleting config {config_name}: {e}")
             return False
     
-    def duplicate_config(self, source_config: str, new_name: str) -> bool:
-        """Duplicate an existing configuration.
-        
-        Args:
-            source_config: Name of the source configuration
-            new_name: Name for the new configuration
-            
-        Returns:
-            True if duplicated successfully, False otherwise
-        """
-        try:
-            source_data = self.load_config(source_config)
-            if not source_data:
-                return False
-            
-            # Update name and save as new config
-            new_config = source_data.copy()
-            new_config['name'] = new_name
-            
-            return self.save_config(new_name, new_config)
-            
-        except Exception as e:
-            print(f"Error duplicating config {source_config} to {new_name}: {e}")
-            return False
     
-    def import_config_from_file(self, file_path: str, new_name: Optional[str] = None) -> Optional[str]:
-        """Import a configuration from an external file.
-        
-        Args:
-            file_path: Path to the configuration file to import
-            new_name: Optional new name for the imported config
-            
-        Returns:
-            Name of the imported configuration, or None if failed
-        """
-        try:
-            import_path = Path(file_path)
-            if not import_path.exists():
-                return None
-            
-            # Load and validate the config
-            with open(import_path, 'r', encoding='utf-8') as file:
-                config_data = yaml.safe_load(file) or {}
-            
-            if not self.validate_config(config_data):
-                raise ValueError("Invalid configuration structure in imported file")
-            
-            # Determine name for imported config
-            config_name = new_name or import_path.stem
-            
-            # Ensure unique name
-            config_name = self._ensure_unique_config_name(config_name)
-            
-            # Update config name if different
-            config_data['name'] = config_name
-            
-            # Save the imported config
-            if self.save_config(config_name, config_data):
-                return config_name
-            
-            return None
-            
-        except Exception as e:
-            print(f"Error importing config from {file_path}: {e}")
-            return None
     
-    def export_config_to_file(self, config_name: str, export_path: str) -> bool:
-        """Export a configuration to an external file.
-        
-        Args:
-            config_name: Name of the configuration to export
-            export_path: Path where to save the exported file
-            
-        Returns:
-            True if exported successfully, False otherwise
-        """
-        try:
-            config_data = self.load_config(config_name)
-            if not config_data:
-                return False
-            
-            # Clean the config for export
-            clean_config = self._clean_config_for_save(config_data)
-            
-            export_file = Path(export_path)
-            export_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(export_file, 'w', encoding='utf-8') as file:
-                yaml.dump(clean_config, file, default_flow_style=False,
-                         sort_keys=False, indent=2, allow_unicode=True)
-            
-            return True
-            
-        except Exception as e:
-            print(f"Error exporting config {config_name} to {export_path}: {e}")
-            return False
     
-    def generate_yaml_preview(self, config_data: Dict[str, Any]) -> str:
-        """Generate a YAML preview string for a configuration.
-        
-        Args:
-            config_data: Configuration dictionary
-            
-        Returns:
-            YAML string representation
-        """
-        try:
-            clean_config = self._clean_config_for_save(config_data)
-            return yaml.dump(clean_config, default_flow_style=False,
-                           sort_keys=False, indent=2, allow_unicode=True)
-        except Exception as e:
-            return f"Error generating preview: {e}"
     
     def validate_config_detailed(self, config_data: Dict[str, Any]) -> Tuple[bool, str]:
         """Validate configuration data and return detailed error information.
@@ -466,14 +317,18 @@ class ConfigService:
         for config_info in config_infos:
             config_data = self.load_config(config_info.name)
             if config_data:
-                # Add metadata for UI display
-                config_data['_metadata'] = {
+                # Create a deep copy to avoid modifying the cached config
+                import copy
+                config_copy = copy.deepcopy(config_data)
+                
+                # Add metadata for UI display to the copy
+                config_copy['_metadata'] = {
                     'file_path': config_info.file_path,
                     'display_name': config_info.display_name,
                     'stage_count': config_info.stage_count,
                     'config_name': config_info.name
                 }
-                configs.append(config_data)
+                configs.append(config_copy)
         
         return configs
     
@@ -493,23 +348,29 @@ class ConfigService:
         
         return clean_config
     
-    def _ensure_unique_config_name(self, base_name: str) -> str:
-        """Ensure a configuration name is unique by appending numbers if needed.
+    def _sanitize_filename(self, filename: str) -> str:
+        """Remove or replace invalid filesystem characters from filename.
         
         Args:
-            base_name: Base configuration name
+            filename: Original filename
             
         Returns:
-            Unique configuration name
+            Sanitized filename safe for filesystem use
         """
-        config_path = self.config_dir / f"{base_name}.yaml"
-        if not config_path.exists():
-            return base_name
+        # Characters that are invalid in most filesystems
+        invalid_chars = '<>:"/\\|?*'
         
-        counter = 1
-        while True:
-            candidate_name = f"{base_name}_{counter}"
-            config_path = self.config_dir / f"{candidate_name}.yaml"
-            if not config_path.exists():
-                return candidate_name
-            counter += 1
+        # Replace invalid characters with underscores
+        sanitized = filename
+        for char in invalid_chars:
+            sanitized = sanitized.replace(char, '_')
+        
+        # Remove leading/trailing whitespace and dots
+        sanitized = sanitized.strip(' .')
+        
+        # Ensure filename is not empty after sanitization
+        if not sanitized:
+            sanitized = 'config'
+        
+        return sanitized
+    

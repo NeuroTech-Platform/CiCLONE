@@ -539,36 +539,6 @@
             <property name="spacing">
              <number>8</number>
             </property>
-            <item>
-             <layout class="QHBoxLayout" name="horizontalLayout_file1">
-              <item>
-               <widget class="QLabel" name="label_file1">
-                <property name="minimumSize">
-                 <size>
-                  <width>120</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>120</width>
-                  <height>16777215</height>
-                 </size>
-                </property>
-                <property name="text">
-                 <string>File:</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QLineEdit" name="lineEdit_file1">
-                <property name="placeholderText">
-                 <string>e.g., ${name}_processed.nii</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </item>
            </layout>
           </widget>
          </item>
@@ -584,7 +554,7 @@
             <item>
              <widget class="QLabel" name="label_description">
               <property name="sizePolicy">
-               <sizepolicy hsizetype="Ignored" vsizetype="Expanding">
+               <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
                 <horstretch>0</horstretch>
                 <verstretch>0</verstretch>
                </sizepolicy>
@@ -618,7 +588,7 @@
             <item>
              <widget class="QLabel" name="label_requirements">
               <property name="sizePolicy">
-               <sizepolicy hsizetype="Ignored" vsizetype="Expanding">
+               <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
                 <horstretch>0</horstretch>
                 <verstretch>0</verstretch>
                </sizepolicy>

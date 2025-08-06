@@ -137,6 +137,11 @@ The codebase has been enhanced with strict MVC compliance through the following 
 - **Dependency Injection**: Services support mocking for isolated testing
 - **Backward Compatibility**: All changes maintain existing functionality
 
+## Development Principles
+
+### Best Practices
+- Always use Qt's built-in-methods when possible 
+
 ## Important Notes
 
 - **Production Ready Status**: Complete MVC implementation with medical-grade stability

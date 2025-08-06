@@ -14,6 +14,9 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         super().__init__(parent)
         self.setupUi(self)
         
+        # Initialize file inputs list
+        self._file_inputs = []
+        
         # Initialize services
         self.config_service = ConfigService(config_dir)
         self.dialog_service = DialogService()
@@ -27,16 +30,33 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         # Connect UI signals to controller
         self._connect_ui_signals()
         
-        # Set controller view reference
+        # Connect pipeline name editing - use editingFinished to avoid prompting on every keystroke
+        self.lineEdit_pipeline_name.editingFinished.connect(self._on_pipeline_name_changed)
+        
+        # Initialize operation type combo box BEFORE setting controller view
+        self._initialize_operation_types()
+        
+        # Set controller view reference (this will trigger data loading and UI updates)
         self.controller.set_view(self)
+        
+        # Set initial state
+        self._update_change_indicators()
     
     def _connect_controller_signals(self):
         """Connect controller signals to view update methods."""
         self.controller.pipeline_list_updated.connect(self._update_pipeline_list)
+        self.controller.pipeline_selection_updated.connect(self._update_pipeline_selection)
         self.controller.stage_list_updated.connect(self._update_stage_list)
+        self.controller.stage_selection_updated.connect(self._update_stage_selection)
         self.controller.operation_list_updated.connect(self._update_operation_list)
+        self.controller.operation_selection_updated.connect(self._update_operation_selection)
         self.controller.stage_details_updated.connect(self._update_stage_details)
         self.controller.dependencies_updated.connect(self._update_dependencies)
+        self.controller.operation_details_updated.connect(self._update_operation_details)
+        self.controller.unsaved_changes_detected.connect(self._on_unsaved_changes_detected)
+        self.controller.changes_saved.connect(self._on_changes_saved)
+        self.controller.changes_discarded.connect(self._on_changes_discarded)
+        self.controller.pipeline_details_updated.connect(self._update_pipeline_details)
     
     def _connect_ui_signals(self):
         """Connect UI signals to controller methods."""
@@ -52,24 +72,31 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         self.pushButton_move_stage_down.clicked.connect(self._on_move_stage_down)
         self.listWidget_stages.currentRowChanged.connect(self.controller.on_stage_selected)
         
-        # Stage details
-        self.lineEdit_stage_name.textChanged.connect(self._on_stage_name_changed)
+        # Stage details (use editingFinished to avoid prompting on every keystroke)
+        self.lineEdit_stage_name.editingFinished.connect(self._on_stage_name_changed)
         self.comboBox_dependencies.currentTextChanged.connect(self._on_dependencies_changed)
         self.checkBox_auto_clean.toggled.connect(self._on_auto_clean_changed)
         
         # Operation actions
-        self.pushButton_add_operation.clicked.connect(self._on_add_operation)
-        self.pushButton_edit_operation.clicked.connect(self._on_edit_operation)
-        self.pushButton_delete_operation.clicked.connect(self._on_delete_operation)
+        self.pushButton_add_operation.clicked.connect(self.controller.on_add_operation)
+        self.pushButton_delete_operation.clicked.connect(self._on_delete_operation_clicked)
         self.listWidget_operations.currentRowChanged.connect(self.controller.on_operation_selected)
+        
+        # Operation configuration (use editingFinished to avoid prompting on every keystroke)
+        self.comboBox_operation_type.currentTextChanged.connect(self._on_operation_type_changed)
+        self.lineEdit_workdir.editingFinished.connect(self._on_workdir_changed)
+        # Note: File input connections are set up dynamically in _setup_file_inputs
         
         # Bottom actions
         self.pushButton_import_template.clicked.connect(self.controller.on_import_template)
-        self.pushButton_preview_yaml.clicked.connect(self.controller.on_preview_yaml)
+        #self.pushButton_preview_yaml.clicked.connect(self.controller.on_preview_yaml)
         self.pushButton_save.clicked.connect(self._on_save_clicked)
     
     def _update_pipeline_list(self, pipelines):
         """Update the pipeline list widget."""
+        # Block signals to prevent unwanted currentRowChanged events during update
+        self.listWidget_pipelines.blockSignals(True)
+        
         self.listWidget_pipelines.clear()
         for pipeline in pipelines:
             metadata = pipeline.get('_metadata', {})
@@ -80,9 +107,23 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, pipeline)
             self.listWidget_pipelines.addItem(item)
+        
+        # Don't set selection here - let the controller manage selection through _update_pipeline_selection
+        # The controller will emit pipeline_selection_updated signal when appropriate
+        
+        # Re-enable signals
+        self.listWidget_pipelines.blockSignals(False)
+    
+    def _update_pipeline_selection(self, index: int):
+        """Update the pipeline list widget selection to match controller state."""
+        if 0 <= index < self.listWidget_pipelines.count():
+            self.listWidget_pipelines.setCurrentRow(index)
     
     def _update_stage_list(self, stages):
         """Update the stage list widget."""
+        # Block signals to prevent unwanted currentRowChanged events during update
+        self.listWidget_stages.blockSignals(True)
+        
         self.listWidget_stages.clear()
         for i, stage in enumerate(stages):
             stage_name = stage.get('name', f'Stage {i+1}')
@@ -95,25 +136,43 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, stage)
             self.listWidget_stages.addItem(item)
+        
+        # Don't set selection here - let the controller manage selection through _update_stage_selection
+        # The controller will emit stage_selection_updated signal when appropriate
+        
+        # Re-enable signals
+        self.listWidget_stages.blockSignals(False)
     
     def _update_operation_list(self, operations):
         """Update the operation list widget."""
+        # Block signals to prevent unwanted currentRowChanged events during update
+        self.listWidget_operations.blockSignals(True)
+        
         self.listWidget_operations.clear()
         for i, operation in enumerate(operations):
             op_type = operation.get('type', 'Unknown')
-            workdir = operation.get('workdir', '')
-            files = operation.get('files', [])
             
             item_text = f"{i+1}. {op_type}"
-            if workdir:
-                item_text += f" (workdir: {workdir})"
-            if files:
-                file_info = f" [{len(files)} files]"
-                item_text += file_info
             
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, operation)
             self.listWidget_operations.addItem(item)
+        
+        # Don't set selection here - let the controller manage selection through _update_operation_selection
+        # The controller will emit operation_selection_updated signal when appropriate
+        
+        # Re-enable signals
+        self.listWidget_operations.blockSignals(False)
+    
+    def _update_stage_selection(self, index: int):
+        """Update the stage list widget selection to match controller state."""
+        if 0 <= index < self.listWidget_stages.count():
+            self.listWidget_stages.setCurrentRow(index)
+    
+    def _update_operation_selection(self, index: int):
+        """Update the operation list widget selection to match controller state."""
+        if 0 <= index < self.listWidget_operations.count():
+            self.listWidget_operations.setCurrentRow(index)
     
     def _update_stage_details(self, stage_details):
         """Update the stage details form."""
@@ -197,8 +256,9 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
             # Update selection to follow the moved stage
             self.listWidget_stages.setCurrentRow(current_row + 1)
     
-    def _on_stage_name_changed(self, text):
-        """Handle stage name field changes."""
+    def _on_stage_name_changed(self):
+        """Handle stage name field changes when editing is finished."""
+        text = self.lineEdit_stage_name.text()
         self.controller.on_stage_details_changed('name', text)
     
     def _on_dependencies_changed(self, text):
@@ -210,34 +270,324 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         """Handle auto clean checkbox changes."""
         self.controller.on_stage_details_changed('auto_clean', checked)
     
-    def _on_add_operation(self):
-        """Handle add operation button click."""
-        # TODO: Implement operation editing dialog
-        pass
+    def _on_pipeline_name_changed(self):
+        """Handle pipeline name field changes when editing is finished."""
+        text = self.lineEdit_pipeline_name.text()
+        self.controller.on_pipeline_details_changed('name', text)
     
-    def _on_edit_operation(self):
-        """Handle edit operation button click."""
-        # TODO: Implement operation editing dialog
-        pass
+    def _update_pipeline_details(self, pipeline_details):
+        """Update the pipeline details form."""
+        if not pipeline_details:
+            # Clear form
+            self.lineEdit_pipeline_name.clear()
+            return
+        
+        # Block signals to prevent recursive updates
+        self.lineEdit_pipeline_name.blockSignals(True)
+        
+        # Update pipeline name
+        pipeline_name = pipeline_details.get('name', '')
+        self.lineEdit_pipeline_name.setText(pipeline_name)
+        
+        # Restore signals
+        self.lineEdit_pipeline_name.blockSignals(False)
     
-    def _on_delete_operation(self):
+    def _update_operation_description(self, operation_type: str):
+        """Update operation description based on selected type."""
+        try:
+            if hasattr(self, 'controller') and operation_type and operation_type != 'to_be_defined':
+                metadata = self.controller.metadata_parser.get_operation_metadata(operation_type)
+                if metadata:
+                    description = metadata.get('description', 'Select an operation type to see description')
+                    self.label_description.setText(description)
+                    self._update_file_requirements(metadata)
+                    return
+            
+            self.label_description.setText('Select an operation type to see description')
+            self.label_requirements.setText('Select an operation to see file requirements')
+        except Exception as e:
+            print(f"Error updating operation description: {e}")
+            self.label_description.setText('Select an operation type to see description')
+            self.label_requirements.setText('Select an operation to see file requirements')
+    
+    def _update_operation_description_with_metadata(self, operation_type: str, metadata):
+        """Update operation description using provided metadata."""
+        try:
+            if metadata and operation_type and operation_type != 'to_be_defined':
+                description = metadata.get('description', 'Select an operation type to see description')
+                self.label_description.setText(description)
+                self._update_file_requirements(metadata)
+            else:
+                # Fallback to regular description update
+                self._update_operation_description(operation_type)
+        except Exception as e:
+            print(f"Error updating operation description with metadata: {e}")
+            self.label_description.setText('Select an operation type to see description')
+            self.label_requirements.setText('Select an operation to see file requirements')
+    
+    def _update_file_requirements(self, metadata):
+        """Update file requirements information based on operation metadata."""
+        try:
+            files = metadata.get('files', [])
+            if not files:
+                self.label_requirements.setText('This operation does not require any input files.')
+                return
+            
+            requirements = []
+            requirements.append("")  # Empty line for spacing
+            requirements.append(f"Requiered files :")
+            
+            for i, file_info in enumerate(files, 1):
+                file_name = file_info.get('name', f'file_{i}')
+                file_desc = file_info.get('description', 'No description available')
+                requirements.append(f"    {i}. {file_name} : {file_desc}")
+            self.label_requirements.setText('\n'.join(requirements))
+            
+        except Exception as e:
+            print(f"Error updating file requirements: {e}")
+            self.label_requirements.setText('Error loading file requirements')
+    
+    def _on_delete_operation_clicked(self):
         """Handle delete operation button click."""
-        # TODO: Implement operation deletion
-        pass
+        current_row = self.listWidget_operations.currentRow()
+        if current_row >= 0:
+            self.controller.on_delete_operation(current_row)
+    
+    def _on_operation_type_changed(self, text):
+        """Handle operation type changes."""
+        if text:
+            # Update description
+            self._update_operation_description(text)
+            
+            # Update controller with new type
+            self.controller.on_operation_details_changed('type', text)
+    
+    def _on_workdir_changed(self):
+        """Handle workdir field changes when editing is finished."""
+        text = self.lineEdit_workdir.text()
+        self.controller.on_operation_details_changed('workdir', text)
+    
+    def _on_file_changed(self, file_index: int, text: str):
+        """Handle file field changes for a specific file index when editing is finished."""
+        self.controller.on_operation_details_changed(f'file_{file_index}', text)
+    
+    def _initialize_operation_types(self):
+        """Initialize the operation types combo box."""
+        operation_types = self.controller.get_available_operation_types()
+        self.comboBox_operation_type.clear()
+        self.comboBox_operation_type.addItems(operation_types)
+    
+    
+    def _update_operation_details(self, operation_details):
+        """Update the operation details form."""
+        if not operation_details:
+            # Clear form
+            self.comboBox_operation_type.setCurrentText('to_be_defined')
+            self.lineEdit_workdir.clear()
+            self._clear_file_inputs()
+            # Clear description
+            self.label_description.setText('Select an operation type to see description')
+            return
+        
+        # Block signals to prevent recursive updates
+        self.comboBox_operation_type.blockSignals(True)
+        self.lineEdit_workdir.blockSignals(True)
+        
+        # Update operation type
+        operation_type = operation_details.get('operation', 'to_be_defined')
+        
+        # Check if the operation type exists in the combo box
+        index = self.comboBox_operation_type.findText(operation_type)
+        if index >= 0:
+            self.comboBox_operation_type.setCurrentIndex(index)
+        else:
+            # Operation type not found, add it and select it
+            print(f"Warning: Operation type '{operation_type}' not found in combo box, adding it")
+            self.comboBox_operation_type.addItem(operation_type)
+            self.comboBox_operation_type.setCurrentText(operation_type)
+        
+        # Update workdir
+        workdir = operation_details.get('workdir', '')
+        self.lineEdit_workdir.setText(workdir)
+        
+        # Setup file inputs based on metadata
+        metadata = operation_details.get('metadata')
+        files = operation_details.get('files', [])
+        self._setup_file_inputs(metadata, files)
+        
+        # Update operation description using metadata if available
+        self._update_operation_description_with_metadata(operation_type, metadata)
+        
+        # Restore signals
+        self.comboBox_operation_type.blockSignals(False)
+        self.lineEdit_workdir.blockSignals(False)
+    
+    def _setup_file_inputs(self, metadata, files):
+        """Setup file input fields based on operation metadata."""
+        # Clear existing file inputs first
+        self._clear_file_inputs()
+        
+        # Force immediate redraw
+        self.groupBox_operation_files.repaint()
+        
+        if not metadata or not metadata.get('files'):
+            # Fallback to single generic file input
+            self._create_generic_file_input(files)
+            return
+        
+        # Create inputs based on metadata
+        file_info_list = metadata.get('files', [])
+        
+        for i, file_info in enumerate(file_info_list):
+            file_name = file_info.get('name', f'file_{i}')
+            file_description = file_info.get('description', '')
+            file_value = files[i] if i < len(files) else ''
+            
+            self._create_file_input(i, file_name, file_description, file_value)
+    
+    def _create_file_input(self, index: int, name: str, description: str, value: str):
+        """Create a file input field with label."""
+        from PyQt6.QtWidgets import QLabel, QLineEdit, QHBoxLayout, QFrame
+        
+        # Create a frame instead of a widget for better layout control
+        container = QFrame(self.groupBox_operation_files)
+        container.setFrameStyle(QFrame.Shape.NoFrame)
+        container.setContentsMargins(0, 0, 0, 0)
+        
+        # Create label with file name
+        label = QLabel(f"{name}:")
+        label.setMinimumWidth(120)
+        label.setMaximumWidth(120)
+        label.setToolTip(description if description else f"File input for {name}")
+        label.setParent(container)
+        
+        # Create line edit  
+        line_edit = QLineEdit()
+        line_edit.setText(value)
+        line_edit.setPlaceholderText(description if description else f"Enter {name}")
+        line_edit.setParent(container)
+        
+        # Connect signal with lambda to capture index - use editingFinished to avoid prompting on every keystroke
+        line_edit.editingFinished.connect(lambda widget=line_edit, idx=index: self._on_file_changed(idx, widget.text()))
+        
+        # Create horizontal layout for the container
+        h_layout = QHBoxLayout()
+        h_layout.setContentsMargins(0, 0, 0, 0)
+        h_layout.addWidget(label)
+        h_layout.addWidget(line_edit)
+        
+        # Set the layout to the container
+        container.setLayout(h_layout)
+        
+        # Add the container to the files group box
+        self.verticalLayout_operation_files.addWidget(container)
+        
+        # Store references for cleanup
+        if not hasattr(self, '_file_inputs'):
+            self._file_inputs = []
+        self._file_inputs.append((label, line_edit, h_layout, container))
+    
+    def _create_generic_file_input(self, files):
+        """Create a single generic file input when no metadata is available."""
+        file_value = files[0] if files else ''
+        self._create_file_input(0, "file1", "Input file", file_value)
+    
+    def _clear_file_inputs(self):
+        """Clear all dynamically created file inputs."""
+        # Clear all widgets from the layout immediately
+        while self.verticalLayout_operation_files.count():
+            child = self.verticalLayout_operation_files.takeAt(0)
+            if child.widget():
+                child.widget().setParent(None)
+                child.widget().deleteLater()
+        
+        # Clear our tracking list
+        if hasattr(self, '_file_inputs'):
+            self._file_inputs.clear()
+        else:
+            self._file_inputs = []
+    
+    
+    def _update_change_indicators(self):
+        """Update visual indicators for unsaved changes."""
+        has_changes = self.controller.has_unsaved_changes()
+        
+        # Update window title to show unsaved changes
+        base_title = "Pipeline Configuration"
+        if has_changes:
+            self.setWindowTitle(f"{base_title} - Unsaved Changes")
+        else:
+            self.setWindowTitle(base_title)
+        
+        # Update save button state
+        self.pushButton_save.setEnabled(has_changes)
+        
+        # Update pipeline name field state based on selection
+        has_pipeline_selected = hasattr(self.controller, '_current_pipeline_index') and self.controller._current_pipeline_index >= 0
+        self.lineEdit_pipeline_name.setEnabled(has_pipeline_selected)
+        
+        # Could add more visual indicators here (colors, icons, etc.)
+    
+    def _on_unsaved_changes_detected(self, message: str):
+        """Handle unsaved changes detection signal."""
+        self._update_change_indicators()
+        
+        # Could show status message or other feedback
+        # self.statusBar().showMessage(message, 3000)
+        _ = message  # Parameter kept for future use
+    
+    def _on_changes_saved(self):
+        """Handle changes saved signal."""
+        self._update_change_indicators()
+        # Could show success message
+    
+    def _on_changes_discarded(self):
+        """Handle changes discarded signal."""
+        self._update_change_indicators()
+        # Could show discard message
+    
+    def showEvent(self, event):
+        """Handle dialog show event to update initial state."""
+        super().showEvent(event)
+        self._update_change_indicators()
     
     def _on_save_clicked(self):
         """Handle save button click."""
-        if self.controller.on_save_changes():
-            self.accept()  # Close dialog on successful save
+        try:
+            if self.controller.on_save_changes():
+                # Show success feedback
+                self.dialog_service.show_information(
+                    "Save Successful",
+                    "Configuration changes have been saved successfully."
+                )
+                self.accept()  # Close dialog on successful save
+            else:
+                # Error is already shown by controller, just stay open
+                pass
+        except Exception as e:
+            self.dialog_service.show_error(
+                "Save Error",
+                f"An unexpected error occurred while saving: {str(e)}"
+            )
     
     def closeEvent(self, event):
         """Handle dialog close event to check for unsaved changes."""
-        if self.controller.can_close():
+        try:
+            if self.controller.can_close():
+                event.accept()
+            else:
+                event.ignore()
+        except Exception as e:
+            # Log error but don't prevent closing on error
+            print(f"Error during close: {e}")
             event.accept()
-        else:
-            event.ignore()
     
     def reject(self):
         """Handle dialog rejection (Cancel button)."""
-        if self.controller.can_close():
+        try:
+            if self.controller.can_close():
+                super().reject()
+        except Exception as e:
+            # Log error but don't prevent closing on error
+            print(f"Error during reject: {e}")
             super().reject()
