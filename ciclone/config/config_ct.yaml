@@ -1,4 +1,4 @@
-name: config_ct
+name: CTpre / CTpost
 stages:
 - name: visual_inspection
   depends_on: []
