@@ -329,18 +329,13 @@
              </widget>
             </item>
             <item row="1" column="1">
-             <widget class="QComboBox" name="comboBox_dependencies">
+             <widget class="MultiSelectComboBox" name="comboBox_dependencies">
               <property name="sizePolicy">
                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
                 <horstretch>0</horstretch>
                 <verstretch>0</verstretch>
                </sizepolicy>
               </property>
-              <item>
-               <property name="text">
-                <string>none</string>
-               </property>
-              </item>
              </widget>
             </item>
             <item row="2" column="0">
@@ -725,4 +720,11 @@
    </hints>
   </connection>
  </connections>
+ <customwidgets>
+  <customwidget>
+   <class>MultiSelectComboBox</class>
+   <extends>QComboBox</extends>
+   <header>ciclone.ui.widgets.MultiSelectComboBox</header>
+  </customwidget>
+ </customwidgets>
 </ui>

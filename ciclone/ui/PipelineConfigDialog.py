@@ -5,6 +5,7 @@ from ciclone.forms.PipelineConfig_ui import Ui_PipelineConfigDialog
 from ciclone.controllers.config_dialog_controller import ConfigDialogController
 from ciclone.services.config_service import ConfigService
 from ciclone.services.ui.dialog_service import DialogService
+from ciclone.ui.widgets.MultiSelectComboBox import MultiSelectComboBox
 
 
 class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
@@ -74,7 +75,7 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         
         # Stage details (use editingFinished to avoid prompting on every keystroke)
         self.lineEdit_stage_name.editingFinished.connect(self._on_stage_name_changed)
-        self.comboBox_dependencies.currentTextChanged.connect(self._on_dependencies_changed)
+        self.comboBox_dependencies.selectionChanged.connect(self._on_dependencies_changed)
         self.checkBox_auto_clean.toggled.connect(self._on_auto_clean_changed)
         
         # Operation actions
@@ -180,7 +181,7 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
             # Clear form
             self.lineEdit_stage_name.clear()
             self.checkBox_auto_clean.setChecked(True)
-            self.comboBox_dependencies.setCurrentText('none')
+            self.comboBox_dependencies.set_selected_items([])
             return
         
         # Block signals to prevent recursive updates
@@ -191,19 +192,9 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         self.lineEdit_stage_name.setText(stage_details.get('name', ''))
         self.checkBox_auto_clean.setChecked(stage_details.get('auto_clean', True))
         
-        # Handle dependencies - show first dependency or 'none'
+        # Handle dependencies - set all selected dependencies
         depends_on = stage_details.get('depends_on', [])
-        if depends_on and len(depends_on) > 0:
-            # For now, show the first dependency (we could enhance this later for multiple deps)
-            dependency_name = depends_on[0]
-            # Check if this dependency exists in the combo box
-            index = self.comboBox_dependencies.findText(dependency_name)
-            if index >= 0:
-                self.comboBox_dependencies.setCurrentText(dependency_name)
-            else:
-                self.comboBox_dependencies.setCurrentText('none')
-        else:
-            self.comboBox_dependencies.setCurrentText('none')
+        self.comboBox_dependencies.set_selected_items(depends_on)
         
         # Restore signals
         self.lineEdit_stage_name.blockSignals(False)
@@ -211,20 +202,19 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         self.comboBox_dependencies.blockSignals(False)
     
     def _update_dependencies(self, dependencies):
-        """Update the dependencies combo box."""        
+        """Update the dependencies combo box."""
         self.comboBox_dependencies.blockSignals(True)
         
-        # Store current selection to restore if possible
-        current_text = self.comboBox_dependencies.currentText()
+        # Store current selections to restore if possible
+        current_selections = self.comboBox_dependencies.get_selected_items()
         
-        self.comboBox_dependencies.clear()
-        self.comboBox_dependencies.addItems(dependencies)
+        # Clear and populate with new items
+        self.comboBox_dependencies.clear_items()
+        self.comboBox_dependencies.add_items(dependencies)
         
-        # Try to restore previous selection, default to 'none' if not available
-        if current_text in dependencies:
-            self.comboBox_dependencies.setCurrentText(current_text)
-        else:
-            self.comboBox_dependencies.setCurrentText('none')
+        # Restore previous selections if they still exist
+        valid_selections = [dep for dep in current_selections if dep in dependencies]
+        self.comboBox_dependencies.set_selected_items(valid_selections)
         
         self.comboBox_dependencies.blockSignals(False)
     
@@ -261,10 +251,9 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         text = self.lineEdit_stage_name.text()
         self.controller.on_stage_details_changed('name', text)
     
-    def _on_dependencies_changed(self, text):
+    def _on_dependencies_changed(self, selected_items):
         """Handle dependencies combo box changes."""
-        deps = [] if text == 'none' else [text]
-        self.controller.on_stage_details_changed('depends_on', deps)
+        self.controller.on_stage_details_changed('depends_on', selected_items)
     
     def _on_auto_clean_changed(self, checked):
         """Handle auto clean checkbox changes."""
