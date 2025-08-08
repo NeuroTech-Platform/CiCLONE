@@ -178,14 +178,20 @@ class ConfigTransactionManager:
         
         # Check for any recorded changes
         if self._transaction_state.change_records:
+            print(f"DEBUG: has_changes - Found {len(self._transaction_state.change_records)} change records")
+            for i, record in enumerate(self._transaction_state.change_records):
+                print(f"  {i}: {record.entity_path} - {record.change_type}")
             return True
         
         # Check for deleted pipelines
         if self._transaction_state.deleted_pipeline_names:
+            print(f"DEBUG: has_changes - Found deleted pipelines: {self._transaction_state.deleted_pipeline_names}")
             return True
         
         # Deep comparison as fallback
-        return self._transaction_state.working_configs != self._transaction_state.original_configs
+        deep_changes = self._transaction_state.working_configs != self._transaction_state.original_configs
+        print(f"DEBUG: has_changes - No change records or deleted pipelines, deep comparison: {deep_changes}")
+        return deep_changes
     
     def has_changes_at_level(self, level: EntityLevel, indices: Dict[str, int]) -> bool:
         """
@@ -199,14 +205,20 @@ class ConfigTransactionManager:
             True if there are changes at the specified level
         """
         if not self.has_changes():
+            print("DEBUG: has_changes_at_level - No changes overall")
             return False
         
         path_prefix = self._build_entity_path(level, indices)
+        print(f"DEBUG: has_changes_at_level - Looking for path prefix: {path_prefix}")
+        print("DEBUG: Available change records:")
         
-        for record in self._transaction_state.change_records:
+        for i, record in enumerate(self._transaction_state.change_records):
+            print(f"  {i}: {record.entity_path} ({record.change_type})")
             if record.entity_path.startswith(path_prefix):
+                print(f"DEBUG: Found matching change at {record.entity_path}")
                 return True
         
+        print(f"DEBUG: No changes found for path prefix: {path_prefix}")
         return False
     
     def get_change_summary(self) -> Dict[str, Any]:
@@ -564,22 +576,36 @@ class ConfigTransactionManager:
         Returns:
             True if update was successful
         """
+        print(f"DEBUG: update_operation called with indices [{pipeline_index}, {stage_index}, {operation_index}]")
+        
         if not self._transaction_state:
+            print("DEBUG: No transaction state")
             return False
         
         working = self._transaction_state.working_configs
+        print(f"DEBUG: Working configs length: {len(working)}")
+        
         if 0 <= pipeline_index < len(working):
             stages = working[pipeline_index].get('stages', [])
+            print(f"DEBUG: Stages length: {len(stages)}")
+            
             if 0 <= stage_index < len(stages):
                 operations = stages[stage_index].get('operations', [])
+                print(f"DEBUG: Operations length: {len(operations)}")
+                
                 if 0 <= operation_index < len(operations):
                     old_value = operations[operation_index]
                     config_op = self._ensure_config_format(operation_data)
+                    
+                    print(f"DEBUG: Old operation: {old_value}")
+                    print(f"DEBUG: New operation: {config_op}")
+                    print(f"DEBUG: Operations are equal: {old_value == config_op}")
                     
                     if old_value != config_op:
                         operations[operation_index] = config_op
                         
                         # Record the change
+                        print("DEBUG: Recording change")
                         self._record_change(
                             EntityLevel.OPERATION,
                             ChangeType.MODIFIED,
@@ -588,8 +614,18 @@ class ConfigTransactionManager:
                             old_value=old_value,
                             new_value=config_op
                         )
+                        print("DEBUG: Change recorded")
+                    else:
+                        print("DEBUG: No change - operations are identical")
                     
                     return True
+                else:
+                    print(f"DEBUG: Operation index {operation_index} out of range")
+            else:
+                print(f"DEBUG: Stage index {stage_index} out of range")
+        else:
+            print(f"DEBUG: Pipeline index {pipeline_index} out of range")
+            
         return False
     
     def delete_operation(self, pipeline_index: int, stage_index: int, 
@@ -662,12 +698,17 @@ class ConfigTransactionManager:
         Returns:
             True if there are unsaved changes that would be lost
         """
+        print(f"DEBUG: check_context_switch called with pipeline={new_pipeline}, stage={new_stage}, operation={new_operation}")
+        print(f"DEBUG: Current context: {self._current_context}")
+        
         if not self.has_changes():
+            print("DEBUG: No changes detected in check_context_switch")
             return False
         
         # For pipeline switching, only check if there are ANY changes
         # (since switching pipelines should save all changes)
         if new_pipeline is not None and new_pipeline != self._current_context['pipeline_index']:
+            print("DEBUG: Pipeline switching detected - should prompt")
             # Always prompt when switching pipelines if there are any changes
             return True
         
@@ -676,24 +717,30 @@ class ConfigTransactionManager:
             new_stage != self._current_context['stage_index'] and
             self._current_context['stage_index'] >= 0):
             
-            return self.has_changes_at_level(
+            print("DEBUG: Stage switching detected - checking stage-level changes")
+            result = self.has_changes_at_level(
                 EntityLevel.STAGE,
                 {'pipeline': self._current_context['pipeline_index'],
                  'stage': self._current_context['stage_index']}
             )
+            print(f"DEBUG: Stage-level changes result: {result}")
+            return result
         
         # For operation switching within the same stage, check operation-level changes  
         if (new_operation is not None and 
             new_operation != self._current_context['operation_index'] and
             self._current_context['operation_index'] >= 0):
             
-            return self.has_changes_at_level(
-                EntityLevel.OPERATION,
-                {'pipeline': self._current_context['pipeline_index'],
-                 'stage': self._current_context['stage_index'],
-                 'operation': self._current_context['operation_index']}
-            )
+            print("DEBUG: Operation switching detected - checking operation-level changes")
+            indices = {'pipeline': self._current_context['pipeline_index'],
+                      'stage': self._current_context['stage_index'],
+                      'operation': self._current_context['operation_index']}
+            print(f"DEBUG: Checking for changes at indices: {indices}")
+            result = self.has_changes_at_level(EntityLevel.OPERATION, indices)
+            print(f"DEBUG: Operation-level changes result: {result}")
+            return result
         
+        print("DEBUG: No context switch conditions met")
         return False
     
     # ==================== Snapshot Management ====================
