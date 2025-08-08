@@ -6,82 +6,82 @@ stages:
   operations:
   - type: reorient_to_standard
     workdir: preop/ct
-    files:
-    - ${name}_CT_Bone
-    - ${name}_CT_Bone_R2S
+    parameters:
+      input_file: ${name}_CT_Bone
+      output_file: ${name}_CT_Bone_R2S
   - type: open_fsleyes
     workdir: preop/ct
-    files:
-    - ${name}_CT_Bone_R2S
+    parameters:
+      input_file: ${name}_CT_Bone_R2S
   - type: apply_nudgetransformation
     workdir: preop/ct
-    files:
-    - ${name}_CT_Bone_R2S
-    - ${name}_CT_Bone_R2S.mat
-    - ${name}_CT_Bone_R2S
-    - ${name}_CT_Bone_R2S_N
+    parameters:
+      input_file: ${name}_CT_Bone_R2S
+      transformation_file: ${name}_CT_Bone_R2S.mat
+      ref_file: ${name}_CT_Bone_R2S
+      output_file_name: ${name}_CT_Bone_R2S_N
   - type: crop
     workdir: preop/ct
-    files:
-    - ${name}_CT_Bone_R2S_N
-    - ${name}_CT_Bone_C
+    parameters:
+      input_file: ${name}_CT_Bone_R2S_N
+      output_filename: ${name}_CT_Bone_C
   - type: move
     workdir: preop/ct
-    files:
-    - ${name}_CT_Bone_C
-    - ${subj_dir}/processed_tmp
+    parameters:
+      input_file: ${name}_CT_Bone_C
+      output_file: ${subj_dir}/processed_tmp
   - type: reorient_to_standard
     workdir: postop/ct
-    files:
-    - ${name}_CT_Electrodes
-    - ${name}_CT_Electrodes_R2S
+    parameters:
+      input_file: ${name}_CT_Electrodes
+      output_file: ${name}_CT_Electrodes_R2S
   - type: open_fsleyes
     workdir: postop/ct
-    files:
-    - ${name}_CT_Electrodes_R2S
+    parameters:
+      input_file: ${name}_CT_Electrodes_R2S
   - type: apply_nudgetransformation
     workdir: postop/ct
-    files:
-    - ${name}_CT_Electrodes_R2S
-    - ${name}_CT_Electrodes_R2S.mat
-    - ${name}_CT_Electrodes_R2S
-    - ${name}_CT_Electrodes_R2S_N
+    parameters:
+      input_file: ${name}_CT_Electrodes_R2S
+      transformation_file: ${name}_CT_Electrodes_R2S.mat
+      ref_file: ${name}_CT_Electrodes_R2S
+      output_file_name: ${name}_CT_Electrodes_R2S_N
   - type: crop
     workdir: postop/ct
-    files:
-    - ${name}_CT_Electrodes_R2S_N
-    - ${name}_CT_Electrodes_C
+    parameters:
+      input_file: ${name}_CT_Electrodes_R2S_N
+      output_filename: ${name}_CT_Electrodes_C
   - type: move
     workdir: postop/ct
-    files:
-    - ${name}_CT_Electrodes_C
-    - ${subj_dir}/processed_tmp
+    parameters:
+      input_file: ${name}_CT_Electrodes_C
+      output_file: ${subj_dir}/processed_tmp
   - type: reorient_to_standard
     workdir: preop/mri
-    files:
-    - ${name}_T1
-    - ${name}_T1_R2S
+    parameters:
+      input_file: ${name}_T1
+      output_file: ${name}_T1_R2S
   - type: open_fsleyes
     workdir: preop/mri
-    files:
-    - ${name}_T1_R2S
+    parameters:
+      input_file: ${name}_T1_R2S
   - type: apply_nudgetransformation
     workdir: preop/mri
-    files:
-    - ${name}_T1_R2S
-    - ${name}_T1_R2S.mat
-    - ${name}_T1_R2S
-    - ${name}_T1_R2S_N
+    parameters:
+      input_file: ${name}_T1_R2S
+      transformation_file: ${name}_T1_R2S.mat
+      ref_file: ${name}_T1_R2S
+      output_file_name: ${name}_T1_R2S_N
   - type: crop
     workdir: preop/mri
-    files:
-    - ${name}_T1_R2S_N
-    - ${name}_T1_C
+    parameters:
+      input_file: ${name}_T1_R2S_N
+      output_filename: ${name}_T1_C
   - type: move
     workdir: preop/mri
-    files:
-    - ${name}_T1_C
-    - ${subj_dir}/processed_tmp
+    parameters:
+      input_file: ${name}_T1_C
+      output_file: ${subj_dir}/processed_tmp
 - name: coregisteration
   depends_on:
   - visual_inspection
@@ -89,25 +89,28 @@ stages:
   operations:
   - type: coregister
     workdir: processed_tmp
-    files:
-    - ${name}_CT_Electrodes_C
-    - ${name}_T1_C
-    - postT1_${name}
+    parameters:
+      input_file: ${name}_CT_Electrodes_C
+      ref_file: ${name}_T1_C
+      output_file_name: postT1_${name}
 - name: mni_registration
   depends_on:
   - coregisteration
   auto_clean: true
   operations:
-  - type: extract_brain2
+  - type: extract_brain
     workdir: processed_tmp
-    files:
-    - postT1_${name}
-    - postT1_${name}_brain
+    parameters:
+      input_file: postT1_${name}
+      output_file: postT1_${name}_brain
+      fractional_intensity: 0.25
+      gradient_threshold: 0.0
+      generate_mask: false
   - type: register_mri_to_mni
     workdir: processed_tmp
-    files:
-    - postT1_${name}_brain
-    - MNI_${name}
+    parameters:
+      input_file: postT1_${name}_brain
+      output_file_name: ''
 - name: cortical_extraction
   depends_on:
   - coregisteration
@@ -115,9 +118,9 @@ stages:
   operations:
   - type: reconstruct
     workdir: processed_tmp
-    files:
-    - ${name}_T1_C
-    - ${subj_dir}/processed_tmp/freesurfer_${name}
+    parameters:
+      input_file: ${name}_T1_C
+      fs_output_dir: ${subj_dir}/processed_tmp/freesurfer_${name}
 - name: export_outputs
   depends_on:
   - visual_inspection
@@ -128,26 +131,26 @@ stages:
   operations:
   - type: copy
     workdir: processed_tmp
-    files:
-    - ${name}_CT_Electrodes_C
-    - ${subj_dir}/pipeline_output
+    parameters:
+      input_file: ${name}_CT_Electrodes_C
+      output_file: ${subj_dir}/pipeline_output
   - type: copy
     workdir: processed_tmp
-    files:
-    - ${name}_T1_C
-    - ${subj_dir}/pipeline_output
+    parameters:
+      input_file: ${name}_T1_C
+      output_file: ${subj_dir}/pipeline_output
   - type: copy
     workdir: processed_tmp
-    files:
-    - postT1_${name}
-    - ${subj_dir}/pipeline_output
+    parameters:
+      input_file: postT1_${name}
+      output_file: ${subj_dir}/pipeline_output
   - type: copy
     workdir: processed_tmp
-    files:
-    - MNI_${name}
-    - ${subj_dir}/pipeline_output
+    parameters:
+      input_file: MNI_${name}
+      output_file: ${subj_dir}/pipeline_output
   - type: copy
     workdir: processed_tmp
-    files:
-    - MNI_${name}.mat
-    - ${subj_dir}/pipeline_output
+    parameters:
+      input_file: MNI_${name}.mat
+      output_file: ${subj_dir}/pipeline_output

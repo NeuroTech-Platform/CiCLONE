@@ -17,7 +17,7 @@ def open_fsleyes(input_file: Path):
     medical image file. Used for manual quality control and visual inspection
     of processing results at various pipeline stages.
     
-    Files:
+    Parameters:
         input_file: NIFTI image file to open in FSLEyes viewer
     
     Example:
@@ -40,7 +40,7 @@ def reorient_to_standard(input_file: Path, output_file: str) -> None:
     to a standard coordinate system orientation. This ensures consistent
     orientation across different acquisition protocols and scanners.
     
-    Files:
+    Parameters:
         input_file: Source NIFTI image to reorient
         output_file: Reoriented image in standard orientation
     
@@ -65,7 +65,7 @@ def crop_image(input_file: Path, output_filename: str) -> Path:
     the image to the smallest bounding box that contains the main anatomical
     structures, removing unnecessary background areas and reducing file size.
     
-    Files:
+    Parameters:
         input_file: Source NIFTI image to crop
         output_filename: Cropped image with reduced field of view
     
@@ -90,7 +90,7 @@ def move_image(input_file: Path, output_file: str) -> None:
     removing it from the original location. Commonly used to organize processed
     files into appropriate directory structures during pipeline execution.
     
-    Files:
+    Parameters:
         input_file: Source file to move
         output_file: Destination path for the moved file
     
@@ -115,7 +115,7 @@ def copy_image(input_file: Path, output_file: str) -> None:
     destination path while keeping the original file intact. Used for creating
     backups or duplicating files for different processing stages.
     
-    Files:
+    Parameters:
         input_file: Source file to copy
         output_file: Destination path for the copied file
     
@@ -143,7 +143,7 @@ def coregister_images(input_file: Path, ref_file: Path, output_file_name: str) -
     registration (6 degrees of freedom). Uses mutual information cost function
     and creates both the registered image and transformation matrix for further use.
     
-    Files:
+    Parameters:
         input_file: Moving image to be registered to reference
         ref_file: Reference image that serves as registration target
         output_file_name: Registered image and transformation matrix (.mat)
@@ -188,7 +188,7 @@ def subtract_image(input_file: Path, mask_file: Path, output_file_name: str) -> 
     FSLmaths. Commonly used to isolate electrode artifacts by subtracting
     pre-operative from post-operative images.
     
-    Files:
+    Parameters:
         input_file: Primary image (minuend)
         mask_file: Image to subtract (subtrahend)
         output_file_name: Result of subtraction operation
@@ -221,7 +221,7 @@ def threshold_image(input_file: Path, output_file_name: str) -> None:
     effectively isolating metallic electrode artifacts from surrounding
     tissue by removing voxels below the threshold intensity.
     
-    Files:
+    Parameters:
         input_file: Source image to threshold
         output_file_name: Thresholded image with only high-intensity voxels
     
@@ -247,7 +247,7 @@ def apply_transformation2image(input_file: Path, transformation_file: Path, ref_
     to an image, warping it to match the coordinate space of a reference image.
     Uses high-quality sinc interpolation for accurate resampling.
     
-    Files:
+    Parameters:
         input_file: Source image to transform
         transformation_file: FSL transformation matrix (.mat file)
         ref_file: Reference image defining target coordinate space
@@ -290,7 +290,7 @@ def apply_nudgetransformation2image(input_file: Path, transformation_file: Path 
     If no transformation file is provided, it simply copies the input file with a
     modified name to indicate the nudge step was completed.
     
-    Files:
+    Parameters:
         input_file: Source image to transform
         transformation_file: Manual nudge transformation matrix (.mat file) or None
         ref_file: Reference image defining target coordinate space
@@ -328,53 +328,48 @@ def apply_nudgetransformation2image(input_file: Path, transformation_file: Path 
         "-dof", "6", "-interp", "sinc", "-datatype", "int"
     ])
 
-def extract_brain(input_file: Path, output_file: Path):
+def extract_brain(input_file: Path, output_file: Path, 
+                 fractional_intensity: float = 0.45,
+                 gradient_threshold: float = 0.0,
+                 generate_mask: bool = True):
     """
-    Extracts brain tissue using FSL BET with parameters optimized for electrode visibility.
+    Extracts brain tissue using FSL BET with configurable parameters.
     
     This operation uses FSL's Brain Extraction Tool (BET) to remove skull and
-    non-brain tissue while preserving electrode artifacts. Uses conservative
-    parameters to maintain visibility of metallic structures and screws.
+    non-brain tissue. Parameters can be adjusted for different use cases:
+    - Conservative (0.45 threshold) for preserving electrode artifacts
+    - Aggressive (0.25 threshold) for cleaner brain extraction
     
-    Files:
-        input_file: Source image with skull
-        output_file: Brain-extracted image with mask
+    Parameters:
+        input_file: Source image with skull (NIFTI file)
+        output_file: Brain-extracted image output path
+        fractional_intensity: Fractional intensity threshold (0-1)
+                             0.45 = conservative (preserves electrodes)
+                             0.25 = aggressive (cleaner extraction)
+        gradient_threshold: Gradient threshold for edge detection (default 0.0)
+        generate_mask: Whether to generate brain mask file (default True)
     
     Example:
-        Input: v_${name}_bone_mask
-        Output: ${name}_stripped
+        Conservative: extract_brain(input, output)  # uses defaults
+        Aggressive: extract_brain(input, output, 0.25, 0.0, False)
     """
     input_file = Path(input_file)
     output_file = Path(output_file)
 
-    # Use BET to preserve screws and enhance visibility of relevant structures
-    execute_command([
-        tool_config.get_fsl_tool_path("bet"), input_file.stem, output_file.stem, "-f", "0.45", "-g", "0", "-m"
-    ])
+    # Build BET command with parameters
+    cmd = [
+        tool_config.get_fsl_tool_path("bet"), 
+        input_file.stem, 
+        output_file.stem, 
+        "-f", str(fractional_intensity), 
+        "-g", str(gradient_threshold)
+    ]
+    
+    if generate_mask:
+        cmd.append("-m")
+    
+    execute_command(cmd)
 
-def extract_brain2(input_file: Path, output_file: Path):
-    """
-    Extracts brain tissue using FSL BET with more aggressive skull stripping.
-    
-    This operation uses FSL's Brain Extraction Tool (BET) with more aggressive
-    parameters for cleaner brain extraction. Uses lower fractional intensity
-    threshold for better removal of non-brain tissue.
-    
-    Files:
-        input_file: Source image with skull
-        output_file: Brain-extracted image
-    
-    Example:
-        Input: postT1_${name}
-        Output: postT1_${name}_brain
-    """
-    input_file = Path(input_file)
-    output_file = Path(output_file)
-
-    # Use BET to preserve screws and enhance visibility of relevant structures
-    execute_command([
-        tool_config.get_fsl_tool_path("bet"), input_file.stem, output_file.stem, "-f", "0.25", "-g", "0"
-    ])
 
 def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
     """
@@ -384,7 +379,7 @@ def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
     setting voxels to zero where the mask is zero and preserving values
     where the mask is non-zero. Used to restrict analysis to brain regions.
     
-    Files:
+    Parameters:
         input_file: Source image to mask
         mask_file: Binary mask image
         output_file_name: Masked image with values only in mask regions
@@ -417,7 +412,7 @@ def cortical_reconstruction(input_file: Path, fs_output_dir: str):
     surface meshes, parcellations, and anatomical statistics from a T1-weighted
     MRI image. Creates comprehensive surface-based analysis data.
     
-    Files:
+    Parameters:
         input_file: T1-weighted MRI image for reconstruction
         fs_output_dir: FreeSurfer subject directory for output data
     
@@ -448,7 +443,7 @@ def transform_coordinates(input_json: Path, transformation_matrix: Path, output_
     that were marked in subject image space, transforming them to MNI standard space.
     Intentionally ignores translations and applies only rotation/scaling components.
     
-    Files:
+    Parameters:
         input_json: JSON file with electrode coordinates in subject space
         transformation_matrix: FSL transformation matrix (.mat file)
         output_json: JSON file with coordinates transformed to MNI space
@@ -505,7 +500,7 @@ def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
     a two-stage approach: rigid registration (6 DOF) for rough alignment followed
     by affine registration (12 DOF) for fine-tuning. Uses MNI152_T1_2mm_brain template.
     
-    Files:
+    Parameters:
         input_file: T1 brain image (brain-extracted) to register
         output_file_name: Base name for output files (creates multiple outputs)
     
@@ -562,7 +557,7 @@ def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:
     using normalized mutual information cost function and high-quality sinc interpolation.
     Allows full rotation search to handle any initial orientation.
     
-    Files:
+    Parameters:
         input_file: CT image to register to MNI space
         output_file_name: Base name for registered image and transformation matrix
     
@@ -604,7 +599,7 @@ def register_to_mni_ants(input_file: Path, output_file_name: str, normalize: boo
     using ANTs (Advanced Normalization Tools). Includes optional intensity normalization
     and produces both registered images and transformation matrices.
     
-    Files:
+    Parameters:
         input_file: Source T1 or CT image to register
         output_file_name: Base name for output files (creates multiple outputs)
         normalize: Whether to apply intensity normalization before registration

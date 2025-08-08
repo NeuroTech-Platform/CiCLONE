@@ -9,7 +9,6 @@ from ciclone.services.processing.operations import (
     apply_transformation2image,
     apply_nudgetransformation2image,
     extract_brain,
-    extract_brain2,
     mask_image,
     cortical_reconstruction,
     transform_coordinates,
@@ -34,48 +33,57 @@ def run_operation(operation, subject: Subject):
         # Use workdir for file resolution to avoid conflicts between processed_tmp and pipeline_output
         search_dir = operation.get('workdir', None)
         
-        if len(operation['files']) > 1:
-            files = [subject.get_file(f.replace("${name}", subject.get_subject_name()), search_dir) for f in operation['files'][:-1]] + \
-                    [operation['files'][-1].replace("${name}", subject.get_subject_name()).replace("${subj_dir}", str(subject.folder_path))]
-        else:
-            files = [subject.get_file(f.replace("${name}", subject.get_subject_name()), search_dir) for f in operation['files']]
+        # All operations now use unified parameter format
+        params = {}
+        for param_name, param_value in operation['parameters'].items():
+            # Replace template variables in parameter values
+            if isinstance(param_value, str):
+                param_value = param_value.replace("${name}", subject.get_subject_name())
+                param_value = param_value.replace("${subj_dir}", str(subject.folder_path))
+                
+                # If this looks like a file path and doesn't start with /, try to resolve it
+                if not param_value.startswith('/') and not param_value.startswith('${'):
+                    # Check if this parameter is a file parameter
+                    # We need to determine if we should resolve the path
+                    if '.' in param_value or '_' in param_value:  # Heuristic for file names
+                        resolved_file = subject.get_file(param_value, search_dir)
+                        if resolved_file:
+                            param_value = resolved_file
+            
+            params[param_name] = param_value
         
-        if operation['type'] == 'crop':
-            crop_image(*files)
-        elif operation['type'] == 'move':
-            move_image(*files)
-        elif operation['type'] == 'copy':
-            copy_image(*files)
-        elif operation['type'] == 'coregister':
-            coregister_images(*files)
-        elif operation['type'] == 'subtract':
-            subtract_image(*files)
-        elif operation['type'] == 'threshold':
-            threshold_image(*files)
-        elif operation['type'] == 'apply_transformation':
-            apply_transformation2image(*files)
-        elif operation['type'] == 'apply_nudgetransformation':
-            apply_nudgetransformation2image(*files)
-        elif operation['type'] == 'extract_brain':
-            extract_brain(*files)
-        elif operation['type'] == 'extract_brain2':
-            extract_brain2(*files)
-        elif operation['type'] == 'mask':
-            mask_image(*files)
-        elif operation['type'] == 'reconstruct':
-            cortical_reconstruction(*files)
-        elif operation['type'] == 'register_ct_to_mni':
-            register_ct_to_mni(*files)
-        elif operation['type'] == 'register_mri_to_mni':
-            register_mri_to_mni(*files)
-        elif operation['type'] == 'open_fsleyes':
-            open_fsleyes(*files)
-        elif operation['type'] == 'reorient_to_standard':
-            reorient_to_standard(*files)
+        # Get the function to call
+        func = get_operation_function(operation['type'])
+        if func:
+            func(**params)
+        else:
+            print(f"Unknown operation type: {operation['type']}")
 
     finally:
         # Always return to the original directory
         os.chdir(original_dir)
+
+
+def get_operation_function(operation_type: str):
+    """Get the operation function based on operation type."""
+    operation_map = {
+        'crop': crop_image,
+        'move': move_image,
+        'copy': copy_image,
+        'coregister': coregister_images,
+        'subtract': subtract_image,
+        'threshold': threshold_image,
+        'apply_transformation': apply_transformation2image,
+        'apply_nudgetransformation': apply_nudgetransformation2image,
+        'extract_brain': extract_brain,
+        'mask': mask_image,
+        'reconstruct': cortical_reconstruction,
+        'register_ct_to_mni': register_ct_to_mni,
+        'register_mri_to_mni': register_mri_to_mni,
+        'open_fsleyes': open_fsleyes,
+        'reorient_to_standard': reorient_to_standard
+    }
+    return operation_map.get(operation_type)
 
 
 def run_stage(stage, subject):
