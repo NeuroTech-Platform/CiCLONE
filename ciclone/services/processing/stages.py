@@ -43,12 +43,15 @@ def run_operation(operation, subject: Subject):
                 
                 # If this looks like a file path and doesn't start with /, try to resolve it
                 if not param_value.startswith('/') and not param_value.startswith('${'):
-                    # Check if this parameter is a file parameter
-                    # We need to determine if we should resolve the path
-                    if '.' in param_value or '_' in param_value:  # Heuristic for file names
+                    # Determine if this is an input or output parameter
+                    # Output parameters should NOT be resolved to existing files
+                    is_output = 'output' in param_name.lower() or param_name == 'fs_output_dir'
+                    
+                    # Only resolve input files (not output files)
+                    if not is_output and ('.' in param_value or '_' in param_value):  # Heuristic for file names
                         resolved_file = subject.get_file(param_value, search_dir)
                         if resolved_file:
-                            param_value = resolved_file
+                            param_value = str(resolved_file)
             
             params[param_name] = param_value
         

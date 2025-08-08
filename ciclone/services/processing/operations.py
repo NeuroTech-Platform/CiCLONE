@@ -169,7 +169,7 @@ def coregister_images(input_file: Path, ref_file: Path, output_file_name: str) -
         "-in", input_file.stem,
         "-ref", ref_file.stem,
         "-out", output_file_name,
-        "-omat", output_file_name + ".mat",
+        "-omat", f"{output_file_name}.mat",
         "-bins", "256",
         "-cost", "mutualinfo",
         "-searchrx", "-180", "180",

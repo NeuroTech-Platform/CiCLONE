@@ -128,7 +128,7 @@ def extract_stage_dependencies_from_config(config_data: dict) -> dict:
     return dependencies
 
 def extract_stage_outputs_from_config(config_data: dict) -> dict:
-    """Extract stage outputs from operations (auto-detects from files).
+    """Extract stage outputs from operations (auto-detects from parameters).
     
     Args:
         config_data: Configuration dictionary
@@ -149,17 +149,21 @@ def extract_stage_outputs_from_config(config_data: dict) -> dict:
         cleanup_patterns = []
         
         for operation in stage.get('operations', []):
-            files = operation.get('files', [])
-            if len(files) >= 2:
-                # Last file is the output
-                output_file = files[-1]
-                detected_outputs.append(output_file)
-                
-                # Generate cleanup pattern if auto_clean is enabled
-                if stage.get('auto_clean', False):
-                    # Create pattern to match output with extensions
-                    pattern = output_file + '*'
-                    cleanup_patterns.append(pattern)
+            # Extract from new parameter format
+            params = operation.get('parameters', {})
+            
+            # Look for output parameters
+            for param_name, param_value in params.items():
+                if 'output' in param_name.lower() and param_value:
+                    # Skip directory outputs
+                    if 'dir' not in param_name.lower() and not param_value.startswith('${subj_dir}'):
+                        detected_outputs.append(param_value)
+                        
+                        # Generate cleanup pattern if auto_clean is enabled
+                        if stage.get('auto_clean', False):
+                            # Create pattern to match output with extensions
+                            pattern = param_value + '*'
+                            cleanup_patterns.append(pattern)
         
         outputs[stage_name] = {
             'required_inputs': [],  # Stage inputs come from dependencies

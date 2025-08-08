@@ -149,7 +149,7 @@ stages:
     workdir: processed_tmp
     parameters:
       input_file: v_${name}_ref_brain
-      output_file_name: ''
+      output_file_name: MNI_${name}_ref_brain
 - name: cortical_extraction
   depends_on:
   - coregisteration
