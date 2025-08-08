@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any, Tuple
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 
 from ciclone.services.ui.dialog_service import DialogService
 from ciclone.services.config_service import ConfigService
@@ -101,7 +101,6 @@ class ConfigDialogController(QObject):
                 self._select_pipeline_with_check(0)
             
             # Use QTimer to end initialization after all signal processing is complete
-            from PyQt6.QtCore import QTimer
             QTimer.singleShot(0, self._finalize_initialization)
             
         except Exception as e:
@@ -365,6 +364,9 @@ class ConfigDialogController(QObject):
     
     def _discard_current_level_changes(self, level: EntityLevel):
         """Discard changes at the current level only."""
+        # Store current selection before rollback
+        current_pipeline_index = self._current_pipeline_index
+        
         # For now, we'll do a full rollback
         # Could be enhanced to rollback only specific levels
         original_configs = self.transaction_manager.rollback_transaction()
@@ -377,12 +379,13 @@ class ConfigDialogController(QObject):
             # Update view with working configs
             self.pipeline_list_updated.emit(working_configs)
             
-            # Select first pipeline if available
+            # Restore previous selection if still valid, otherwise select first
             if working_configs:
-                self._select_pipeline_with_check(0)
+                index_to_select = min(current_pipeline_index, len(working_configs) - 1)
+                index_to_select = max(0, index_to_select)  # Ensure non-negative
+                self._select_pipeline_with_check(index_to_select)
             
             # Use QTimer to end initialization after all signal processing is complete
-            from PyQt6.QtCore import QTimer
             QTimer.singleShot(0, self.transaction_manager.end_initialization)
             
         except Exception as e:

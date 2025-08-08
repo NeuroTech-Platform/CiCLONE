@@ -1,6 +1,6 @@
 from typing import Any
 from PyQt6.QtWidgets import QDialog, QListWidgetItem
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent, QTimer
 
 from ciclone.forms.PipelineConfig_ui import Ui_PipelineConfigDialog
 from ciclone.controllers.config_dialog_controller import ConfigDialogController
@@ -36,6 +36,9 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         # Connect pipeline name editing - use editingFinished to avoid prompting on every keystroke
         self.lineEdit_pipeline_name.editingFinished.connect(self._on_pipeline_name_changed)
         
+        # Configure list widgets for proper keyboard navigation
+        self._configure_list_navigation()
+        
         # Initialize operation type combo box BEFORE setting controller view
         self._initialize_operation_types()
         
@@ -44,6 +47,38 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         
         # Set initial state
         self._update_change_indicators()
+    
+    def _configure_list_navigation(self):
+        """Configure list widgets for proper keyboard navigation using Qt built-ins."""
+        list_widgets = [
+            self.listWidget_pipelines,
+            self.listWidget_stages,
+            self.listWidget_operations
+        ]
+        
+        for widget in list_widgets:
+            # Use Qt's built-in strong focus policy for proper keyboard/mouse focus
+            widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            # Install event filter for keyboard navigation
+            widget.installEventFilter(self)
+            # Connect itemClicked to ensure focus on click
+            widget.itemClicked.connect(lambda item, w=widget: w.setFocus())
+    
+    def eventFilter(self, obj, event):
+        """Handle focus for list widgets - simple approach."""
+        if obj in (self.listWidget_pipelines, self.listWidget_stages, self.listWidget_operations):
+            
+            # Handle keyboard navigation - just maintain focus after arrow keys
+            if (event.type() == QEvent.Type.KeyPress and 
+                event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down)):
+                
+                result = super().eventFilter(obj, event)
+                # Immediately restore focus after navigation
+                QTimer.singleShot(0, lambda widget=obj: widget.setFocus())
+                return result
+                
+        return super().eventFilter(obj, event)
+    
     
     def _connect_controller_signals(self):
         """Connect controller signals to view update methods."""
@@ -97,6 +132,9 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
     
     def _update_pipeline_list(self, pipelines):
         """Update the pipeline list widget."""
+        # Preserve focus state
+        had_focus = self.listWidget_pipelines.hasFocus()
+        
         # Block signals to prevent unwanted currentRowChanged events during update
         self.listWidget_pipelines.blockSignals(True)
         
@@ -116,14 +154,25 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         
         # Re-enable signals
         self.listWidget_pipelines.blockSignals(False)
+        
+        # Restore focus if it was focused before
+        if had_focus:
+            self.listWidget_pipelines.setFocus()
     
     def _update_pipeline_selection(self, index: int):
         """Update the pipeline list widget selection to match controller state."""
         if 0 <= index < self.listWidget_pipelines.count():
+            # Preserve focus state during selection update
+            had_focus = self.listWidget_pipelines.hasFocus()
             self.listWidget_pipelines.setCurrentRow(index)
+            if had_focus:
+                self.listWidget_pipelines.setFocus()
     
     def _update_stage_list(self, stages):
         """Update the stage list widget."""
+        # Preserve focus state
+        had_focus = self.listWidget_stages.hasFocus()
+        
         # Block signals to prevent unwanted currentRowChanged events during update
         self.listWidget_stages.blockSignals(True)
         
@@ -145,9 +194,16 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         
         # Re-enable signals
         self.listWidget_stages.blockSignals(False)
+        
+        # Restore focus if it was focused before
+        if had_focus:
+            self.listWidget_stages.setFocus()
     
     def _update_operation_list(self, operations):
         """Update the operation list widget."""
+        # Preserve focus state
+        had_focus = self.listWidget_operations.hasFocus()
+        
         # Block signals to prevent unwanted currentRowChanged events during update
         self.listWidget_operations.blockSignals(True)
         
@@ -166,16 +222,28 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         
         # Re-enable signals
         self.listWidget_operations.blockSignals(False)
+        
+        # Restore focus if it was focused before
+        if had_focus:
+            self.listWidget_operations.setFocus()
     
     def _update_stage_selection(self, index: int):
         """Update the stage list widget selection to match controller state."""
         if 0 <= index < self.listWidget_stages.count():
+            # Preserve focus state during selection update
+            had_focus = self.listWidget_stages.hasFocus()
             self.listWidget_stages.setCurrentRow(index)
+            if had_focus:
+                self.listWidget_stages.setFocus()
     
     def _update_operation_selection(self, index: int):
         """Update the operation list widget selection to match controller state."""
         if 0 <= index < self.listWidget_operations.count():
+            # Preserve focus state during selection update
+            had_focus = self.listWidget_operations.hasFocus()
             self.listWidget_operations.setCurrentRow(index)
+            if had_focus:
+                self.listWidget_operations.setFocus()
     
     def _update_stage_details(self, stage_details):
         """Update the stage details form."""
@@ -551,3 +619,4 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
             # Log error but don't prevent closing on error
             print(f"Error during reject: {e}")
             super().reject()
+    
