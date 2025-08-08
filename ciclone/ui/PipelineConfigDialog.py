@@ -1,3 +1,4 @@
+from typing import Any
 from PyQt6.QtWidgets import QDialog, QListWidgetItem
 from PyQt6.QtCore import Qt
 
@@ -6,6 +7,7 @@ from ciclone.controllers.config_dialog_controller import ConfigDialogController
 from ciclone.services.config_service import ConfigService
 from ciclone.services.ui.dialog_service import DialogService
 from ciclone.ui.widgets.MultiSelectComboBox import MultiSelectComboBox
+from ciclone.ui.widgets.parameter_widget_factory import ParameterWidgetFactory, ParameterWidget
 
 
 class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
@@ -15,8 +17,8 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         super().__init__(parent)
         self.setupUi(self)
         
-        # Initialize file inputs list
-        self._file_inputs = []
+        # Initialize parameter widgets list
+        self._parameter_widgets = {}
         
         # Initialize services
         self.config_service = ConfigService(config_dir)
@@ -289,15 +291,15 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
                 if metadata:
                     description = metadata.get('description', 'Select an operation type to see description')
                     self.label_description.setText(description)
-                    self._update_file_requirements(metadata)
+                    self._update_parameter_requirements(metadata)
                     return
             
             self.label_description.setText('Select an operation type to see description')
-            self.label_requirements.setText('Select an operation to see file requirements')
+            self.label_requirements.setText('Select an operation to see parameter requirements')
         except Exception as e:
             print(f"Error updating operation description: {e}")
             self.label_description.setText('Select an operation type to see description')
-            self.label_requirements.setText('Select an operation to see file requirements')
+            self.label_requirements.setText('Select an operation to see parameter requirements')
     
     def _update_operation_description_with_metadata(self, operation_type: str, metadata):
         """Update operation description using provided metadata."""
@@ -305,36 +307,38 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
             if metadata and operation_type and operation_type != 'to_be_defined':
                 description = metadata.get('description', 'Select an operation type to see description')
                 self.label_description.setText(description)
-                self._update_file_requirements(metadata)
+                self._update_parameter_requirements(metadata)
             else:
                 # Fallback to regular description update
                 self._update_operation_description(operation_type)
         except Exception as e:
             print(f"Error updating operation description with metadata: {e}")
             self.label_description.setText('Select an operation type to see description')
-            self.label_requirements.setText('Select an operation to see file requirements')
+            self.label_requirements.setText('Select an operation to see parameter requirements')
     
-    def _update_file_requirements(self, metadata):
-        """Update file requirements information based on operation metadata."""
+    def _update_parameter_requirements(self, metadata):
+        """Update parameter requirements information based on operation metadata."""
         try:
-            files = metadata.get('files', [])
-            if not files:
-                self.label_requirements.setText('This operation does not require any input files.')
+            parameters = metadata.get('parameters', {})
+            if not parameters:
+                self.label_requirements.setText('This operation does not require any parameters.')
                 return
             
             requirements = []
             requirements.append("")  # Empty line for spacing
-            requirements.append(f"Requiered files :")
+            requirements.append(f"Required parameters:")
             
-            for i, file_info in enumerate(files, 1):
-                file_name = file_info.get('name', f'file_{i}')
-                file_desc = file_info.get('description', 'No description available')
-                requirements.append(f"    {i}. {file_name} : {file_desc}")
+            for i, (param_name, param_info) in enumerate(parameters.items(), 1):
+                param_desc = param_info.get('description', 'No description available')
+                param_type = param_info.get('type', 'Any')
+                is_required = param_info.get('required', False)
+                required_text = ' (required)' if is_required else ' (optional)'
+                requirements.append(f"    {i}. {param_name} ({param_type}){required_text}: {param_desc}")
             self.label_requirements.setText('\n'.join(requirements))
             
         except Exception as e:
-            print(f"Error updating file requirements: {e}")
-            self.label_requirements.setText('Error loading file requirements')
+            print(f"Error updating parameter requirements: {e}")
+            self.label_requirements.setText('Error loading parameter requirements')
     
     def _on_delete_operation_clicked(self):
         """Handle delete operation button click."""
@@ -356,9 +360,9 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         text = self.lineEdit_workdir.text()
         self.controller.on_operation_details_changed('workdir', text)
     
-    def _on_file_changed(self, file_index: int, text: str):
-        """Handle file field changes for a specific file index when editing is finished."""
-        self.controller.on_operation_details_changed(f'file_{file_index}', text)
+    def _on_parameter_changed(self, param_name: str, value: Any):
+        """Handle parameter value changes."""
+        self.controller.on_operation_parameter_changed(param_name, value)
     
     def _initialize_operation_types(self):
         """Initialize the operation types combo box."""
@@ -368,12 +372,12 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
     
     
     def _update_operation_details(self, operation_details):
-        """Update the operation details form."""
+        """Update the operation details form with unified parameters."""
         if not operation_details:
             # Clear form
             self.comboBox_operation_type.setCurrentText('to_be_defined')
             self.lineEdit_workdir.clear()
-            self._clear_file_inputs()
+            self._clear_parameter_widgets()
             # Clear description
             self.label_description.setText('Select an operation type to see description')
             return
@@ -399,10 +403,11 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         workdir = operation_details.get('workdir', '')
         self.lineEdit_workdir.setText(workdir)
         
-        # Setup file inputs based on metadata
+        # Setup parameter widgets based on metadata
         metadata = operation_details.get('metadata')
-        files = operation_details.get('files', [])
-        self._setup_file_inputs(metadata, files)
+        parameters = operation_details.get('parameters', {})
+        
+        self._setup_parameter_widgets(metadata, parameters)
         
         # Update operation description using metadata if available
         self._update_operation_description_with_metadata(operation_type, metadata)
@@ -411,78 +416,47 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         self.comboBox_operation_type.blockSignals(False)
         self.lineEdit_workdir.blockSignals(False)
     
-    def _setup_file_inputs(self, metadata, files):
-        """Setup file input fields based on operation metadata."""
-        # Clear existing file inputs first
-        self._clear_file_inputs()
+    def _setup_parameter_widgets(self, metadata, parameters):
+        """Setup parameter input widgets based on operation metadata."""
+        # Clear existing parameter widgets first
+        self._clear_parameter_widgets()
         
         # Force immediate redraw
         self.groupBox_operation_files.repaint()
         
-        if not metadata or not metadata.get('files'):
-            # Fallback to single generic file input
-            self._create_generic_file_input(files)
+        if not metadata or not metadata.get('parameters'):
+            # No metadata available - skip widget creation
             return
         
-        # Create inputs based on metadata
-        file_info_list = metadata.get('files', [])
+        # Create widgets based on metadata
+        param_metadata = metadata.get('parameters', {})
         
-        for i, file_info in enumerate(file_info_list):
-            file_name = file_info.get('name', f'file_{i}')
-            file_description = file_info.get('description', '')
-            file_value = files[i] if i < len(files) else ''
+        for param_name, param_info in param_metadata.items():
+            # Get current value from parameters dict
+            current_value = parameters.get(param_name, param_info.get('default'))
             
-            self._create_file_input(i, file_name, file_description, file_value)
+            # Create widget using factory
+            widget = ParameterWidgetFactory.create_widget(
+                param_name, param_info, self.groupBox_operation_files
+            )
+            
+            if widget:
+                # Set current value
+                if current_value is not None:
+                    widget.set_value(current_value)
+                
+                # Connect value change signal
+                widget.valueChanged.connect(self._on_parameter_changed)
+                
+                # Add to layout
+                self.verticalLayout_operation_files.addWidget(widget)
+                
+                # Store reference
+                self._parameter_widgets[param_name] = widget
     
-    def _create_file_input(self, index: int, name: str, description: str, value: str):
-        """Create a file input field with label."""
-        from PyQt6.QtWidgets import QLabel, QLineEdit, QHBoxLayout, QFrame
-        
-        # Create a frame instead of a widget for better layout control
-        container = QFrame(self.groupBox_operation_files)
-        container.setFrameStyle(QFrame.Shape.NoFrame)
-        container.setContentsMargins(0, 0, 0, 0)
-        
-        # Create label with file name
-        label = QLabel(f"{name}:")
-        label.setMinimumWidth(120)
-        label.setMaximumWidth(120)
-        label.setToolTip(description if description else f"File input for {name}")
-        label.setParent(container)
-        
-        # Create line edit  
-        line_edit = QLineEdit()
-        line_edit.setText(value)
-        line_edit.setPlaceholderText(description if description else f"Enter {name}")
-        line_edit.setParent(container)
-        
-        # Connect signal with lambda to capture index - use editingFinished to avoid prompting on every keystroke
-        line_edit.editingFinished.connect(lambda widget=line_edit, idx=index: self._on_file_changed(idx, widget.text()))
-        
-        # Create horizontal layout for the container
-        h_layout = QHBoxLayout()
-        h_layout.setContentsMargins(0, 0, 0, 0)
-        h_layout.addWidget(label)
-        h_layout.addWidget(line_edit)
-        
-        # Set the layout to the container
-        container.setLayout(h_layout)
-        
-        # Add the container to the files group box
-        self.verticalLayout_operation_files.addWidget(container)
-        
-        # Store references for cleanup
-        if not hasattr(self, '_file_inputs'):
-            self._file_inputs = []
-        self._file_inputs.append((label, line_edit, h_layout, container))
     
-    def _create_generic_file_input(self, files):
-        """Create a single generic file input when no metadata is available."""
-        file_value = files[0] if files else ''
-        self._create_file_input(0, "file1", "Input file", file_value)
-    
-    def _clear_file_inputs(self):
-        """Clear all dynamically created file inputs."""
+    def _clear_parameter_widgets(self):
+        """Clear all dynamically created parameter widgets."""
         # Clear all widgets from the layout immediately
         while self.verticalLayout_operation_files.count():
             child = self.verticalLayout_operation_files.takeAt(0)
@@ -490,11 +464,8 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
                 child.widget().setParent(None)
                 child.widget().deleteLater()
         
-        # Clear our tracking list
-        if hasattr(self, '_file_inputs'):
-            self._file_inputs.clear()
-        else:
-            self._file_inputs = []
+        # Clear our tracking dict
+        self._parameter_widgets.clear()
     
     
     def _update_change_indicators(self):
