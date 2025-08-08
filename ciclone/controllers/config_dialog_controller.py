@@ -263,8 +263,8 @@ class ConfigDialogController(QObject):
         operation_details = {
             'operation': operation_type,
             'workdir': operation.get('workdir', ''),
-            'files': operation.get('files', []),
-            'metadata': metadata  # Include metadata for file field generation
+            'parameters': operation.get('parameters', {}),  # Unified parameters
+            'metadata': metadata  # Include metadata for parameter widget generation
         }
         
         self.operation_details_updated.emit(operation_details)
@@ -283,6 +283,21 @@ class ConfigDialogController(QObject):
         self._current_operation_index = -1
         self.operation_details_updated.emit({})
     
+    def _force_commit_pending_edits(self):
+        """Force any pending field edits to be committed by clearing focus."""
+        if hasattr(self, '_view') and self._view:
+            # Clear focus from any currently focused widget to trigger editingFinished
+            focused_widget = self._view.focusWidget()
+            print(f"DEBUG: Current focused widget: {focused_widget}")
+            if focused_widget:
+                from PyQt6.QtWidgets import QLineEdit
+                if isinstance(focused_widget, QLineEdit):
+                    print(f"DEBUG: Clearing focus from QLineEdit with text: {focused_widget.text()}")
+                # This will cause editingFinished to be emitted for any QLineEdit
+                focused_widget.clearFocus()
+            else:
+                print("DEBUG: No focused widget found")
+    
     def _check_and_prompt_unsaved_changes(self, level: EntityLevel, 
                                          new_pipeline: int = None,
                                          new_stage: int = None,
@@ -296,14 +311,23 @@ class ConfigDialogController(QObject):
         if self._switching_context or self._saving_in_progress:
             return False
         
+        # Force any pending field edits to be committed before checking changes
+        self._force_commit_pending_edits()
+        
         # Don't prompt if there are no changes at all
-        if not self.transaction_manager.has_changes():
+        has_changes = self.transaction_manager.has_changes()
+        print(f"DEBUG: Has changes: {has_changes}")
+        if not has_changes:
+            print(f"DEBUG: No changes detected, proceeding without prompt")
             return False
         
         # Check if switching would lose changes
-        if not self.transaction_manager.check_context_switch(
+        context_switch_check = self.transaction_manager.check_context_switch(
             new_pipeline, new_stage, new_operation
-        ):
+        )
+        print(f"DEBUG: Context switch check returned: {context_switch_check}")
+        if not context_switch_check:
+            print(f"DEBUG: No context switch needed, proceeding without prompt")
             return False
         
         # Get change summary for context
@@ -314,6 +338,7 @@ class ConfigDialogController(QObject):
         message = f"You have {summary['total_changes']} unsaved changes.\n\n"
         message += f"Save changes before switching {level_name}?"
         
+        print(f"DEBUG: Showing save/discard dialog - {message}")
         self._switching_context = True
         try:
             result = self.dialog_service.show_question_with_cancel(
@@ -321,6 +346,7 @@ class ConfigDialogController(QObject):
                 message,
                 "Save", "Discard", "Cancel"
             )
+            print(f"DEBUG: Dialog result: {result}")
             
             if result == "Save":
                 # Save changes and proceed
@@ -977,7 +1003,7 @@ class ConfigDialogController(QObject):
             )
     
     def on_operation_details_changed(self, field: str, value):
-        """Handle operation details changes."""
+        """Handle operation details changes (legacy method for compatibility)."""
         if (self._current_operation_index >= 0 and 
             self._current_stage_index >= 0 and 
             self._current_pipeline_index >= 0):
@@ -999,20 +1025,6 @@ class ConfigDialogController(QObject):
                         updated_operation['type'] = value
                     elif field == 'workdir':
                         updated_operation['workdir'] = value
-                    elif field == 'files':
-                        # Value should be a list for files
-                        updated_operation['files'] = value if isinstance(value, list) else []
-                    elif field.startswith('file_'):
-                        # Handle individual file fields (file_0, file_1, etc.)
-                        file_index = int(field.split('_')[1])
-                        files = updated_operation.get('files', [])
-                        
-                        # Extend files list if necessary
-                        while len(files) <= file_index:
-                            files.append('')
-                        
-                        files[file_index] = value
-                        updated_operation['files'] = files
                     
                     # Update using transaction manager
                     if not self.transaction_manager.update_operation(
@@ -1036,7 +1048,7 @@ class ConfigDialogController(QObject):
                             updated_operation_for_ui = {
                                 'operation': updated_operation.get('type', ''),
                                 'workdir': updated_operation.get('workdir', ''),
-                                'files': updated_operation.get('files', []),
+                                'parameters': updated_operation.get('parameters', {}),  # Unified parameters
                                 'metadata': self.metadata_parser.get_operation_metadata(value)
                             }
                             self.operation_details_updated.emit(updated_operation_for_ui)
@@ -1045,6 +1057,61 @@ class ConfigDialogController(QObject):
                 self.dialog_service.show_error(
                     "Error Updating Operation", 
                     f"Failed to update operation: {str(e)}"
+                )
+    
+    def on_operation_parameter_changed(self, param_name: str, value):
+        """Handle operation parameter changes (new unified parameter system)."""
+        print(f"DEBUG: Parameter changed: {param_name} = {value}")
+        if (self._current_operation_index >= 0 and 
+            self._current_stage_index >= 0 and 
+            self._current_pipeline_index >= 0):
+            
+            try:
+                # Get current operation data
+                operation = self.transaction_manager.get_operation(
+                    self._current_pipeline_index,
+                    self._current_stage_index,
+                    self._current_operation_index
+                )
+                
+                if operation:
+                    # Create updated operation data (deep copy to avoid modifying original)
+                    import copy
+                    updated_operation = copy.deepcopy(operation)
+                    
+                    # Initialize parameters dict if not present
+                    if 'parameters' not in updated_operation:
+                        updated_operation['parameters'] = {}
+                    
+                    # Update the specific parameter
+                    updated_operation['parameters'][param_name] = value
+                    
+                    # Update using transaction manager
+                    print(f"DEBUG: Calling transaction manager update_operation")
+                    print(f"DEBUG: Pipeline={self._current_pipeline_index}, Stage={self._current_stage_index}, Operation={self._current_operation_index}")
+                    print(f"DEBUG: Updated operation: {updated_operation}")
+                    update_result = self.transaction_manager.update_operation(
+                        self._current_pipeline_index,
+                        self._current_stage_index,
+                        self._current_operation_index,
+                        updated_operation
+                    )
+                    print(f"DEBUG: Transaction manager update result: {update_result}")
+                    if not update_result:
+                        self.dialog_service.show_error("Update Failed", "Failed to update operation parameter")
+                    else:
+                        # Update the operation list display to reflect changes
+                        stage = self.transaction_manager.get_stage(
+                            self._current_pipeline_index, self._current_stage_index
+                        )
+                        if stage:
+                            operations = stage.get('operations', [])
+                            self.operation_list_updated.emit(operations)
+                        
+            except Exception as e:
+                self.dialog_service.show_error(
+                    "Error Updating Parameter", 
+                    f"Failed to update parameter: {str(e)}"
                 )
     
     def get_available_operation_types(self) -> List[str]:
