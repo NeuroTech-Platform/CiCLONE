@@ -2,9 +2,7 @@
 Operation metadata parser for extracting docstring information from operations.py
 """
 import inspect
-import re
-from typing import Dict, List, Optional, Any
-from pathlib import Path
+from typing import Dict, Optional, Any
 
 from ciclone.services.processing import operations
 
@@ -80,6 +78,7 @@ class OperationMetadataParser:
     def _parse_function(self, func) -> Optional[Dict[str, Any]]:
         """
         Parses a single function to extract its metadata.
+        Combines signature information with docstring documentation.
         
         Args:
             func: Function object to parse
@@ -100,14 +99,16 @@ class OperationMetadataParser:
             parsed_doc = self._parse_docstring(docstring)
             
             # Extract parameter information from signature
-            parameters = self._extract_parameters(signature)
+            sig_parameters = self._extract_parameters(signature)
+            
+            # Merge docstring parameter descriptions with signature information
+            merged_parameters = self._merge_parameter_info(sig_parameters, parsed_doc.get('parameters', {}))
             
             return {
                 'name': func.__name__,
                 'description': parsed_doc.get('description', ''),
-                'files': parsed_doc.get('files', []),
+                'parameters': merged_parameters,
                 'example': parsed_doc.get('example', {}),
-                'parameters': parameters,
                 'display_name': self._format_display_name(func.__name__)
             }
             
@@ -118,6 +119,7 @@ class OperationMetadataParser:
     def _parse_docstring(self, docstring: str) -> Dict[str, Any]:
         """
         Parses a Google-style docstring to extract structured information.
+        Uses unified Parameters section only.
         
         Args:
             docstring: The function's docstring
@@ -127,7 +129,7 @@ class OperationMetadataParser:
         """
         result = {
             'description': '',
-            'files': [],
+            'parameters': {},
             'example': {}
         }
         
@@ -138,35 +140,34 @@ class OperationMetadataParser:
         current_content = []
         
         for line in lines:
-            line = line.strip()
+            line_stripped = line.strip()
             
             # Check for section headers
-            if line == 'Files:':
+            if line_stripped == 'Parameters:':
                 if current_content and current_section == 'description':
                     result['description'] = '\n'.join(current_content).strip()
-                current_section = 'files'
+                current_section = 'parameters'
                 current_content = []
-            elif line == 'Example:':
+            elif line_stripped == 'Example:':
                 current_section = 'example'
                 current_content = []
             else:
                 # Add content to current section
-                if current_section == 'files' and line and not line.startswith(' '):
-                    # Parse file entry
-                    if ':' in line:
-                        file_name, file_desc = line.split(':', 1)
-                        result['files'].append({
-                            'name': file_name.strip(),
-                            'description': file_desc.strip()
-                        })
+                if current_section == 'parameters' and line_stripped and line.startswith('    '):
+                    # Parse parameter entry (format: "param_name: description")
+                    if ':' in line_stripped:
+                        param_name, param_desc = line_stripped.split(':', 1)
+                        result['parameters'][param_name.strip()] = {
+                            'description': param_desc.strip()
+                        }
                 elif current_section == 'example':
-                    if ':' in line and not line.startswith(' '):
-                        key, value = line.split(':', 1)
+                    if ':' in line_stripped and not line.startswith(' '):
+                        key, value = line_stripped.split(':', 1)
                         result['example'][key.strip().lower()] = value.strip()
-                    elif line:
-                        current_content.append(line)
-                elif current_section == 'description' and line:
-                    current_content.append(line)
+                    elif line_stripped:
+                        current_content.append(line_stripped)
+                elif current_section == 'description' and line_stripped:
+                    current_content.append(line_stripped)
         
         # Handle final section
         if current_content:
@@ -177,7 +178,7 @@ class OperationMetadataParser:
         
         return result
     
-    def _extract_parameters(self, signature: inspect.Signature) -> List[Dict[str, Any]]:
+    def _extract_parameters(self, signature: inspect.Signature) -> Dict[str, Dict[str, Any]]:
         """
         Extracts parameter information from function signature.
         
@@ -185,20 +186,64 @@ class OperationMetadataParser:
             signature: Function signature object
             
         Returns:
-            List of parameter dictionaries
+            Dictionary mapping parameter names to their info
         """
-        parameters = []
+        parameters = {}
         
         for param_name, param in signature.parameters.items():
+            # Determine if this is a file parameter based on type hint
+            type_str = self._format_type_annotation(param.annotation)
+            is_file = 'Path' in type_str or param_name.endswith('_file') or param_name.endswith('_path')
+            
             param_info = {
                 'name': param_name,
-                'type': self._format_type_annotation(param.annotation),
+                'type': type_str,
                 'required': param.default == inspect.Parameter.empty,
-                'default': None if param.default == inspect.Parameter.empty else param.default
+                'default': None if param.default == inspect.Parameter.empty else param.default,
+                'is_file': is_file,
+                'display_name': self._format_parameter_display_name(param_name)
             }
-            parameters.append(param_info)
+            parameters[param_name] = param_info
         
         return parameters
+    
+    def _merge_parameter_info(self, sig_params: Dict[str, Dict[str, Any]], 
+                             doc_params: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """
+        Merge parameter information from signature with docstring descriptions.
+        
+        Args:
+            sig_params: Parameters extracted from function signature
+            doc_params: Parameters extracted from docstring
+            
+        Returns:
+            Merged parameter information
+        """
+        merged = sig_params.copy()
+        
+        # Add descriptions from docstring
+        for param_name, doc_info in doc_params.items():
+            if param_name in merged:
+                merged[param_name]['description'] = doc_info.get('description', '')
+            else:
+                # Parameter in docstring but not in signature (shouldn't happen)
+                print(f"Warning: Parameter '{param_name}' in docstring but not in signature")
+        
+        return merged
+    
+    def _format_parameter_display_name(self, param_name: str) -> str:
+        """
+        Format parameter name for display in UI.
+        
+        Args:
+            param_name: Original parameter name
+            
+        Returns:
+            Human-readable display name
+        """
+        # Convert snake_case to Title Case
+        words = param_name.replace('_', ' ').split()
+        return ' '.join(word.capitalize() for word in words)
     
     def _format_type_annotation(self, annotation) -> str:
         """
@@ -261,15 +306,19 @@ class OperationMetadataParser:
             with open(stages_file, 'r') as f:
                 content = f.read()
             
-            # Extract mapping using regex
+            # Extract mapping from the get_operation_function dictionary
             mapping = {}
             
-            # Pattern to match: elif operation['type'] == 'crop': crop_image(*files)
-            pattern = r"operation\['type'\]\s*==\s*'([^']+)':\s*\n?\s*([a-zA-Z_][a-zA-Z0-9_]*)\("
+            # Pattern to match: 'crop': crop_image,
+            pattern = r"'([^']+)':\s*([a-zA-Z_][a-zA-Z0-9_]*)"
             
-            matches = re.findall(pattern, content)
-            for config_name, function_name in matches:
-                mapping[config_name] = function_name
+            # Find the operation_map dictionary section
+            operation_map_match = re.search(r'operation_map\s*=\s*\{([^}]+)\}', content, re.DOTALL)
+            if operation_map_match:
+                map_content = operation_map_match.group(1)
+                matches = re.findall(pattern, map_content)
+                for config_name, function_name in matches:
+                    mapping[config_name] = function_name
             
             return mapping
             
