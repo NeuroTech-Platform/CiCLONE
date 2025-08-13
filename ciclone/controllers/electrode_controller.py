@@ -6,6 +6,7 @@ import numpy as np
 from ciclone.models.electrode_model import ElectrodeModel
 from ciclone.models.coordinate_model import CoordinateModel
 from ciclone.domain.electrodes import Electrode
+from ciclone.domain.electrode_element import ElectrodeStructure
 from ciclone.interfaces.view_interfaces import IImageView
 from ciclone.services.io.slicer_file import SlicerFile
 from ciclone.services.ui.electrode_view_delegate import ElectrodeViewDelegate
@@ -389,7 +390,7 @@ class ElectrodeController:
         """Get all processed contacts for display purposes."""
         return self.electrode_model.get_all_processed_contacts()
     
-    def get_electrode_structures_for_display(self) -> Dict[str, 'ElectrodeStructure']:
+    def get_electrode_structures_for_display(self) -> Dict[str, ElectrodeStructure]:
         """Get all electrode structures including tail information for display purposes."""
         return self.electrode_model.get_all_electrode_structures()
     

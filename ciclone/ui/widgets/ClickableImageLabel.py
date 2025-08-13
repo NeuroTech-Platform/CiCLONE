@@ -71,7 +71,7 @@ class ClickableImageLabel(QGraphicsView):
         self.dragged_marker = None
         self.drag_start_pos = None
         self.drag_offset = None  # Offset from marker center to mouse click
-        self.drag_tolerance = 5  # pixels - reduced for more precise selection
+        self.drag_tolerance = 1  # pixels - reduced for more precise selection
         
         # Track crosshair elements separately
         self.crosshair_horizontal = None
