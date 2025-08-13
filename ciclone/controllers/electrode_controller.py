@@ -389,6 +389,10 @@ class ElectrodeController:
         """Get all processed contacts for display purposes."""
         return self.electrode_model.get_all_processed_contacts()
     
+    def get_electrode_structures_for_display(self) -> Dict[str, 'ElectrodeStructure']:
+        """Get all electrode structures including tail information for display purposes."""
+        return self.electrode_model.get_all_electrode_structures()
+    
     def create_tree_item(self, electrode: Electrode) -> QTreeWidgetItem:
         """Create a tree widget item for an electrode."""
         return self._electrode_view_delegate.create_tree_item(electrode)

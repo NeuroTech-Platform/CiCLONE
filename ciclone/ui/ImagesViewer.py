@@ -1619,8 +1619,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 # Set the clean pixmap (this will preserve zoom due to our improved setPixmap method)
                 label.setPixmap(pixmap)
                 
-                # Clear existing markers for this view
+                # Clear existing markers and lines for this view
                 label.clear_markers()
+                label.clear_lines()
                 
                 # Add markers for visible electrode points
                 self._add_visible_electrode_markers(label, orientation, slider.value())
@@ -1652,6 +1653,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Get electrode points
         electrode_points = self.electrode_controller.get_electrode_points_for_display()
         processed_contacts = self.electrode_controller.get_processed_contacts_for_display()
+        electrode_structures = self.electrode_controller.get_electrode_structures_for_display()
         
         # Add entry/output point markers
         for electrode_name, points in electrode_points.items():
@@ -1690,6 +1692,41 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                                        electrode_name=electrode_name,
                                        coord_type='contact',
                                        contact_index=contact_index)
+        
+        # Add electrode tail visualization
+        for electrode_name, structure in electrode_structures.items():
+            if structure.has_tail and structure.tail_endpoint:
+                # Get output point from electrode points (tail extends outward from output point)
+                # CORRECTED: output = "End - distal part" (closer to skull surface, where tail starts)
+                if electrode_name in electrode_points and 'output' in electrode_points[electrode_name]:
+                    hue = abs(hash(electrode_name)) % 360
+                    tail_color = QColor()
+                    tail_color.setHsv(hue, 150, 200, 120)  # Slightly more transparent/muted than contacts
+                    
+                    output_point = electrode_points[electrode_name]['output']
+                    tail_endpoint = structure.tail_endpoint
+                    
+                    # Check if either point is visible on this slice
+                    if (self.image_controller.is_point_visible_on_slice(output_point, orientation, current_slices) or
+                        self.image_controller.is_point_visible_on_slice(tail_endpoint, orientation, current_slices)):
+                        
+                        # Convert to pixel coordinates
+                        output_point_pixel = self.image_controller.convert_3d_to_pixel_coords(
+                            output_point, orientation, scaled_width, scaled_height
+                        )
+                        tail_endpoint_pixel = self.image_controller.convert_3d_to_pixel_coords(
+                            tail_endpoint, orientation, scaled_width, scaled_height
+                        )
+                        
+                        if output_point_pixel and tail_endpoint_pixel:
+                            # Add line segment for tail (from output point outward toward skull exterior)
+                            label.add_line(
+                                output_point_pixel[0], output_point_pixel[1],
+                                tail_endpoint_pixel[0], tail_endpoint_pixel[1],
+                                tail_color, width=3,
+                                electrode_name=electrode_name,
+                                segment_type='tail'
+                            )
     
     def remove_all_crosshairs(self):
         """Remove crosshairs from all views - called by crosshair controller."""
