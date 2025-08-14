@@ -58,18 +58,16 @@ class ConfigDialogController(QObject):
         # Setup change listener
         self.transaction_manager.add_change_listener(self._on_change_recorded)
     
-    def set_view(self, view):
+    def set_view(self, view) -> None:
         """Set the view reference and initialize data."""
         self._view = view
         self._initialize_data()
     
     def _cleanup_transaction_state(self):
         """Clean up any existing transaction state before starting a new one."""
-        if (self.transaction_manager._transaction_state and 
-            not self.transaction_manager._transaction_state.is_committed and
-            not self.transaction_manager._transaction_state.is_rolled_back):
+        if self.transaction_manager._transaction_state:
             try:
-                # Force rollback any uncommitted transaction
+                # Force rollback any active transaction
                 self.transaction_manager.rollback_transaction()
             except Exception:
                 # If rollback fails, reset transaction state manually
@@ -116,7 +114,7 @@ class ConfigDialogController(QObject):
     
     # ==================== Selection Management ====================
     
-    def on_pipeline_selected(self, index: int):
+    def on_pipeline_selected(self, index: int) -> None:
         """Handle pipeline selection from view."""
         if self._switching_context:
             return
@@ -132,7 +130,7 @@ class ConfigDialogController(QObject):
         
         self._select_pipeline_with_check(index)
     
-    def on_stage_selected(self, index: int):
+    def on_stage_selected(self, index: int) -> None:
         """Handle stage selection from view."""
         if self._switching_context:
             return
@@ -148,7 +146,7 @@ class ConfigDialogController(QObject):
         
         self._select_stage_with_check(index)
     
-    def on_operation_selected(self, index: int):
+    def on_operation_selected(self, index: int) -> None:
         """Handle operation selection from view."""
         if self._switching_context:
             return
@@ -287,15 +285,9 @@ class ConfigDialogController(QObject):
         if hasattr(self, '_view') and self._view:
             # Clear focus from any currently focused widget to trigger editingFinished
             focused_widget = self._view.focusWidget()
-            print(f"DEBUG: Current focused widget: {focused_widget}")
             if focused_widget:
-                from PyQt6.QtWidgets import QLineEdit
-                if isinstance(focused_widget, QLineEdit):
-                    print(f"DEBUG: Clearing focus from QLineEdit with text: {focused_widget.text()}")
                 # This will cause editingFinished to be emitted for any QLineEdit
                 focused_widget.clearFocus()
-            else:
-                print("DEBUG: No focused widget found")
     
     def _check_and_prompt_unsaved_changes(self, level: EntityLevel, 
                                          new_pipeline: int = None,
@@ -315,44 +307,36 @@ class ConfigDialogController(QObject):
         
         # Don't prompt if there are no changes at all
         has_changes = self.transaction_manager.has_changes()
-        print(f"DEBUG: Has changes: {has_changes}")
         if not has_changes:
-            print(f"DEBUG: No changes detected, proceeding without prompt")
             return False
         
         # Check if switching would lose changes
         context_switch_check = self.transaction_manager.check_context_switch(
             new_pipeline, new_stage, new_operation
         )
-        print(f"DEBUG: Context switch check returned: {context_switch_check}")
         if not context_switch_check:
-            print(f"DEBUG: No context switch needed, proceeding without prompt")
             return False
         
         # Get change summary for context
         summary = self.transaction_manager.get_change_summary()
         
-        # Build prompt message
+        # Build prompt message with new text
         level_name = level.name.lower()
-        message = f"You have {summary['total_changes']} unsaved changes.\n\n"
-        message += f"Save changes before switching {level_name}?"
+        message = f"You have {summary['total_changes']} unsaved changes in current {level_name}.\n\n"
+        message += f"Keep changes in memory before switching {level_name}?"
         
-        print(f"DEBUG: Showing save/discard dialog - {message}")
         self._switching_context = True
         try:
             result = self.dialog_service.show_question_with_cancel(
                 "Unsaved Changes",
                 message,
-                "Save", "Discard", "Cancel"
+                "Keep Changes", "Discard Changes", "Cancel"
             )
-            print(f"DEBUG: Dialog result: {result}")
             
-            if result == "Save":
-                # Save changes and proceed
-                if self.on_save_changes():
-                    return False  # Proceed with switch
-                return True  # Save failed, stay
-            elif result == "Discard":
+            if result == "Keep Changes":
+                # Keep changes in memory and proceed
+                return False  # Proceed with switch
+            elif result == "Discard Changes":
                 # Discard changes at current level and proceed
                 self._discard_current_level_changes(level)
                 return False  # Proceed with switch
@@ -362,39 +346,80 @@ class ConfigDialogController(QObject):
         finally:
             self._switching_context = False
     
+    def _refresh_current_view(self):
+        """Refresh the current view to show rolled back state."""
+        # Refresh pipeline list
+        working_configs = self.transaction_manager.get_working_configs()
+        self.pipeline_list_updated.emit(working_configs)
+        
+        # Restore current selections if still valid
+        if self._current_pipeline_index >= 0:
+            self._select_pipeline_with_check(self._current_pipeline_index)
+    
+    def _refresh_all_affected_lists_after_operation_change(self):
+        """Refresh operation, stage, and pipeline lists after an operation change.
+        
+        This is important for updating dirty indicators (*) when an operation
+        revert causes parent entities to be cleaned.
+        """
+        # Always refresh operation list
+        stage = self.transaction_manager.get_stage(
+            self._current_pipeline_index, self._current_stage_index
+        )
+        if stage:
+            operations = stage.get('operations', [])
+            self.operation_list_updated.emit(operations)
+        
+        # Refresh stage list to update dirty indicators
+        pipeline = self.transaction_manager.get_pipeline(self._current_pipeline_index)
+        if pipeline:
+            stages = pipeline.get('stages', [])
+            self.stage_list_updated.emit(stages)
+        
+        # Refresh pipeline list to update dirty indicators
+        working_configs = self.transaction_manager.get_working_configs()
+        self.pipeline_list_updated.emit(working_configs)
+    
     def _discard_current_level_changes(self, level: EntityLevel):
-        """Discard changes at the current level only."""
-        # Store current selection before rollback
-        current_pipeline_index = self._current_pipeline_index
+        """Discard changes at the current level only (no disk I/O)."""
         
-        # For now, we'll do a full rollback
-        # Could be enhanced to rollback only specific levels
-        original_configs = self.transaction_manager.rollback_transaction()
-        
-        # Reinitialize with the original data returned from rollback
         try:
-            # Begin new transaction with the original configs
-            working_configs = self.transaction_manager.begin_transaction(original_configs)
+            success = False
             
-            # Update view with working configs
-            self.pipeline_list_updated.emit(working_configs)
+            # Use context-specific rollback methods
+            if level == EntityLevel.PIPELINE and self._current_pipeline_index >= 0:
+                success = self.transaction_manager.rollback_pipeline_context(
+                    self._current_pipeline_index
+                )
+            elif level == EntityLevel.STAGE and self._current_stage_index >= 0:
+                success = self.transaction_manager.rollback_stage_context(
+                    self._current_pipeline_index,
+                    self._current_stage_index
+                )
+            elif level == EntityLevel.OPERATION and self._current_operation_index >= 0:
+                success = self.transaction_manager.rollback_operation_context(
+                    self._current_pipeline_index,
+                    self._current_stage_index,
+                    self._current_operation_index
+                )
             
-            # Restore previous selection if still valid, otherwise select first
-            if working_configs:
-                index_to_select = min(current_pipeline_index, len(working_configs) - 1)
-                index_to_select = max(0, index_to_select)  # Ensure non-negative
-                self._select_pipeline_with_check(index_to_select)
+            if not success:
+                self.dialog_service.show_error(
+                    "Discard Error",
+                    "Failed to discard changes"
+                )
+                return
             
-            # Use QTimer to end initialization after all signal processing is complete
-            QTimer.singleShot(0, self.transaction_manager.end_initialization)
+            # Refresh UI to reflect rolled back state
+            self._refresh_current_view()
+            
+            self.changes_discarded.emit()
             
         except Exception as e:
             self.dialog_service.show_error(
                 "Discard Error",
                 f"Failed to discard changes: {str(e)}"
             )
-        
-        self.changes_discarded.emit()
     
     def _on_change_recorded(self, change_record):
         """Handle change record events from transaction manager."""
@@ -407,7 +432,7 @@ class ConfigDialogController(QObject):
     
     # ==================== Pipeline Operations ====================
     
-    def on_add_pipeline(self):
+    def on_add_pipeline(self) -> None:
         """Handle add pipeline request."""
         name, ok = self.dialog_service.get_text_input(
             "New Pipeline",
@@ -428,7 +453,7 @@ class ConfigDialogController(QObject):
             # Select the new pipeline
             self._select_pipeline_with_check(new_index)
     
-    def on_delete_pipeline(self, index: int):
+    def on_delete_pipeline(self, index: int) -> None:
         """Handle delete pipeline request."""
         working_configs = self.transaction_manager.get_working_configs()
         if 0 <= index < len(working_configs):
@@ -466,7 +491,7 @@ class ConfigDialogController(QObject):
                     self.dialog_service.show_error("Error Deleting Pipeline", 
                                                  f"Failed to delete pipeline: {str(e)}")
     
-    def on_add_stage(self):
+    def on_add_stage(self) -> None:
         """Handle add new stage request."""
         if self._current_pipeline_index < 0:
             self.dialog_service.show_warning("No Pipeline Selected", 
@@ -627,7 +652,7 @@ class ConfigDialogController(QObject):
                     available_deps = ['none'] + [s.get('name', '') for i, s in enumerate(stages) if i != self._current_stage_index]
                     self.dependencies_updated.emit(available_deps)
     
-    def on_stage_details_changed(self, field: str, value):
+    def on_stage_details_changed(self, field: str, value) -> None:
         """Handle stage details changes."""
         if self._current_stage_index >= 0 and self._current_pipeline_index >= 0:
             try:
@@ -636,6 +661,15 @@ class ConfigDialogController(QObject):
                     self._current_pipeline_index, self._current_stage_index, field, value
                 ):
                     self.dialog_service.show_error("Update Failed", "Failed to update stage")
+                else:
+                    # Refresh stage and pipeline lists in case of revert
+                    pipeline = self.transaction_manager.get_pipeline(self._current_pipeline_index)
+                    if pipeline:
+                        stages = pipeline.get('stages', [])
+                        self.stage_list_updated.emit(stages)
+                    
+                    working_configs = self.transaction_manager.get_working_configs()
+                    self.pipeline_list_updated.emit(working_configs)
                     
             except Exception as e:
                 self.dialog_service.show_error("Error Updating Stage", 
@@ -736,22 +770,16 @@ class ConfigDialogController(QObject):
                 f"Failed to save changes: {str(e)}"
             )
             
-            # Only attempt rollback if transaction hasn't been committed yet
-            if (self.transaction_manager._transaction_state and 
-                not self.transaction_manager._transaction_state.is_committed):
-                self.transaction_manager.rollback_transaction()
-            else:
-                # Transaction was already committed but save failed
-                # Store selection before reinitializing
-                current_pipeline = self._current_pipeline_index
-                current_stage = self._current_stage_index
-                current_operation = self._current_operation_index
-                
-                # Reinitialize to refresh from disk state
-                self._initialize_data()
-                
-                # Restore selection
-                self._restore_selection_after_save(current_pipeline, current_stage, current_operation)
+            # Store selection before reinitializing
+            current_pipeline = self._current_pipeline_index
+            current_stage = self._current_stage_index
+            current_operation = self._current_operation_index
+            
+            # Reinitialize to refresh from disk state
+            self._initialize_data()
+            
+            # Restore selection
+            self._restore_selection_after_save(current_pipeline, current_stage, current_operation)
             
             return False
             
@@ -894,6 +922,10 @@ class ConfigDialogController(QObject):
                     self._current_pipeline_index, field, value
                 ):
                     self.dialog_service.show_error("Update Failed", "Failed to update pipeline")
+                else:
+                    # Refresh pipeline list in case of revert
+                    working_configs = self.transaction_manager.get_working_configs()
+                    self.pipeline_list_updated.emit(working_configs)
                     
             except Exception as e:
                 self.dialog_service.show_error(
@@ -1038,13 +1070,8 @@ class ConfigDialogController(QObject):
                     ):
                         self.dialog_service.show_error("Update Failed", "Failed to update operation")
                     else:
-                        # Update the operation list display to reflect changes
-                        stage = self.transaction_manager.get_stage(
-                            self._current_pipeline_index, self._current_stage_index
-                        )
-                        if stage:
-                            operations = stage.get('operations', [])
-                            self.operation_list_updated.emit(operations)
+                        # Refresh all affected lists (operation, stage, pipeline)
+                        self._refresh_all_affected_lists_after_operation_change()
                         
                         # Also re-emit operation details to update the UI with new metadata if type changed
                         if field == 'type':
@@ -1064,7 +1091,6 @@ class ConfigDialogController(QObject):
     
     def on_operation_parameter_changed(self, param_name: str, value):
         """Handle operation parameter changes (new unified parameter system)."""
-        print(f"DEBUG: Parameter changed: {param_name} = {value}")
         if (self._current_operation_index >= 0 and 
             self._current_stage_index >= 0 and 
             self._current_pipeline_index >= 0):
@@ -1090,26 +1116,17 @@ class ConfigDialogController(QObject):
                     updated_operation['parameters'][param_name] = value
                     
                     # Update using transaction manager
-                    print(f"DEBUG: Calling transaction manager update_operation")
-                    print(f"DEBUG: Pipeline={self._current_pipeline_index}, Stage={self._current_stage_index}, Operation={self._current_operation_index}")
-                    print(f"DEBUG: Updated operation: {updated_operation}")
                     update_result = self.transaction_manager.update_operation(
                         self._current_pipeline_index,
                         self._current_stage_index,
                         self._current_operation_index,
                         updated_operation
                     )
-                    print(f"DEBUG: Transaction manager update result: {update_result}")
                     if not update_result:
                         self.dialog_service.show_error("Update Failed", "Failed to update operation parameter")
                     else:
-                        # Update the operation list display to reflect changes
-                        stage = self.transaction_manager.get_stage(
-                            self._current_pipeline_index, self._current_stage_index
-                        )
-                        if stage:
-                            operations = stage.get('operations', [])
-                            self.operation_list_updated.emit(operations)
+                        # Refresh all affected lists (operation, stage, pipeline)
+                        self._refresh_all_affected_lists_after_operation_change()
                         
             except Exception as e:
                 self.dialog_service.show_error(

@@ -219,3 +219,18 @@ The codebase has been enhanced with strict MVC compliance through the following 
 - Enhanced service layer abstraction
 - Better dependency injection patterns
 - Comprehensive error handling in background workers
+
+### Configuration Transaction Management Redesign (2025)
+- **Complete UX Overhaul**: Redesigned configuration editing workflow to keep all changes in memory until explicitly saved
+- **Memory-Only Changes**: All modifications remain in working memory without disk I/O until main Save button is clicked
+- **Visual Dirty Indicators**: Real-time asterisk (*) indicators in UI lists show exactly what has been modified at every hierarchical level
+- **Intelligent Context Switching**: Smart prompting system that only asks users about unsaved changes when actually switching contexts with new modifications
+- **Revert-to-Original Detection**: Automatic cleanup of dirty state when values are changed back to their original state
+- **Enhanced Hierarchical State Management**: Advanced parent-child dirty state cleanup with the `_clean_parent_dirty_states` method that intelligently removes dirty indicators from parent entities when all their children have reverted to original state, providing superior UX through automatic cleanup of parent indicators
+- **Improved Dialog Text**: Clear "Keep Changes" vs "Discard Changes" prompts instead of ambiguous "Save" operations
+- **Session-Aware Prompting**: Only prompts when NEW changes are made in current editing session, eliminating unnecessary dialogs when navigating back to previously-modified elements
+- **Files Modified**:
+  - `ciclone/managers/config_transaction_manager.py`: Core transaction logic with dirty state tracking
+  - `ciclone/controllers/config_dialog_controller.py`: Updated dialog handling and context switching
+  - `ciclone/ui/PipelineConfigDialog.py`: Visual indicators and real-time UI updates
+- **Key Benefits**: Safer experimentation, clearer visual feedback, reduced user friction, atomic saves, consistent "Save" meaning across the application

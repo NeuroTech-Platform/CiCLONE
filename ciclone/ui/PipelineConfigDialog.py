@@ -131,7 +131,7 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         self.pushButton_save.clicked.connect(self._on_save_clicked)
     
     def _update_pipeline_list(self, pipelines):
-        """Update the pipeline list widget."""
+        """Update the pipeline list widget with dirty indicators."""
         # Preserve focus state
         had_focus = self.listWidget_pipelines.hasFocus()
         
@@ -139,10 +139,14 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         self.listWidget_pipelines.blockSignals(True)
         
         self.listWidget_pipelines.clear()
-        for pipeline in pipelines:
+        for i, pipeline in enumerate(pipelines):
             metadata = pipeline.get('_metadata', {})
             display_name = metadata.get('display_name', pipeline.get('name', 'Unknown'))
             stage_count = metadata.get('stage_count', 0)
+            
+            # Check if pipeline is dirty and add * indicator
+            if self.controller.transaction_manager.is_pipeline_dirty(i):
+                display_name += " *"
             
             item_text = f"{display_name} ({stage_count} stages)"
             item = QListWidgetItem(item_text)
@@ -169,7 +173,7 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
                 self.listWidget_pipelines.setFocus()
     
     def _update_stage_list(self, stages):
-        """Update the stage list widget."""
+        """Update the stage list widget with dirty indicators."""
         # Preserve focus state
         had_focus = self.listWidget_stages.hasFocus()
         
@@ -180,6 +184,12 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         for i, stage in enumerate(stages):
             stage_name = stage.get('name', f'Stage {i+1}')
             depends_on = stage.get('depends_on', [])
+            
+            # Check if stage is dirty and add * indicator
+            pipeline_idx = self.controller._current_pipeline_index
+            if (pipeline_idx >= 0 and 
+                self.controller.transaction_manager.is_stage_dirty(pipeline_idx, i)):
+                stage_name += " *"
             
             item_text = stage_name
             if depends_on:
@@ -200,7 +210,7 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
             self.listWidget_stages.setFocus()
     
     def _update_operation_list(self, operations):
-        """Update the operation list widget."""
+        """Update the operation list widget with dirty indicators."""
         # Preserve focus state
         had_focus = self.listWidget_operations.hasFocus()
         
@@ -210,6 +220,13 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         self.listWidget_operations.clear()
         for i, operation in enumerate(operations):
             op_type = operation.get('type', 'Unknown')
+            
+            # Check if operation is dirty and add * indicator
+            pipeline_idx = self.controller._current_pipeline_index
+            stage_idx = self.controller._current_stage_index
+            if (pipeline_idx >= 0 and stage_idx >= 0 and 
+                self.controller.transaction_manager.is_operation_dirty(pipeline_idx, stage_idx, i)):
+                op_type += " *"
             
             item_text = f"{i+1}. {op_type}"
             
@@ -543,7 +560,7 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         # Update window title to show unsaved changes
         base_title = "Pipeline Configuration"
         if has_changes:
-            self.setWindowTitle(f"{base_title} - Unsaved Changes")
+            self.setWindowTitle(f"{base_title} * (unsaved changes)")
         else:
             self.setWindowTitle(base_title)
         
@@ -554,7 +571,29 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
         has_pipeline_selected = hasattr(self.controller, '_current_pipeline_index') and self.controller._current_pipeline_index >= 0
         self.lineEdit_pipeline_name.setEnabled(has_pipeline_selected)
         
+        # Refresh all lists to show updated * indicators
+        self._refresh_all_lists()
+        
         # Could add more visual indicators here (colors, icons, etc.)
+    
+    def _refresh_all_lists(self):
+        """Refresh all lists to show current dirty state."""
+        # Re-emit current data to trigger list updates with * indicators
+        working_configs = self.controller.transaction_manager.get_working_configs()
+        self.controller.pipeline_list_updated.emit(working_configs)
+        
+        if self.controller._current_pipeline_index >= 0:
+            pipeline = self.controller.transaction_manager.get_pipeline(
+                self.controller._current_pipeline_index
+            )
+            if pipeline:
+                stages = pipeline.get('stages', [])
+                self.controller.stage_list_updated.emit(stages)
+                
+                if self.controller._current_stage_index >= 0 and self.controller._current_stage_index < len(stages):
+                    stage = stages[self.controller._current_stage_index]
+                    operations = stage.get('operations', [])
+                    self.controller.operation_list_updated.emit(operations)
     
     def _on_unsaved_changes_detected(self, message: str):
         """Handle unsaved changes detection signal."""
@@ -567,11 +606,13 @@ class PipelineConfigDialog(QDialog, Ui_PipelineConfigDialog):
     def _on_changes_saved(self):
         """Handle changes saved signal."""
         self._update_change_indicators()
+        self._refresh_all_lists()
         # Could show success message
     
     def _on_changes_discarded(self):
         """Handle changes discarded signal."""
         self._update_change_indicators()
+        self._refresh_all_lists()
         # Could show discard message
     
     def showEvent(self, event):

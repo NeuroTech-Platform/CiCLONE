@@ -44,12 +44,17 @@ class ChangeRecord:
 @dataclass
 class TransactionState:
     """Represents the complete state of a configuration transaction."""
-    original_configs: List[Dict[str, Any]]
-    working_configs: List[Dict[str, Any]]
+    original_configs: List[Dict[str, Any]]  # From disk (never changes)
+    working_configs: List[Dict[str, Any]]   # All in-memory changes
     change_records: List[ChangeRecord] = field(default_factory=list)
     deleted_pipeline_names: Set[str] = field(default_factory=set)
-    is_committed: bool = False
-    is_rolled_back: bool = False
+    
+    # NEW: Track dirty state for UI indicators
+    dirty_entities: Set[str] = field(default_factory=set)  # entity paths that are dirty
+    
+    # REMOVE: No longer needed - no intermediate commits
+    # is_committed: bool = False
+    # is_rolled_back: bool = False
 
 
 class ConfigTransactionManager:
@@ -72,6 +77,9 @@ class ConfigTransactionManager:
             'operation_index': -1
         }
         
+        # Track changes made in current context (reset when context changes)
+        self._context_change_count = 0
+        
         # Snapshot management for fine-grained change detection
         self._snapshots: Dict[str, Any] = {}
     
@@ -87,13 +95,7 @@ class ConfigTransactionManager:
         Returns:
             List of pipeline configurations in working copy
         """
-        # Only prevent new transaction if there's an active (uncommitted, unrolled back) transaction
-        if (self._transaction_state and 
-            not self._transaction_state.is_committed and 
-            not self._transaction_state.is_rolled_back):
-            raise RuntimeError("Cannot begin new transaction - uncommitted transaction exists")
-        
-        # Clear any existing transaction state (committed or rolled back)
+        # Clear any existing transaction state
         self._transaction_state = TransactionState(
             original_configs=copy.deepcopy(original_configs),
             working_configs=copy.deepcopy(original_configs)
@@ -114,14 +116,13 @@ class ConfigTransactionManager:
         if not self._transaction_state:
             raise RuntimeError("No active transaction to commit")
         
-        if self._transaction_state.is_committed:
-            raise RuntimeError("Transaction already committed")
-        
-        self._transaction_state.is_committed = True
-        
         # Create final copies for return
         committed_configs = copy.deepcopy(self._transaction_state.working_configs)
         deleted_names = self._transaction_state.deleted_pipeline_names.copy()
+        
+        # Clear dirty entities after commit
+        self._transaction_state.dirty_entities.clear()
+        self._transaction_state.change_records.clear()
         
         return committed_configs, deleted_names
     
@@ -135,9 +136,6 @@ class ConfigTransactionManager:
         if not self._transaction_state:
             raise RuntimeError("No active transaction to rollback")
         
-        if self._transaction_state.is_committed:
-            raise RuntimeError("Cannot rollback committed transaction")
-        
         # Store original configs before clearing transaction state
         original_configs = copy.deepcopy(self._transaction_state.original_configs)
         
@@ -149,7 +147,7 @@ class ConfigTransactionManager:
     
     
     
-    def end_initialization(self):
+    def end_initialization(self) -> None:
         """Mark initialization as complete and enable change tracking."""
         self._initialization_mode = False
         if self._transaction_state:
@@ -178,20 +176,14 @@ class ConfigTransactionManager:
         
         # Check for any recorded changes
         if self._transaction_state.change_records:
-            print(f"DEBUG: has_changes - Found {len(self._transaction_state.change_records)} change records")
-            for i, record in enumerate(self._transaction_state.change_records):
-                print(f"  {i}: {record.entity_path} - {record.change_type}")
             return True
         
         # Check for deleted pipelines
         if self._transaction_state.deleted_pipeline_names:
-            print(f"DEBUG: has_changes - Found deleted pipelines: {self._transaction_state.deleted_pipeline_names}")
             return True
         
         # Deep comparison as fallback
-        deep_changes = self._transaction_state.working_configs != self._transaction_state.original_configs
-        print(f"DEBUG: has_changes - No change records or deleted pipelines, deep comparison: {deep_changes}")
-        return deep_changes
+        return self._transaction_state.working_configs != self._transaction_state.original_configs
     
     def has_changes_at_level(self, level: EntityLevel, indices: Dict[str, int]) -> bool:
         """
@@ -205,20 +197,14 @@ class ConfigTransactionManager:
             True if there are changes at the specified level
         """
         if not self.has_changes():
-            print("DEBUG: has_changes_at_level - No changes overall")
             return False
         
         path_prefix = self._build_entity_path(level, indices)
-        print(f"DEBUG: has_changes_at_level - Looking for path prefix: {path_prefix}")
-        print("DEBUG: Available change records:")
         
-        for i, record in enumerate(self._transaction_state.change_records):
-            print(f"  {i}: {record.entity_path} ({record.change_type})")
+        for record in self._transaction_state.change_records:
             if record.entity_path.startswith(path_prefix):
-                print(f"DEBUG: Found matching change at {record.entity_path}")
                 return True
         
-        print(f"DEBUG: No changes found for path prefix: {path_prefix}")
         return False
     
     def get_change_summary(self) -> Dict[str, Any]:
@@ -252,6 +238,129 @@ class ConfigTransactionManager:
             summary['by_type'][record.change_type] += 1
         
         return summary
+    
+    # ==================== Dirty State Tracking ====================
+    
+    def is_entity_dirty(self, entity_path: str) -> bool:
+        """Check if a specific entity path has unsaved changes.
+        
+        Args:
+            entity_path: Entity path like "pipeline:0" or "pipeline:0:stage:1"
+            
+        Returns:
+            True if entity has unsaved changes
+        """
+        if not self._transaction_state:
+            return False
+        return entity_path in self._transaction_state.dirty_entities
+
+    def get_dirty_entities(self) -> Set[str]:
+        """Get all dirty entity paths.
+        
+        Returns:
+            Set of entity paths that have unsaved changes
+        """
+        if not self._transaction_state:
+            return set()
+        return self._transaction_state.dirty_entities.copy()
+
+    def is_pipeline_dirty(self, pipeline_index: int) -> bool:
+        """Check if a pipeline or any of its contents are dirty.
+        
+        Args:
+            pipeline_index: Index of pipeline to check
+            
+        Returns:
+            True if pipeline has any unsaved changes
+        """
+        if not self._transaction_state:
+            return False
+        
+        pipeline_path = f"pipeline:{pipeline_index}"
+        
+        # Check if any dirty entity starts with this pipeline path
+        for dirty_path in self._transaction_state.dirty_entities:
+            if dirty_path.startswith(pipeline_path):
+                return True
+        
+        return False
+
+    def is_stage_dirty(self, pipeline_index: int, stage_index: int) -> bool:
+        """Check if a stage or any of its operations are dirty.
+        
+        Args:
+            pipeline_index: Index of pipeline
+            stage_index: Index of stage
+            
+        Returns:
+            True if stage has any unsaved changes
+        """
+        if not self._transaction_state:
+            return False
+        
+        stage_path = f"pipeline:{pipeline_index}:stage:{stage_index}"
+        
+        # Check if any dirty entity starts with this stage path
+        for dirty_path in self._transaction_state.dirty_entities:
+            if dirty_path.startswith(stage_path):
+                return True
+        
+        return False
+
+    def is_operation_dirty(self, pipeline_index: int, stage_index: int, operation_index: int) -> bool:
+        """Check if an operation is dirty.
+        
+        Args:
+            pipeline_index: Index of pipeline
+            stage_index: Index of stage  
+            operation_index: Index of operation
+            
+        Returns:
+            True if operation has unsaved changes
+        """
+        if not self._transaction_state:
+            return False
+        
+        operation_path = f"pipeline:{pipeline_index}:stage:{stage_index}:operation:{operation_index}"
+        return operation_path in self._transaction_state.dirty_entities
+
+    def get_dirty_display_names(self) -> Dict[str, str]:
+        """Get display names for all dirty entities for UI indicators.
+        
+        Returns:
+            Dict mapping entity paths to display names with * indicator
+        """
+        if not self._transaction_state:
+            return {}
+        
+        display_names = {}
+        
+        for dirty_path in self._transaction_state.dirty_entities:
+            entity = self._get_entity_by_path(dirty_path)
+            if entity:
+                # Extract display name based on entity type
+                if 'pipeline:' in dirty_path and ':stage:' not in dirty_path:
+                    # Pipeline level
+                    name = entity.get('name', 'Unnamed Pipeline')
+                    display_names[dirty_path] = f"{name} *"
+                elif ':stage:' in dirty_path and ':operation:' not in dirty_path:
+                    # Stage level  
+                    name = entity.get('name', 'Unnamed Stage')
+                    display_names[dirty_path] = f"{name} *"
+                elif ':operation:' in dirty_path:
+                    # Operation level
+                    name = entity.get('type', 'to_be_defined')
+                    display_names[dirty_path] = f"{name} *"
+        
+        return display_names
+    
+    def has_changes_in_current_context_session(self) -> bool:
+        """Check if changes were made during the current context session.
+        
+        Returns:
+            True if changes were made since entering current context
+        """
+        return self._context_change_count > 0
     
     # ==================== Pipeline Operations ====================
     
@@ -576,36 +685,27 @@ class ConfigTransactionManager:
         Returns:
             True if update was successful
         """
-        print(f"DEBUG: update_operation called with indices [{pipeline_index}, {stage_index}, {operation_index}]")
-        
         if not self._transaction_state:
-            print("DEBUG: No transaction state")
             return False
         
         working = self._transaction_state.working_configs
-        print(f"DEBUG: Working configs length: {len(working)}")
         
         if 0 <= pipeline_index < len(working):
             stages = working[pipeline_index].get('stages', [])
-            print(f"DEBUG: Stages length: {len(stages)}")
             
             if 0 <= stage_index < len(stages):
                 operations = stages[stage_index].get('operations', [])
-                print(f"DEBUG: Operations length: {len(operations)}")
                 
                 if 0 <= operation_index < len(operations):
                     old_value = operations[operation_index]
                     config_op = self._ensure_config_format(operation_data)
                     
-                    print(f"DEBUG: Old operation: {old_value}")
-                    print(f"DEBUG: New operation: {config_op}")
-                    print(f"DEBUG: Operations are equal: {old_value == config_op}")
-                    
                     if old_value != config_op:
+                        # Update the operation
                         operations[operation_index] = config_op
                         
-                        # Record the change
-                        print("DEBUG: Recording change")
+                        # Always use centralized _record_change method
+                        # This will handle revert detection automatically
                         self._record_change(
                             EntityLevel.OPERATION,
                             ChangeType.MODIFIED,
@@ -614,17 +714,8 @@ class ConfigTransactionManager:
                             old_value=old_value,
                             new_value=config_op
                         )
-                        print("DEBUG: Change recorded")
-                    else:
-                        print("DEBUG: No change - operations are identical")
                     
                     return True
-                else:
-                    print(f"DEBUG: Operation index {operation_index} out of range")
-            else:
-                print(f"DEBUG: Stage index {stage_index} out of range")
-        else:
-            print(f"DEBUG: Pipeline index {pipeline_index} out of range")
             
         return False
     
@@ -677,18 +768,184 @@ class ConfigTransactionManager:
             stage_index: Current stage index
             operation_index: Current operation index
         """
+        # Reset context change counter when context changes
+        self._context_change_count = 0
+        
         self._current_context = {
             'pipeline_index': pipeline_index,
             'stage_index': stage_index,
             'operation_index': operation_index
         }
     
+    def rollback_pipeline_context(self, pipeline_index: int) -> bool:
+        """Rollback all changes to a specific pipeline without affecting others.
+        
+        Args:
+            pipeline_index: Index of pipeline to rollback
+            
+        Returns:
+            True if rollback was successful
+        """
+        if not self._transaction_state or pipeline_index < 0:
+            return False
+        
+        # Find original pipeline
+        original_configs = self._transaction_state.original_configs
+        if pipeline_index >= len(original_configs):
+            return False
+        
+        original_pipeline = original_configs[pipeline_index]
+        
+        # Restore pipeline in working configs
+        working_configs = self._transaction_state.working_configs
+        if pipeline_index < len(working_configs):
+            working_configs[pipeline_index] = copy.deepcopy(original_pipeline)
+        
+        # Remove all change records and dirty markers for this pipeline
+        pipeline_path = f"pipeline:{pipeline_index}"
+        records_to_remove = [
+            record for record in self._transaction_state.change_records
+            if record.entity_path == pipeline_path or record.entity_path.startswith(pipeline_path + ":")
+        ]
+        
+        for record in records_to_remove:
+            self._transaction_state.change_records.remove(record)
+        
+        # Remove dirty markers for this pipeline and all its children
+        dirty_to_remove = [
+            path for path in self._transaction_state.dirty_entities
+            if path == pipeline_path or path.startswith(pipeline_path + ":")
+        ]
+        
+        for path in dirty_to_remove:
+            self._transaction_state.dirty_entities.remove(path)
+        
+        return True
+
+    def rollback_stage_context(self, pipeline_index: int, stage_index: int) -> bool:
+        """Rollback all changes to a specific stage without affecting others.
+        
+        Args:
+            pipeline_index: Index of pipeline
+            stage_index: Index of stage
+            
+        Returns:
+            True if rollback was successful
+        """
+        if not self._transaction_state or pipeline_index < 0 or stage_index < 0:
+            return False
+        
+        # Find original stage
+        original_configs = self._transaction_state.original_configs
+        if pipeline_index >= len(original_configs):
+            return False
+        
+        original_pipeline = original_configs[pipeline_index]
+        original_stages = original_pipeline.get('stages', [])
+        
+        if stage_index >= len(original_stages):
+            return False
+        
+        original_stage = original_stages[stage_index]
+        
+        # Restore stage in working configs
+        working_configs = self._transaction_state.working_configs
+        if pipeline_index < len(working_configs):
+            working_pipeline = working_configs[pipeline_index]
+            working_stages = working_pipeline.get('stages', [])
+            
+            if stage_index < len(working_stages):
+                working_stages[stage_index] = copy.deepcopy(original_stage)
+        
+        # Remove all change records and dirty markers for this stage
+        stage_path = f"pipeline:{pipeline_index}:stage:{stage_index}"
+        records_to_remove = [
+            record for record in self._transaction_state.change_records
+            if record.entity_path == stage_path or record.entity_path.startswith(stage_path + ":")
+        ]
+        
+        for record in records_to_remove:
+            self._transaction_state.change_records.remove(record)
+        
+        # Remove dirty markers for this stage and all its children
+        dirty_to_remove = [
+            path for path in self._transaction_state.dirty_entities
+            if path == stage_path or path.startswith(stage_path + ":")
+        ]
+        
+        for path in dirty_to_remove:
+            self._transaction_state.dirty_entities.remove(path)
+        
+        return True
+
+    def rollback_operation_context(self, pipeline_index: int, stage_index: int, operation_index: int) -> bool:
+        """Rollback all changes to a specific operation.
+        
+        Args:
+            pipeline_index: Index of pipeline
+            stage_index: Index of stage  
+            operation_index: Index of operation
+            
+        Returns:
+            True if rollback was successful
+        """
+        if (not self._transaction_state or pipeline_index < 0 or 
+            stage_index < 0 or operation_index < 0):
+            return False
+        
+        # Find original operation
+        original_configs = self._transaction_state.original_configs
+        if pipeline_index >= len(original_configs):
+            return False
+        
+        original_pipeline = original_configs[pipeline_index]
+        original_stages = original_pipeline.get('stages', [])
+        
+        if stage_index >= len(original_stages):
+            return False
+        
+        original_stage = original_stages[stage_index]
+        original_operations = original_stage.get('operations', [])
+        
+        if operation_index >= len(original_operations):
+            return False
+        
+        original_operation = original_operations[operation_index]
+        
+        # Restore operation in working configs
+        working_configs = self._transaction_state.working_configs
+        if pipeline_index < len(working_configs):
+            working_pipeline = working_configs[pipeline_index]
+            working_stages = working_pipeline.get('stages', [])
+            
+            if stage_index < len(working_stages):
+                working_stage = working_stages[stage_index]
+                working_operations = working_stage.get('operations', [])
+                
+                if operation_index < len(working_operations):
+                    working_operations[operation_index] = copy.deepcopy(original_operation)
+        
+        # Remove all change records and dirty markers for this operation
+        operation_path = f"pipeline:{pipeline_index}:stage:{stage_index}:operation:{operation_index}"
+        records_to_remove = [
+            record for record in self._transaction_state.change_records
+            if record.entity_path == operation_path
+        ]
+        
+        for record in records_to_remove:
+            self._transaction_state.change_records.remove(record)
+        
+        # Remove dirty marker for this operation
+        self._transaction_state.dirty_entities.discard(operation_path)
+        
+        return True
+    
     
     def check_context_switch(self, new_pipeline: int = None, 
                            new_stage: int = None, 
                            new_operation: int = None) -> bool:
         """
-        Check if switching context would lose unsaved changes.
+        Check if switching context would lose unsaved changes made in current context session.
         
         Args:
             new_pipeline: New pipeline index
@@ -696,51 +953,28 @@ class ConfigTransactionManager:
             new_operation: New operation index
             
         Returns:
-            True if there are unsaved changes that would be lost
+            True if there are unsaved changes made in current context session
         """
-        print(f"DEBUG: check_context_switch called with pipeline={new_pipeline}, stage={new_stage}, operation={new_operation}")
-        print(f"DEBUG: Current context: {self._current_context}")
-        
-        if not self.has_changes():
-            print("DEBUG: No changes detected in check_context_switch")
+        # Only prompt if we made changes during the current context session
+        if not self.has_changes_in_current_context_session():
             return False
         
-        # For pipeline switching, only check if there are ANY changes
-        # (since switching pipelines should save all changes)
+        # For pipeline switching, prompt if any changes were made in current session
         if new_pipeline is not None and new_pipeline != self._current_context['pipeline_index']:
-            print("DEBUG: Pipeline switching detected - should prompt")
-            # Always prompt when switching pipelines if there are any changes
             return True
         
-        # For stage switching within the same pipeline, check stage-level changes
+        # For stage switching within the same pipeline, prompt if changes in current session
         if (new_stage is not None and 
             new_stage != self._current_context['stage_index'] and
             self._current_context['stage_index'] >= 0):
-            
-            print("DEBUG: Stage switching detected - checking stage-level changes")
-            result = self.has_changes_at_level(
-                EntityLevel.STAGE,
-                {'pipeline': self._current_context['pipeline_index'],
-                 'stage': self._current_context['stage_index']}
-            )
-            print(f"DEBUG: Stage-level changes result: {result}")
-            return result
+            return True
         
-        # For operation switching within the same stage, check operation-level changes  
+        # For operation switching within the same stage, prompt if changes in current session  
         if (new_operation is not None and 
             new_operation != self._current_context['operation_index'] and
             self._current_context['operation_index'] >= 0):
-            
-            print("DEBUG: Operation switching detected - checking operation-level changes")
-            indices = {'pipeline': self._current_context['pipeline_index'],
-                      'stage': self._current_context['stage_index'],
-                      'operation': self._current_context['operation_index']}
-            print(f"DEBUG: Checking for changes at indices: {indices}")
-            result = self.has_changes_at_level(EntityLevel.OPERATION, indices)
-            print(f"DEBUG: Operation-level changes result: {result}")
-            return result
+            return True
         
-        print("DEBUG: No context switch conditions met")
         return False
     
     # ==================== Snapshot Management ====================
@@ -749,7 +983,7 @@ class ConfigTransactionManager:
     
     # ==================== Change Listeners ====================
     
-    def add_change_listener(self, listener: Callable[[ChangeRecord], None]):
+    def add_change_listener(self, listener: Callable[[ChangeRecord], None]) -> None:
         """Add a listener for change events."""
         self._change_listeners.append(listener)
     
@@ -788,6 +1022,171 @@ class ConfigTransactionManager:
     
     # ==================== Private Methods ====================
     
+    def _is_revert_to_original(self, entity_path: str, field_name: Optional[str], new_value: Any) -> bool:
+        """Check if a change reverts an entity back to its original value."""
+        if not self._transaction_state:
+            return False
+        
+        # Get the original entity
+        original_entity = self._get_original_entity_by_path(entity_path)
+        if original_entity is None:
+            return False
+        
+        # Compare with original value
+        if field_name:
+            # Field-level change
+            original_field_value = original_entity.get(field_name)
+            return original_field_value == new_value
+        else:
+            # Entity-level change  
+            return original_entity == new_value
+    
+    def _clean_dirty_state_if_reverted(self, entity_path: str, field_name: Optional[str]):
+        """Clean up dirty state if entity has been reverted to original."""
+        if not self._transaction_state:
+            return
+        
+        # Remove change records for this entity/field
+        if field_name:
+            # Remove records for this specific field
+            records_to_remove = [
+                record for record in self._transaction_state.change_records
+                if record.entity_path == entity_path and record.field_name == field_name
+            ]
+        else:
+            # Remove all records for this entity
+            records_to_remove = [
+                record for record in self._transaction_state.change_records
+                if record.entity_path == entity_path
+            ]
+        
+        for record in records_to_remove:
+            self._transaction_state.change_records.remove(record)
+        
+        # Check if entity has any remaining changes
+        has_remaining_changes = any(
+            record.entity_path == entity_path
+            for record in self._transaction_state.change_records
+        )
+        
+        # If no remaining changes, remove from dirty entities
+        if not has_remaining_changes:
+            self._transaction_state.dirty_entities.discard(entity_path)
+            
+            # Clean parent entities if they no longer have dirty children
+            self._clean_parent_dirty_states(entity_path)
+    
+    def _clean_parent_dirty_states(self, entity_path: str):
+        """Clean parent entities' dirty states if they have no dirty children."""
+        if not self._transaction_state:
+            return
+        
+        parts = entity_path.split(':')
+        
+        # Work backwards through the hierarchy
+        # For operation -> check stage and pipeline
+        # For stage -> check pipeline
+        
+        if len(parts) == 6 and parts[4] == 'operation':
+            # This is an operation, check its parent stage
+            stage_path = ':'.join(parts[:4])  # pipeline:X:stage:Y
+            
+            # Check if stage has any dirty children (operations)
+            has_dirty_operations = any(
+                path.startswith(stage_path + ':operation:')
+                for path in self._transaction_state.dirty_entities
+            )
+            
+            # Check if stage itself has changes
+            has_stage_changes = any(
+                record.entity_path == stage_path
+                for record in self._transaction_state.change_records
+            )
+            
+            # If stage has no dirty operations and no own changes, clean it
+            if not has_dirty_operations and not has_stage_changes:
+                self._transaction_state.dirty_entities.discard(stage_path)
+                
+                # Now check the pipeline
+                pipeline_path = ':'.join(parts[:2])  # pipeline:X
+                self._clean_pipeline_if_no_dirty_children(pipeline_path)
+                
+        elif len(parts) == 4 and parts[2] == 'stage':
+            # This is a stage, check its parent pipeline
+            pipeline_path = ':'.join(parts[:2])  # pipeline:X
+            self._clean_pipeline_if_no_dirty_children(pipeline_path)
+    
+    def _clean_pipeline_if_no_dirty_children(self, pipeline_path: str):
+        """Clean pipeline dirty state if it has no dirty children."""
+        if not self._transaction_state:
+            return
+            
+        # Check if pipeline has any dirty children (stages or operations)
+        has_dirty_children = any(
+            path.startswith(pipeline_path + ':') and path != pipeline_path
+            for path in self._transaction_state.dirty_entities
+        )
+        
+        # Check if pipeline itself has changes
+        has_pipeline_changes = any(
+            record.entity_path == pipeline_path
+            for record in self._transaction_state.change_records
+        )
+        
+        # If pipeline has no dirty children and no own changes, clean it
+        if not has_dirty_children and not has_pipeline_changes:
+            self._transaction_state.dirty_entities.discard(pipeline_path)
+    
+    def _get_original_entity_by_path(self, entity_path: str) -> Optional[Any]:
+        """Get an entity from the original configs by its path string."""
+        if not self._transaction_state:
+            return None
+        
+        parts = entity_path.split(':')
+        
+        if len(parts) < 2:
+            return None
+        
+        # Parse pipeline index
+        if parts[0] != 'pipeline':
+            return None
+        
+        pipeline_index = int(parts[1])
+        original_configs = self._transaction_state.original_configs
+        
+        if pipeline_index >= len(original_configs):
+            return None
+        
+        pipeline = original_configs[pipeline_index]
+        
+        if len(parts) == 2:
+            return pipeline
+        
+        # Parse stage index if present
+        if len(parts) >= 4 and parts[2] == 'stage':
+            stage_index = int(parts[3])
+            stages = pipeline.get('stages', [])
+            
+            if stage_index >= len(stages):
+                return None
+            
+            stage = stages[stage_index]
+            
+            if len(parts) == 4:
+                return stage
+            
+            # Parse operation index if present
+            if len(parts) == 6 and parts[4] == 'operation':
+                operation_index = int(parts[5])
+                operations = stage.get('operations', [])
+                
+                if operation_index >= len(operations):
+                    return None
+                    
+                return operations[operation_index]
+        
+        return None
+    
     def _record_change(self, entity_level: EntityLevel, change_type: ChangeType,
                       indices: Dict[str, int], field_name: Optional[str] = None,
                       old_value: Any = None, new_value: Any = None):
@@ -796,6 +1195,12 @@ class ConfigTransactionManager:
             return
         
         entity_path = self._build_entity_path(entity_level, indices)
+        
+        # Check if this change reverts to original value
+        if self._is_revert_to_original(entity_path, field_name, new_value):
+            # Remove from dirty entities if this change brings it back to original
+            self._clean_dirty_state_if_reverted(entity_path, field_name)
+            return
         
         record = ChangeRecord(
             entity_level=entity_level,
@@ -807,6 +1212,12 @@ class ConfigTransactionManager:
         )
         
         self._transaction_state.change_records.append(record)
+        
+        # NEW: Mark entity as dirty
+        self._transaction_state.dirty_entities.add(entity_path)
+        
+        # Track that we made a change in current context
+        self._context_change_count += 1
         
         # Notify listeners
         for listener in self._change_listeners:
