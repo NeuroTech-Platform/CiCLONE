@@ -329,4 +329,4 @@ class Ui_ImagesViewer(object):
         self.actionCrosshairs.setToolTip(_translate("ImagesViewer", "Toggle crosshairs across all views (Ctrl+H)"))
         self.actionCrosshairs.setStatusTip(_translate("ImagesViewer", "Show/hide crosshairs that indicate current slice positions"))
         self.actionCrosshairs.setShortcut(_translate("ImagesViewer", "Ctrl+H"))
-from ciclone.ui.ClickableImageLabel import ClickableImageLabel
+from ciclone.ui.widgets.ClickableImageLabel import ClickableImageLabel

@@ -22,27 +22,40 @@ class ImageProcessingWorker(QThread):
         self.process = mp.Process(target=processImagesAnalysis, args=(child_conn, self.output_directory, self.subject_list, self.config_data))
         self.process.start()
 
-        while True:
-            msg = self.parent_conn.recv()  # Wait for message
-            
-            if msg["type"] == "progress":
-                progress_value = msg["value"]
-                if progress_value < 0:  # Error occurred
-                    self.log_signal.emit("error", "Error in processing files")
-                    break
-                elif progress_value == 100:  # Processing completed
-                    self.update_progress_signal.emit(100)
-                    break
+        try:
+            while True:
+                # Use poll with timeout to avoid hanging indefinitely
+                if self.parent_conn.poll(timeout=1.0):  # Wait 1 second for message
+                    msg = self.parent_conn.recv()
+                    
+                    if msg["type"] == "progress":
+                        progress_value = msg["value"]
+                        if progress_value < 0:  # Error occurred
+                            self.log_signal.emit("error", "Error in processing files")
+                            break
+                        elif progress_value == 100:  # Processing completed
+                            self.update_progress_signal.emit(100)
+                            break
+                        else:
+                            self.update_progress_signal.emit(progress_value)
+                    elif msg["type"] == "log":
+                        level = msg["level"]
+                        message = msg["message"]
+                        self.log_signal.emit(level, message)
+                        print(f"[{level.upper()}] {message}")
                 else:
-                    self.update_progress_signal.emit(progress_value)
-            elif msg["type"] == "log":
-                level = msg["level"]
-                message = msg["message"]
-                self.log_signal.emit(level, message)
-                print(f"[{level.upper()}] {message}")
-                
-        if self.process and self.process.is_alive():
-            self.process.join()  # Ensure the process has completed
+                    # Check if process is still alive when no message received
+                    if not self.process.is_alive():
+                        break
+        finally:
+            # Clean up connections and process
+            if self.parent_conn:
+                self.parent_conn.close()
+            if self.process and self.process.is_alive():
+                self.process.join(timeout=5)  # Wait up to 5 seconds
+                if self.process.is_alive():
+                    self.process.terminate()
+            
         self.finished.emit()
     
     def terminate(self):

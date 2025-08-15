@@ -1,0 +1,200 @@
+name: CTpre / CTpost
+stages:
+- name: visual_inspection
+  depends_on: []
+  auto_clean: true
+  operations:
+  - type: open_fsleyes
+    workdir: preop/ct
+    parameters:
+      input_file: ${name}_CT_Bone
+  - type: apply_nudgetransformation
+    workdir: preop/ct
+    parameters:
+      input_file: ${name}_CT_Bone
+      transformation_file: ${name}_CT_Bone.mat
+      ref_file: ${name}_CT_Bone
+      output_file_name: ${name}_CT_Bone_N
+  - type: crop
+    workdir: preop/ct
+    parameters:
+      input_file: ${name}_CT_Bone_N
+      output_filename: ${name}_CT_Bone_C
+  - type: move
+    workdir: preop/ct
+    parameters:
+      input_file: ${name}_CT_Bone_C
+      output_file: ${subj_dir}/processed_tmp
+  - type: open_fsleyes
+    workdir: postop/ct
+    parameters:
+      input_file: ${name}_CT_Electrodes
+  - type: apply_nudgetransformation
+    workdir: postop/ct
+    parameters:
+      input_file: ${name}_CT_Electrodes
+      transformation_file: ${name}_CT_Electrodes.mat
+      ref_file: ${name}_CT_Electrodes
+      output_file_name: ${name}_CT_Electrodes_N
+  - type: crop
+    workdir: postop/ct
+    parameters:
+      input_file: ${name}_CT_Electrodes_N
+      output_filename: ${name}_CT_Electrodes_C
+  - type: move
+    workdir: postop/ct
+    parameters:
+      input_file: ${name}_CT_Electrodes_C
+      output_file: ${subj_dir}/processed_tmp
+  - type: open_fsleyes
+    workdir: preop/mri
+    parameters:
+      input_file: ${name}_T1
+  - type: apply_nudgetransformation
+    workdir: preop/mri
+    parameters:
+      input_file: ${name}_T1
+      transformation_file: ${name}_T1.mat
+      ref_file: ${name}_T1
+      output_file_name: ${name}_T1_N
+  - type: crop
+    workdir: preop/mri
+    parameters:
+      input_file: ${name}_T1_N
+      output_filename: ${name}_T1_C
+  - type: move
+    workdir: preop/mri
+    parameters:
+      input_file: ${name}_T1_C
+      output_file: ${subj_dir}/processed_tmp
+- name: coregisteration
+  depends_on:
+  - visual_inspection
+  auto_clean: true
+  operations:
+  - type: coregister
+    workdir: processed_tmp
+    parameters:
+      input_file: ${name}_CT_Bone_C
+      ref_file: ${name}_CT_Electrodes_C
+      output_file_name: v_${name}_bone_mask
+  - type: coregister
+    workdir: processed_tmp
+    parameters:
+      input_file: ${name}_T1_C
+      ref_file: ${name}_CT_Electrodes_C
+      output_file_name: v_${name}_ref
+  - type: coregister
+    workdir: processed_tmp
+    parameters:
+      input_file: ${name}_CT_Electrodes_C
+      ref_file: ${name}_CT_Bone_C
+      output_file_name: b_${name}_postimplant_ct
+- name: extract_electrodes
+  depends_on:
+  - coregisteration
+  auto_clean: true
+  operations:
+  - type: subtract
+    workdir: processed_tmp
+    parameters:
+      input_file: b_${name}_postimplant_ct
+      mask_file: ${name}_CT_Bone_C
+      output_file_name: b_${name}_postimplant_ct_sub
+  - type: threshold
+    workdir: processed_tmp
+    parameters:
+      input_file: b_${name}_postimplant_ct_sub
+      output_file_name: b_${name}_seeg
+  - type: apply_transformation
+    workdir: processed_tmp
+    parameters:
+      input_file: b_${name}_seeg
+      transformation_file: v_${name}_bone_mask.mat
+      ref_file: ${name}_CT_Electrodes_C
+      output_file_name: r_${name}_seeg
+- name: apply_mask
+  depends_on:
+  - extract_electrodes
+  auto_clean: true
+  operations:
+  - type: extract_brain
+    workdir: processed_tmp
+    parameters:
+      input_file: v_${name}_bone_mask
+      output_file: ${name}_stripped
+      fractional_intensity: 0.45
+      gradient_threshold: 0.0
+      generate_mask: true
+  - type: mask
+    workdir: processed_tmp
+    parameters:
+      input_file: r_${name}_seeg
+      mask_file: ${name}_stripped_mask
+      output_file_name: r_${name}_seeg_masked
+- name: mni_registration
+  depends_on:
+  - coregisteration
+  auto_clean: true
+  operations:
+  - type: extract_brain
+    workdir: processed_tmp
+    parameters:
+      input_file: v_${name}_ref
+      output_file: v_${name}_ref_brain
+      fractional_intensity: 0.25
+      gradient_threshold: 0.0
+      generate_mask: false
+  - type: register_mri_to_mni
+    workdir: processed_tmp
+    parameters:
+      input_file: v_${name}_ref_brain
+      output_file_name: MNI_${name}_ref_brain
+- name: cortical_extraction
+  depends_on:
+  - coregisteration
+  auto_clean: true
+  operations:
+  - type: reconstruct
+    workdir: processed_tmp
+    parameters:
+      input_file: v_${name}_ref
+      fs_output_dir: ${subj_dir}/processed_tmp/freesurfer_${name}
+- name: export_outputs
+  depends_on:
+  - visual_inspection
+  - coregisteration
+  - apply_mask
+  - mni_registration
+  auto_clean: false
+  operations:
+  - type: copy
+    workdir: processed_tmp
+    parameters:
+      input_file: ${name}_CT_Electrodes_C
+      output_file: ${subj_dir}/pipeline_output
+  - type: copy
+    workdir: processed_tmp
+    parameters:
+      input_file: ${name}_T1_C
+      output_file: ${subj_dir}/pipeline_output
+  - type: copy
+    workdir: processed_tmp
+    parameters:
+      input_file: v_${name}_ref
+      output_file: ${subj_dir}/pipeline_output
+  - type: copy
+    workdir: processed_tmp
+    parameters:
+      input_file: r_${name}_seeg_masked
+      output_file: ${subj_dir}/pipeline_output
+  - type: copy
+    workdir: processed_tmp
+    parameters:
+      input_file: MNI_${name}_ref_brain
+      output_file: ${subj_dir}/pipeline_output
+  - type: copy
+    workdir: processed_tmp
+    parameters:
+      input_file: MNI_${name}_ref_brain.mat
+      output_file: ${subj_dir}/pipeline_output

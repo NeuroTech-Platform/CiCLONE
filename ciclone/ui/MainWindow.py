@@ -13,8 +13,15 @@ from PyQt6.QtGui import QAction
 from ciclone.controllers.main_controller import MainController
 from ciclone.services.processing.tool_config import tool_config
 from ciclone.interfaces.view_interfaces import IMainView, IBaseView
+from ciclone.ui.PipelineConfigDialog import PipelineConfigDialog
 
 from ..forms.MainWindow_ui import Ui_MainWindow
+
+
+class ConfigUIMessages:
+    """Constants for config UI messages."""
+    NO_CONFIGS = "No configurations found"
+    ERROR_LOADING = "Error loading configs"
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     config_path = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "config/config.yaml"))
@@ -41,9 +48,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.main_controller.set_view(self)
         self.main_controller.set_log_callback(self.add_log_message)
         
+        self._setup_config_ui()
+        
         # File menu actions
         self.actionNew_Output_Directory.triggered.connect(self.create_output_directory)
         self.actionOpen_Output_Directory.triggered.connect(self.open_output_directory)
+        
+        # Configuration menu actions
+        self.actionManage_Pipelines.triggered.connect(self.open_pipeline_config_dialog)
         
         # Directory and subject management
         self.lineEdit_outputDirectory.textChanged.connect(self.on_output_directory_changed)
@@ -73,8 +85,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.runAllStages_PushButton.clicked.connect(self.run_all_stages)
         self.runSelectedStages_pushButton.clicked.connect(self.run_selected_stages)
         self.stopProcessing_pushButton.clicked.connect(self.stop_processing)
+        
+        # Config selection
+        self.selectPipeline_comboBox.currentTextChanged.connect(self._on_config_selection_changed)
 
-        self._setup_stages_ui()
         self.main_controller.connect_worker_state_signal(self.update_processing_ui)
         
         # Verbose mode toggle (Ctrl+V)
@@ -148,6 +162,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         directory_text = self.lineEdit_outputDirectory.text().strip()
         if directory_text:
             self.main_controller.set_output_directory(directory_text)
+
+    def open_pipeline_config_dialog(self):
+        """Open the pipeline configuration management dialog."""
+        try:
+            # Get config directory from main controller's application model
+            config_dir_path = str(self.main_controller.application_model._config_service.config_dir)
+            
+            # Create and show the dialog
+            dialog = PipelineConfigDialog(config_dir_path, self)
+            result = dialog.exec()
+            
+            # If changes were made, refresh the config UI
+            if result == dialog.DialogCode.Accepted:
+                self._setup_config_ui()  # Refresh config dropdown
+                self.add_log_message("info", "Pipeline configurations updated")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open pipeline configuration dialog: {str(e)}")
 
     def _on_field_validation_changed(self, field: str, valid: bool, error_msg: str, warning_msg: str):
         """Handle field validation feedback using colored indicators."""
@@ -517,6 +549,77 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                  error_message: str = "", warning_message: str = "") -> None:
         """Set validation state for form field."""
         self._on_field_validation_changed(field_name, is_valid, error_message, warning_message)
+    
+    def _setup_config_ui(self):
+        """Setup configuration dropdown and ensure stages are loaded."""
+        self._populate_config_dropdown()
+        self._ensure_stages_loaded()
+    
+    def _populate_config_dropdown(self):
+        """Populate config dropdown with available configurations."""
+        try:
+            self.selectPipeline_comboBox.clear()
+            
+            available_configs = self.main_controller.get_available_configs()
+            if not available_configs:
+                self.selectPipeline_comboBox.addItem(ConfigUIMessages.NO_CONFIGS)
+                self.selectPipeline_comboBox.setEnabled(False)
+                return
+            
+            for config_info in available_configs:
+                display_text = f"{config_info.display_name} ({config_info.stage_count} stages)"
+                self.selectPipeline_comboBox.addItem(display_text, config_info.name)
+            
+            self._set_current_config_selection()
+            self.selectPipeline_comboBox.setEnabled(True)
+            
+        except Exception as e:
+            print(f"Error populating config dropdown: {e}")
+            self.selectPipeline_comboBox.addItem(ConfigUIMessages.ERROR_LOADING)
+            self.selectPipeline_comboBox.setEnabled(False)
+    
+    def _set_current_config_selection(self):
+        """Set dropdown selection to match current config."""
+        current_config = self.main_controller.get_current_config_name()
+        if not current_config:
+            return
+        
+        for i in range(self.selectPipeline_comboBox.count()):
+            if self.selectPipeline_comboBox.itemData(i) == current_config:
+                self.selectPipeline_comboBox.setCurrentIndex(i)
+                break
+    
+    def _ensure_stages_loaded(self):
+        """Ensure stages are loaded for current config."""
+        if self.main_controller.get_stages_config():
+            self._setup_stages_ui()
+    
+    def _on_config_selection_changed(self, display_text: str):
+        """Handle config selection change."""
+        if not display_text or display_text in [ConfigUIMessages.NO_CONFIGS, ConfigUIMessages.ERROR_LOADING]:
+            return
+        
+        current_index = self.selectPipeline_comboBox.currentIndex()
+        if current_index >= 0:
+            config_name = self.selectPipeline_comboBox.itemData(current_index)
+            if config_name:
+                current_config = self.main_controller.get_current_config_name()
+                if config_name != current_config:
+                    success = self.main_controller.switch_config(config_name)
+                    if success:
+                        self._setup_stages_ui()
+                        self.add_log_message("success", f"Switched to configuration: {display_text}")
+                    else:
+                        self._setup_config_ui()
+                        self.add_log_message("error", f"Failed to switch to configuration: {config_name}")
+    
+    def refresh_config_ui(self):
+        """Refresh config selection UI (called by controller when configs change)."""
+        self._setup_config_ui()
+    
+    def refresh_stages_ui(self):
+        """Refresh stages UI (called by controller when config changes)."""
+        self._setup_stages_ui()
     
     def set_form_submission_state(self, can_submit: bool) -> None:
         """Set form submission button state."""

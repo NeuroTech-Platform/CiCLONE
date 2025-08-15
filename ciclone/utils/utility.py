@@ -109,6 +109,70 @@ def clean_by_patterns_smart(processed_tmp_dir: Path, patterns: list[str], preser
     if removed_count > 0 or preserved_count > 0:
         print(f"Smart cleanup: {removed_count} items removed, {preserved_count} items preserved")
 
+def extract_stage_dependencies_from_config(config_data: dict) -> dict:
+    """Extract stage dependencies from config.
+    
+    Args:
+        config_data: Configuration dictionary
+        
+    Returns:
+        Dictionary mapping stage names to their dependencies
+    """
+    dependencies = {}
+    stages = config_data.get('stages', [])
+    for stage in stages:
+        stage_name = stage.get('name')
+        if stage_name:
+            dependencies[stage_name] = stage.get('depends_on', [])
+    
+    return dependencies
+
+def extract_stage_outputs_from_config(config_data: dict) -> dict:
+    """Extract stage outputs from operations (auto-detects from parameters).
+    
+    Args:
+        config_data: Configuration dictionary
+        
+    Returns:
+        Dictionary mapping stage names to their outputs configuration
+    """
+    outputs = {}
+    stages = config_data.get('stages', [])
+    
+    for stage in stages:
+        stage_name = stage.get('name')
+        if not stage_name:
+            continue
+            
+        # Auto-detect outputs from operations
+        detected_outputs = []
+        cleanup_patterns = []
+        
+        for operation in stage.get('operations', []):
+            # Extract from new parameter format
+            params = operation.get('parameters', {})
+            
+            # Look for output parameters
+            for param_name, param_value in params.items():
+                if 'output' in param_name.lower() and param_value:
+                    # Skip directory outputs
+                    if 'dir' not in param_name.lower() and not param_value.startswith('${subj_dir}'):
+                        detected_outputs.append(param_value)
+                        
+                        # Generate cleanup pattern if auto_clean is enabled
+                        if stage.get('auto_clean', False):
+                            # Create pattern to match output with extensions
+                            pattern = param_value + '*'
+                            cleanup_patterns.append(pattern)
+        
+        outputs[stage_name] = {
+            'required_inputs': [],  # Stage inputs come from dependencies
+            'outputs': detected_outputs,
+            'cleanup_patterns': cleanup_patterns
+        }
+    
+    return outputs
+
 def find_all_dependents(stage_name: str, stage_dependencies: dict) -> list[str]:
     """
     Find all stages that depend on the given stage (recursively).
@@ -148,7 +212,7 @@ def validate_stage_prerequisites(subject, stage_name: str, config_data: dict) ->
     Returns:
         Tuple of (is_valid, missing_files)
     """
-    stage_outputs = config_data.get('stage_outputs', {})
+    stage_outputs = extract_stage_outputs_from_config(config_data)
     stage_config = stage_outputs.get(stage_name, {})
     required_inputs = stage_config.get('required_inputs', [])
     
@@ -177,8 +241,8 @@ def clean_dependent_stages(subject, stage_name: str, config_data: dict, single_s
         single_stage_mode: If True, only clean current stage outputs, skip dependents
     """
     try:
-        stage_dependencies = config_data.get('stage_dependencies', {})
-        stage_outputs = config_data.get('stage_outputs', {})
+        stage_dependencies = extract_stage_dependencies_from_config(config_data)
+        stage_outputs = extract_stage_outputs_from_config(config_data)
         
         # Find all stages that depend on this stage
         dependent_stages = find_all_dependents(stage_name, stage_dependencies)
@@ -297,8 +361,8 @@ def print_cleanup_preview(stage_name: str, subject_name: str, config_data: dict)
     Useful for debugging and understanding the cleanup behavior.
     """
     try:
-        stage_dependencies = config_data.get('stage_dependencies', {})
-        stage_outputs = config_data.get('stage_outputs', {})
+        stage_dependencies = extract_stage_dependencies_from_config(config_data)
+        stage_outputs = extract_stage_outputs_from_config(config_data)
         
         # Find all stages that depend on this stage
         dependent_stages = find_all_dependents(stage_name, stage_dependencies)

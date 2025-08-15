@@ -632,7 +632,14 @@
     <addaction name="actionNew_Output_Directory"/>
     <addaction name="actionOpen_Output_Directory"/>
    </widget>
+   <widget class="QMenu" name="menuConfiguration">
+    <property name="title">
+     <string>Configuration</string>
+    </property>
+    <addaction name="actionManage_Pipelines"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuConfiguration"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionNew_Output_Directory">
@@ -643,6 +650,17 @@
   <action name="actionOpen_Output_Directory">
    <property name="text">
     <string>Open Output Directory</string>
+   </property>
+  </action>
+  <action name="actionManage_Pipelines">
+   <property name="text">
+    <string>Manage Pipelines...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
+   </property>
+   <property name="toolTip">
+    <string>Open pipeline configuration manager</string>
    </property>
   </action>
  </widget>

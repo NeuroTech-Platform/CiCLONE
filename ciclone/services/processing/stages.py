@@ -1,6 +1,4 @@
 import os
-import shutil
-from pathlib import Path
 from ciclone.services.processing.operations import (
     crop_image,
     move_image,
@@ -11,13 +9,13 @@ from ciclone.services.processing.operations import (
     apply_transformation2image,
     apply_nudgetransformation2image,
     extract_brain,
-    extract_brain2,
     mask_image,
     cortical_reconstruction,
     transform_coordinates,
     register_ct_to_mni,
     register_mri_to_mni,
-    open_fsleyes
+    open_fsleyes,
+    reorient_to_standard
 )
 from ciclone.domain.subject import Subject
 from ciclone.utils.utility import validate_stage_prerequisites, clean_dependent_stages
@@ -35,70 +33,61 @@ def run_operation(operation, subject: Subject):
         # Use workdir for file resolution to avoid conflicts between processed_tmp and pipeline_output
         search_dir = operation.get('workdir', None)
         
-        if len(operation['files']) > 1:
-            files = [subject.get_file(f.replace("${name}", subject.get_subject_name()), search_dir) for f in operation['files'][:-1]] + \
-                    [operation['files'][-1].replace("${name}", subject.get_subject_name()).replace("${subj_dir}", str(subject.folder_path))]
-        else:
-            files = [subject.get_file(f.replace("${name}", subject.get_subject_name()), search_dir) for f in operation['files']]
+        # All operations now use unified parameter format
+        params = {}
+        for param_name, param_value in operation['parameters'].items():
+            # Replace template variables in parameter values
+            if isinstance(param_value, str):
+                param_value = param_value.replace("${name}", subject.get_subject_name())
+                param_value = param_value.replace("${subj_dir}", str(subject.folder_path))
+                
+                # If this looks like a file path and doesn't start with /, try to resolve it
+                if not param_value.startswith('/') and not param_value.startswith('${'):
+                    # Determine if this is an input or output parameter
+                    # Output parameters should NOT be resolved to existing files
+                    is_output = 'output' in param_name.lower() or param_name == 'fs_output_dir'
+                    
+                    # Only resolve input files (not output files)
+                    if not is_output and ('.' in param_value or '_' in param_value):  # Heuristic for file names
+                        resolved_file = subject.get_file(param_value, search_dir)
+                        if resolved_file:
+                            param_value = str(resolved_file)
+            
+            params[param_name] = param_value
         
-        if operation['type'] == 'crop':
-            crop_image(*files)
-        elif operation['type'] == 'move':
-            move_image(*files)
-        elif operation['type'] == 'copy':
-            copy_image(*files)
-        elif operation['type'] == 'coregister':
-            coregister_images(*files)
-        elif operation['type'] == 'subtract':
-            subtract_image(*files)
-        elif operation['type'] == 'threshold':
-            threshold_image(*files)
-        elif operation['type'] == 'apply_transformation':
-            apply_transformation2image(*files)
-        elif operation['type'] == 'apply_nudgetransformation':
-            apply_nudgetransformation2image(*files)
-        elif operation['type'] == 'extract_brain':
-            extract_brain(*files)
-        elif operation['type'] == 'extract_brain2':
-            extract_brain2(*files)
-        elif operation['type'] == 'mask':
-            mask_image(*files)
-        elif operation['type'] == 'reconstruct':
-            cortical_reconstruction(*files)
-        elif operation['type'] == 'register_ct_to_mni':
-            register_ct_to_mni(*files)
-        elif operation['type'] == 'register_mri_to_mni':
-            register_mri_to_mni(*files)
-        elif operation['type'] == 'open_fsleyes':
-            open_fsleyes(*files)
+        # Get the function to call
+        func = get_operation_function(operation['type'])
+        if func:
+            func(**params)
+        else:
+            print(f"Unknown operation type: {operation['type']}")
 
     finally:
         # Always return to the original directory
         os.chdir(original_dir)
 
-def create_file_snapshot(processed_tmp_dir: Path) -> list[Path]:
-    """Create a snapshot of current files for rollback capability."""
-    if not processed_tmp_dir.exists():
-        return []
-    return list(processed_tmp_dir.glob("*"))
 
-def rollback_to_snapshot(processed_tmp_dir: Path, snapshot_files: list[Path]) -> None:
-    """Rollback the directory to the state captured in the snapshot."""
-    try:
-        if processed_tmp_dir.exists():
-            # Remove all current files
-            for item in processed_tmp_dir.glob("*"):
-                if item.is_file():
-                    item.unlink()
-                elif item.is_dir():
-                    shutil.rmtree(item)
-        
-        # Note: We cannot restore deleted files, but we can at least clean up
-        # any partial files that were created during the failed stage
-        print(f"Rolled back {processed_tmp_dir.name} to clean state")
-        
-    except Exception as e:
-        print(f"Error during rollback: {e}")
+def get_operation_function(operation_type: str):
+    """Get the operation function based on operation type."""
+    operation_map = {
+        'crop': crop_image,
+        'move': move_image,
+        'copy': copy_image,
+        'coregister': coregister_images,
+        'subtract': subtract_image,
+        'threshold': threshold_image,
+        'apply_transformation': apply_transformation2image,
+        'apply_nudgetransformation': apply_nudgetransformation2image,
+        'extract_brain': extract_brain,
+        'mask': mask_image,
+        'reconstruct': cortical_reconstruction,
+        'register_ct_to_mni': register_ct_to_mni,
+        'register_mri_to_mni': register_mri_to_mni,
+        'open_fsleyes': open_fsleyes,
+        'reorient_to_standard': reorient_to_standard
+    }
+    return operation_map.get(operation_type)
+
 
 def run_stage(stage, subject):
     """
@@ -145,10 +134,7 @@ def run_stage_with_validation(stage, subject, config_data, total_stages_count: i
             print(f"🧹 Performing intelligent cleanup for stage '{stage_name}'")
             clean_dependent_stages(subject, stage_name, config_data, single_stage_mode)
         
-        # 3. Create snapshot for potential rollback
-        snapshot_files = create_file_snapshot(subject.processed_tmp)
-        
-        # 4. Run the stage operations
+        # 3. Run the stage operations
         print(f"🚀 Executing stage: {stage_name}")
         for i, operation in enumerate(stage['operations'], 1):
             print(f"   Operation {i}/{len(stage['operations'])}: {operation['type']}")
@@ -158,13 +144,5 @@ def run_stage_with_validation(stage, subject, config_data, total_stages_count: i
         return True
         
     except Exception as e:
-        print(f"❌ Stage '{stage_name}' failed: {e}")
-        
-        # Attempt rollback on failure
-        try:
-            print(f"🔄 Attempting rollback for stage '{stage_name}'")
-            rollback_to_snapshot(subject.processed_tmp, snapshot_files)
-        except Exception as rollback_error:
-            print(f"⚠️  Rollback failed: {rollback_error}")
-        
+        print(f"❌ Stage '{stage_name}' failed: {e}")        
         return False
