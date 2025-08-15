@@ -62,12 +62,16 @@ class ClickableImageLabel(QGraphicsView):
         self.markers = []  # List to keep track of marker items
         self.marker_data = {}  # Maps marker to electrode data: {marker: {'electrode_name': str, 'coord_type': str, 'contact_index': int}}
         
+        # Track lines separately (for electrode tails, etc.)
+        self.lines = []  # List to keep track of line items
+        self.line_data = {}  # Maps line to electrode data: {line: {'electrode_name': str, 'segment_type': str}}
+        
         # Drag state
         self.drag_mode = False
         self.dragged_marker = None
         self.drag_start_pos = None
         self.drag_offset = None  # Offset from marker center to mouse click
-        self.drag_tolerance = 5  # pixels - reduced for more precise selection
+        self.drag_tolerance = 1  # pixels - reduced for more precise selection
         
         # Track crosshair elements separately
         self.crosshair_horizontal = None
@@ -513,6 +517,37 @@ class ClickableImageLabel(QGraphicsView):
         
         return marker
     
+    def add_line(self, x1, y1, x2, y2, color=QColor(255, 0, 0), width=2, electrode_name=None, segment_type=None):
+        """Add a line segment at the specified image coordinates."""
+        if not self.pixmap_item:
+            return None
+            
+        # Create a line at the specified position
+        from PyQt6.QtWidgets import QGraphicsLineItem
+        from PyQt6.QtCore import QLineF
+        
+        line = QGraphicsLineItem(QLineF(x1, y1, x2, y2))
+        
+        # Set line appearance
+        pen = QPen(color, width)
+        line.setPen(pen)
+        
+        # Set Z-value to ensure lines appear in front of the image but behind markers
+        line.setZValue(3)  # Between image (0) and markers (5)
+        
+        # Add to scene and track it
+        self.scene.addItem(line)
+        self.lines.append(line)
+        
+        # Store electrode data if provided
+        if electrode_name and segment_type:
+            self.line_data[line] = {
+                'electrode_name': electrode_name,
+                'segment_type': segment_type
+            }
+        
+        return line
+    
     def remove_marker(self, marker):
         """Remove a specific marker from the scene."""
         if marker in self.markers:
@@ -528,6 +563,26 @@ class ClickableImageLabel(QGraphicsView):
             self.scene.removeItem(marker)
         self.markers.clear()
         self.marker_data.clear()
+    
+    def remove_line(self, line):
+        """Remove a specific line from the scene."""
+        if line in self.lines:
+            self.scene.removeItem(line)
+            self.lines.remove(line)
+            # Remove line data if it exists
+            if line in self.line_data:
+                del self.line_data[line]
+    
+    def clear_lines(self):
+        """Remove all lines from the scene."""
+        for line in self.lines:
+            self.scene.removeItem(line)
+        self.lines.clear()
+        self.line_data.clear()
+    
+    def get_lines(self):
+        """Get all current lines."""
+        return self.lines.copy()
     
     def get_markers(self):
         """Get all current markers."""

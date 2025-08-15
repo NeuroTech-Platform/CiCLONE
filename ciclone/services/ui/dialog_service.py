@@ -7,7 +7,7 @@ without directly handling UI widgets, maintaining proper MVC separation.
 
 from typing import Optional, List, Tuple
 from PyQt6.QtWidgets import (
-    QWidget, QMessageBox, QInputDialog, QFileDialog
+    QWidget, QMessageBox, QInputDialog, QFileDialog, QProgressDialog
 )
 from PyQt6.QtCore import QStandardPaths
 
@@ -94,6 +94,44 @@ class DialogService:
         
         return reply == QMessageBox.StandardButton.Yes
     
+    def show_question_with_cancel(self, title: str, message: str, 
+                                 button1_text: str = "Yes",
+                                 button2_text: str = "No", 
+                                 button3_text: str = "Cancel") -> str:
+        """
+        Show a question dialog with three custom buttons.
+        
+        Args:
+            title: Dialog title
+            message: Dialog message
+            button1_text: Text for first button (default action)
+            button2_text: Text for second button (alternative action)  
+            button3_text: Text for cancel button
+            
+        Returns:
+            Text of the button clicked
+        """
+        msg_box = QMessageBox(self.parent)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        
+        button1 = msg_box.addButton(button1_text, QMessageBox.ButtonRole.AcceptRole)
+        button2 = msg_box.addButton(button2_text, QMessageBox.ButtonRole.DestructiveRole)
+        button3 = msg_box.addButton(button3_text, QMessageBox.ButtonRole.RejectRole)
+        
+        msg_box.setDefaultButton(button3)  # Cancel is default
+        
+        result = msg_box.exec()
+        clicked = msg_box.clickedButton()
+        
+        if clicked == button1:
+            return button1_text
+        elif clicked == button2:
+            return button2_text
+        else:
+            return button3_text
+    
     # Input Dialogs
     
     def get_text_input(self, title: str, prompt: str, 
@@ -118,38 +156,6 @@ class DialogService:
         
         return (text.strip() if ok and text.strip() else None, ok)
     
-    def get_validated_text_input(self, title: str, prompt: str,
-                                default_text: str = "",
-                                validator: Optional[callable] = None) -> Optional[str]:
-        """
-        Get validated text input from user.
-        
-        Args:
-            title: Dialog title
-            prompt: Input prompt
-            default_text: Default text
-            validator: Optional function to validate input (should return error message or None)
-            
-        Returns:
-            Valid text input or None if cancelled/invalid
-        """
-        while True:
-            text, ok = self.get_text_input(title, prompt, default_text)
-            
-            if not ok:
-                return None
-                
-            if not text:
-                self.show_warning("Input Required", "Please enter a value.")
-                continue
-                
-            if validator:
-                error = validator(text)
-                if error:
-                    self.show_warning("Invalid Input", error)
-                    continue
-                    
-            return text
     
     # File and Directory Dialogs
     
@@ -221,29 +227,6 @@ class DialogService:
         
         return file_paths if file_paths else []
     
-    def save_file(self, title: str, default_name: str = "",
-                 file_filter: str = "All Files (*.*)",
-                 start_dir: str = "") -> Optional[str]:
-        """
-        Browse for save file location.
-        
-        Args:
-            title: Dialog title
-            default_name: Default filename
-            file_filter: File filter string
-            start_dir: Starting directory
-            
-        Returns:
-            Selected file path or None if cancelled
-        """
-        file_path, _ = QFileDialog.getSaveFileName(
-            self.parent,
-            title,
-            f"{start_dir}/{default_name}" if start_dir else default_name,
-            file_filter
-        )
-        
-        return file_path if file_path else None
     
     # Specialized Dialogs for CiCLONE
     
@@ -432,4 +415,167 @@ class DialogService:
             self.show_warning(
                 f"{operation} Failed",
                 f"Failed to complete {operation.lower()}. Check the log for details."
-            ) 
+            )
+    
+    def show_save_discard_cancel(self, title: str, message: str) -> str:
+        """
+        Specialized method for save/discard/cancel workflow.
+        
+        Args:
+            title: Dialog title
+            message: Question message
+            
+        Returns:
+            "save", "discard", or "cancel"
+        """
+        result = self.show_question_with_cancel(
+            title,
+            message,
+            "Save Changes",
+            "Discard Changes",
+            "Cancel"
+        )
+        
+        if result == "Save Changes":
+            return "save"
+        elif result == "Discard Changes":
+            return "discard"
+        else:
+            return "cancel"
+    
+    def show_progress_dialog(self, title: str, message: str, 
+                           maximum: int = 0) -> QProgressDialog:
+        """
+        Show a progress dialog.
+        
+        Args:
+            title: Dialog title
+            message: Progress message
+            maximum: Maximum value (0 for indeterminate)
+            
+        Returns:
+            ProgressDialog instance
+        """
+        progress = QProgressDialog(message, "Cancel", 0, maximum, self.parent)
+        progress.setWindowTitle(title)
+        progress.setWindowModality(QProgressDialog.WindowModality.WindowModal)
+        
+        if maximum == 0:
+            progress.setRange(0, 0)  # Indeterminate progress
+        
+        progress.show()
+        return progress
+    
+    def confirm_destructive_action(self, action_name: str, 
+                                  item_description: str = None) -> bool:
+        """
+        Show a confirmation dialog for destructive actions.
+        
+        Args:
+            action_name: Name of the action (e.g., "delete", "remove")
+            item_description: Description of what will be affected
+            
+        Returns:
+            True if user confirms, False otherwise
+        """
+        if item_description:
+            message = f"Are you sure you want to {action_name} {item_description}?\n\n"
+            message += "This action cannot be undone."
+        else:
+            message = f"Are you sure you want to {action_name}?\n\n"
+            message += "This action cannot be undone."
+        
+        msg_box = QMessageBox(self.parent)
+        msg_box.setWindowTitle(f"Confirm {action_name.title()}")
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | 
+            QMessageBox.StandardButton.No
+        )
+        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+        
+        # Make the Yes button red to indicate danger
+        yes_button = msg_box.button(QMessageBox.StandardButton.Yes)
+        if yes_button:
+            yes_button.setStyleSheet("QPushButton { color: red; }")
+        
+        result = msg_box.exec()
+        return result == QMessageBox.StandardButton.Yes
+    
+    def show_unsaved_changes_dialog(self, context: str = "closing") -> str:
+        """
+        Specialized dialog for unsaved changes scenarios.
+        
+        Args:
+            context: Context of the unsaved changes (e.g., "closing", "switching")
+            
+        Returns:
+            "save", "discard", or "cancel"
+        """
+        if context == "closing":
+            message = "You have unsaved changes. What would you like to do before closing?"
+            title = "Unsaved Changes - Closing"
+        elif context == "switching":
+            message = "You have unsaved changes. What would you like to do before switching?"
+            title = "Unsaved Changes - Switching"
+        else:
+            message = "You have unsaved changes. What would you like to do?"
+            title = "Unsaved Changes"
+        
+        return self.show_save_discard_cancel(title, message)
+    
+    # Contextual dialog methods for configuration management
+    def show_pipeline_switch_confirmation(self, current_pipeline: str,
+                                         new_pipeline: str,
+                                         change_count: int) -> str:
+        """
+        Show confirmation dialog when switching pipelines with unsaved changes.
+        
+        Args:
+            current_pipeline: Name of current pipeline
+            new_pipeline: Name of target pipeline
+            change_count: Number of unsaved changes
+            
+        Returns:
+            "save", "discard", or "cancel"
+        """
+        message = f"You have {change_count} unsaved changes in pipeline '{current_pipeline}'.\n\n"
+        message += f"What would you like to do before switching to '{new_pipeline}'?"
+        
+        return self.show_save_discard_cancel(
+            "Unsaved Pipeline Changes",
+            message
+        )
+    
+    def show_close_with_changes_summary(self, summary: dict) -> str:
+        """
+        Show dialog when closing with a summary of all unsaved changes.
+        
+        Args:
+            summary: Dictionary with change summary information
+            
+        Returns:
+            "save", "discard", or "cancel"
+        """
+        message = "You have unsaved changes:\n\n"
+        
+        if summary.get('total_changes', 0) > 0:
+            message += f"• Total changes: {summary['total_changes']}\n"
+        
+        if summary.get('deleted_pipelines', 0) > 0:
+            message += f"• Deleted pipelines: {summary['deleted_pipelines']}\n"
+        
+        by_type = summary.get('by_type', {})
+        if by_type:
+            message += "\nChanges by type:\n"
+            for change_type, count in by_type.items():
+                if count > 0:
+                    message += f"• {change_type}: {count}\n"
+        
+        message += "\nWhat would you like to do?"
+        
+        return self.show_save_discard_cancel(
+            "Close with Unsaved Changes",
+            message
+        )

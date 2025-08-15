@@ -4,16 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-CiCLONE (Cico Cardinale's Localization Of Neuro-electrodes) is a production-ready Python application for medical image processing and electrode localization in neurosurgical procedures. It implements a complete MVC architecture with PyQt6 GUI and advanced medical imaging capabilities.
+CiCLONE (Cico Cardinale's Localization Of Neuro-electrodes) is a production-ready Python application for medical image processing and electrode localization in neurosurgical procedures. It implements a complete MVC architecture with PyQt6 GUI and advanced medical imaging capabilities for stereotactic neurosurgery planning and analysis.
 
 ## Development Commands
 
 ### Environment Setup
 ```bash
-# Setup Poetry environment with Python 3.11 or 3.12
-poetry env use $(pyenv which python3.11)
-# or
-poetry env use $(pyenv which python3.12)
+# Setup Poetry environment with Python 3.10-3.13
+poetry env use $(pyenv which python3.11)  # or 3.10, 3.12, 3.13
 
 # Install dependencies
 poetry install
@@ -52,23 +50,58 @@ python -m unittest tests.test_subject_domain
 ## Architecture Overview
 
 ### MVC Pattern with Service Layer
-- **Domain Layer** (`ciclone/domain/`): Pure business entities (electrodes, subjects)
+- **Domain Layer** (`ciclone/domain/`): Pure business entities
+  - `electrodes.py`: Electrode domain model with contacts
+  - `subject.py`: Subject/patient domain model
+  - `electrode_element.py`: Physical electrode structure (contacts, tail/shaft)
 - **Service Layer** (`ciclone/services/`): Business logic organized by domain
-  - `ui/`: Dialog service and view delegates for UI abstraction (DialogService, ElectrodeViewDelegate)
+  - `ui/`: Dialog service and view delegates for UI abstraction
   - `processing/`: Medical image processing operations (FSL/FreeSurfer integration)
-  - `io/`: File I/O operations for medical data formats (SubjectFileService, ElectrodeFileService)
+  - `io/`: File I/O operations for medical data formats
+  - `operation_metadata_parser.py`: Pipeline operation configuration
+  - `config_service.py`: Application configuration management
 - **Models** (`ciclone/models/`): Application state and data management with Qt signals
-  - **Factories**: Business logic for object creation (SubjectDataFactory)
+  - `electrode_model.py`: Electrode data management and contact processing
+  - `subject_model.py`: Subject data management
+  - `coordinate_model.py`: Coordinate system management
+  - `image_model.py`: Medical image data management
+  - `crosshair_model.py`: Crosshair state management
+  - **Factories**: `subject_data_factory.py` for object creation
 - **Controllers** (`ciclone/controllers/`): Coordinate between models and views
-- **Views** (`ciclone/ui/`): PyQt6 GUI components with professional medical UI
+  - `main_controller.py`: Main application controller
+  - `electrode_controller.py`: Electrode management and visualization
+  - `image_controller.py`: Image display and manipulation
+  - `processing_controller.py`: Pipeline execution management
+  - `config_dialog_controller.py`: Configuration dialog management
+- **Views** (`ciclone/ui/`): PyQt6 GUI components
+  - `MainWindow.py`: Main application window
+  - `ImagesViewer.py`: Multi-planar medical image viewer
+  - `Viewer3D.py`: 3D visualization component
+  - `PipelineConfigDialog.py`: Pipeline configuration UI
+  - `widgets/`: Custom widgets including ClickableImageLabel
 - **Interfaces** (`ciclone/interfaces/`): Type-safe Protocol-based view contracts
+- **Managers** (`ciclone/managers/`): Transaction and state management
+  - `config_transaction_manager.py`: Configuration change transactions
+- **Workers** (`ciclone/workers/`): Background processing threads
+  - `ImageProcessingWorker.py`: Async image processing
 
 ### Key Components
-- **MainWindow**: Central application with subject management and processing pipeline
-- **ImagesViewer**: Multi-planar medical image viewer with overlay controls
-- **Viewer3D**: 3D visualization component
-- **Processing Pipeline**: Configurable YAML-based stages for FSL/FreeSurfer operations
-- **Electrode Management**: Interactive coordinate setting with validation
+- **MainWindow**: Central application hub with subject/electrode management
+- **ImagesViewer**: Multi-planar medical image viewer with:
+  - Axial, Sagittal, Coronal views
+  - Interactive electrode placement and visualization
+  - Real-time crosshair synchronization
+  - Electrode tail/shaft rendering with proper medical proportions
+- **Viewer3D**: 3D visualization with VTK integration
+- **Processing Pipeline**: Configurable YAML-based stages:
+  - Dynamic parameter configuration
+  - Operation metadata parsing
+  - Background processing with progress tracking
+- **Electrode Management**: 
+  - Interactive coordinate setting (entry/output points)
+  - Automatic contact position calculation
+  - Support for various electrode types (DIXI series)
+  - Proper tail visualization (capped at 0.8× contact array length)
 
 ### External Tool Integration
 - **FSL**: Self-contained medical image analysis (no dependency conflicts)
@@ -100,13 +133,25 @@ python -m unittest tests.test_subject_domain
 
 ### Dependency Management
 - **Poetry** for isolated virtual environment management
-- **Perfect Isolation Strategy**: FSL tools are self-contained, eliminating NumPy version conflicts
-- **Modern Stack**: NumPy 2.x, PyQt6, NiBabel for medical imaging
+- **Python**: 3.10-3.13 support
+- **Core Dependencies**:
+  - NumPy 2.2.0+ for numerical computations
+  - PyQt6 6.8.1+ for GUI framework
+  - NiBabel 5.3.2+ for medical image I/O (NIFTI format)
+  - VTK 9.4.2+ for 3D visualization
+  - PyYAML 6.0.1+ for configuration management
+  - Pillow 10.0.0+ for image processing
+- **Perfect Isolation Strategy**: FSL/FreeSurfer tools are self-contained, eliminating version conflicts
 
 ### Configuration
-- `config/config.yaml`: Processing pipeline configuration
-- `config/electrodes/`: Electrode definition files (.elecdef format)
-- Copy `config.yaml.template` to `config.yaml` and update paths before first run
+- `ciclone/config/config.yaml.template`: Base pipeline configuration template
+- `ciclone/config/config_ct.yaml`: CT-specific pipeline configuration
+- `ciclone/config/config_mri.yaml`: MRI-specific pipeline configuration
+- `ciclone/config/electrodes/`: Electrode definition files (.elecdef format)
+  - DIXI series electrodes (D08-05AM through D08-18CM)
+  - Pickled Python dictionaries with element definitions
+  - Contains contact positions, spacing, and tail specifications
+- Copy template to `config.yaml` and update FSL/FreeSurfer paths before first run
 
 ### Data Flow
 1. Subject management through MainWindow with directory structure creation
@@ -137,9 +182,55 @@ The codebase has been enhanced with strict MVC compliance through the following 
 - **Dependency Injection**: Services support mocking for isolated testing
 - **Backward Compatibility**: All changes maintain existing functionality
 
+## Development Principles
+
+### Best Practices
+- Every development plan MUST include updating CLAUDE.md as the final task
+- Always use Qt's built-in methods when possible
+- Maintain clean separation between UI and business logic
+- Use dependency injection for testability
+- Follow medical imaging conventions (RAS coordinates, NIFTI standards)
+- Ensure thread safety for background processing 
+
 ## Important Notes
 
 - **Production Ready Status**: Complete MVC implementation with medical-grade stability
 - **Comprehensive Test Suite**: Unit tests available for all refactored MVC components
-- **Medical Domain Focus**: UI and workflows optimized for neurosurgical procedures
+- **Medical Domain Focus**: UI and workflows optimized for stereotactic neurosurgical procedures
 - **Cross-Platform**: Designed for macOS/Linux, Windows compatibility via Qt6
+- **Electrode Visualization**: Accurate representation with proportional tail rendering
+- **Real-time Interaction**: Responsive UI with background processing support
+
+## Recent Improvements (2024-2025)
+
+### Electrode Tail Rendering Fix
+- **Issue**: Electrode tails appeared disproportionately large (2-6× expected size)
+- **Root Cause**: Incorrect scaling factor applied to tail length from .elecdef files
+- **Solution**: Proper scaling using contact array proportions, capped at 0.8× contact span
+- **File**: `ciclone/models/electrode_model.py:166-198`
+
+### Dynamic Pipeline Configuration
+- Enhanced parameter configuration system with metadata parsing
+- Transaction-based configuration management for atomic updates
+- Dynamic UI generation based on operation requirements
+
+### Architecture Refinements
+- Improved separation of concerns across MVC layers
+- Enhanced service layer abstraction
+- Better dependency injection patterns
+- Comprehensive error handling in background workers
+
+### Configuration Transaction Management Redesign (2025)
+- **Complete UX Overhaul**: Redesigned configuration editing workflow to keep all changes in memory until explicitly saved
+- **Memory-Only Changes**: All modifications remain in working memory without disk I/O until main Save button is clicked
+- **Visual Dirty Indicators**: Real-time asterisk (*) indicators in UI lists show exactly what has been modified at every hierarchical level
+- **Intelligent Context Switching**: Smart prompting system that only asks users about unsaved changes when actually switching contexts with new modifications
+- **Revert-to-Original Detection**: Automatic cleanup of dirty state when values are changed back to their original state
+- **Enhanced Hierarchical State Management**: Advanced parent-child dirty state cleanup with the `_clean_parent_dirty_states` method that intelligently removes dirty indicators from parent entities when all their children have reverted to original state, providing superior UX through automatic cleanup of parent indicators
+- **Improved Dialog Text**: Clear "Keep Changes" vs "Discard Changes" prompts instead of ambiguous "Save" operations
+- **Session-Aware Prompting**: Only prompts when NEW changes are made in current editing session, eliminating unnecessary dialogs when navigating back to previously-modified elements
+- **Files Modified**:
+  - `ciclone/managers/config_transaction_manager.py`: Core transaction logic with dirty state tracking
+  - `ciclone/controllers/config_dialog_controller.py`: Updated dialog handling and context switching
+  - `ciclone/ui/PipelineConfigDialog.py`: Visual indicators and real-time UI updates
+- **Key Benefits**: Safer experimentation, clearer visual feedback, reduced user friction, atomic saves, consistent "Save" meaning across the application

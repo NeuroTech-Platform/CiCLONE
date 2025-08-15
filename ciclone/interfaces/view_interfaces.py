@@ -125,10 +125,6 @@ class IImageView(Protocol):
     # Overlay Management Interface
     # =============================================================================
     
-    def set_overlay_visibility(self, visible: bool) -> None:
-        """Set overlay visibility."""
-        ...
-    
     def update_overlay_opacity(self, opacity: float) -> None:
         """Update overlay opacity."""
         ...

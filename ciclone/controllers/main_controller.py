@@ -22,8 +22,9 @@ class MainController(QObject):
     def __init__(self, config_path: str, verbose_mode: bool = False):
         super().__init__()
         
-        # Initialize models
-        self.application_model = ApplicationModel(config_path)
+        # Initialize models with multi-config support
+        config_dir = os.path.dirname(config_path)
+        self.application_model = ApplicationModel(config_dir)
         self.subject_model = SubjectModel()
         
         # Initialize dialog service and view delegate
@@ -47,7 +48,8 @@ class MainController(QObject):
         
         # Connect to application model signals for coordination
         self.application_model.output_directory_changed.connect(self._on_output_directory_changed)
-        self.application_model.images_viewer_state_changed.connect(self._on_images_viewer_state_changed)
+        self.application_model.config_changed.connect(self._on_config_changed)
+        self.application_model.configs_discovered.connect(self._on_configs_discovered)
     
     def set_view(self, view: IMainView):
         """Set the main view and propagate to child controllers."""
@@ -114,11 +116,10 @@ class MainController(QObject):
         
         self._log_message("debug", f"Output directory changed to: {directory_path}")
     
-    def _on_images_viewer_state_changed(self, is_active: bool):
-        """Handle images viewer state changes."""
-        if not is_active:
-            # Clear the reference when viewer is closed
-            self.application_model.set_images_viewer_instance(None)
+    def _on_viewer_closed(self):
+        """Handle ImageViewer close event to clear the reference."""
+        self.application_model.set_images_viewer_instance(None)
+        self._log_message("info", "Images viewer closed")
     
     # Directory Management
     def create_output_directory(self) -> Optional[str]:
@@ -132,7 +133,6 @@ class MainController(QObject):
             output_directory = os.path.join(base_directory, dataset_name)
             os.makedirs(output_directory, exist_ok=True)
             
-            # Update application model
             self.application_model.set_output_directory(output_directory)
             
             self._log_message("success", f"Created output directory: {output_directory}")
@@ -151,7 +151,6 @@ class MainController(QObject):
         output_directory = self.dialog_service.browse_directory("Select Output Directory")
         
         if output_directory:
-            # Update application model
             self.application_model.set_output_directory(output_directory)
             self._log_message("debug", f"Opened output directory: {output_directory}")
             return output_directory
@@ -312,6 +311,7 @@ class MainController(QObject):
             if not current_viewer:
                 # Create new viewer
                 images_viewer = ImagesViewer(file_path)
+                images_viewer._cleanup_callback = self._on_viewer_closed
                 self.application_model.set_images_viewer_instance(images_viewer)
                 self._log_message("info", f"Created new images viewer for: {os.path.basename(file_path)}")
             else:
@@ -343,15 +343,6 @@ class MainController(QObject):
         """Check if images viewer is active."""
         return self.application_model.is_images_viewer_active()
     
-    # Configuration Management
-    def reload_configuration(self) -> bool:
-        """Reload configuration from file."""
-        success = self.application_model.load_configuration()
-        if success:
-            self._log_message("success", "Configuration reloaded successfully")
-        else:
-            self._log_message("error", "Failed to reload configuration")
-        return success
     
     def get_configuration(self) -> Dict[str, Any]:
         """Get current configuration."""
@@ -360,6 +351,53 @@ class MainController(QObject):
     def get_stages_config(self) -> List[Dict[str, Any]]:
         """Get stages configuration."""
         return self.application_model.get_stages_config()
+    
+    # Multi-Config Management
+    def get_available_configs(self) -> List:
+        """Get list of available configurations."""
+        return self.application_model.get_available_configs()
+    
+    def get_current_config_name(self) -> Optional[str]:
+        """Get the name of the currently active configuration."""
+        return self.application_model.get_current_config_name()
+    
+    def switch_config(self, config_name: str) -> bool:
+        """Switch to a different configuration.
+        
+        Args:
+            config_name: Name of the configuration to switch to
+            
+        Returns:
+            True if switch was successful, False otherwise
+        """
+        success = self.application_model.switch_config(config_name)
+        if success:
+            self._log_message("success", f"Switched to configuration: {config_name}")
+        else:
+            self._log_message("error", f"Failed to switch to configuration: {config_name}")
+        return success
+    
+    def refresh_available_configs(self):
+        """Refresh the list of available configurations."""
+        self.application_model.refresh_available_configs()
+        self._log_message("debug", "Refreshed available configurations")
+    
+    def _on_config_changed(self, config_name: str):
+        """Handle configuration change events."""
+        self._log_message("info", f"Configuration changed to: {config_name}")
+        
+        # Notify view to refresh stages UI
+        if self._view and hasattr(self._view, '_setup_stages_ui'):
+            self._view._setup_stages_ui()
+    
+    def _on_configs_discovered(self, configs):
+        """Handle configuration discovery events."""
+        config_count = len(configs)
+        self._log_message("debug", f"Discovered {config_count} configuration(s)")
+        
+        # Notify view to refresh config dropdown
+        if self._view and hasattr(self._view, '_setup_config_ui'):
+            self._view._setup_config_ui()
     
     def get_selected_subjects_from_tree(self) -> List[str]:
         """Get selected subject names from tree view (wrapper for UI compatibility)."""
@@ -496,5 +534,10 @@ class MainController(QObject):
         self.tree_view_controller.refresh_tree_view()
         self.view_delegate.refresh_tree_view()
         
-        if self._view and hasattr(self._view, 'refresh_stages_ui'):
-            self._view.refresh_stages_ui() 
+        # Refresh stages UI
+        if self._view and hasattr(self._view, '_setup_stages_ui'):
+            self._view._setup_stages_ui()
+        
+        # Refresh config UI
+        if self._view and hasattr(self._view, '_setup_config_ui'):
+            self._view._setup_config_ui() 

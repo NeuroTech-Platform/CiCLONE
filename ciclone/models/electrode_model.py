@@ -4,6 +4,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 
 from ciclone.domain.electrodes import Electrode
+from ciclone.domain.electrode_element import ElectrodeElement, ElectrodeStructure
 from ciclone.services.io.electrode_file_service import ElectrodeFileService
 
 
@@ -13,6 +14,7 @@ class ElectrodeModel:
     def __init__(self, electrode_file_service: ElectrodeFileService = None):
         self._electrodes: Dict[str, Electrode] = {}
         self._processed_contacts: Dict[str, List[Tuple[int, int, int]]] = {}
+        self._electrode_structures: Dict[str, ElectrodeStructure] = {}
         self._electrode_file_service = electrode_file_service or ElectrodeFileService()
     
     
@@ -33,6 +35,8 @@ class ElectrodeModel:
         del self._electrodes[name]
         if name in self._processed_contacts:
             del self._processed_contacts[name]
+        if name in self._electrode_structures:
+            del self._electrode_structures[name]
         
         return True
 
@@ -83,7 +87,7 @@ class ElectrodeModel:
                                  electrode_name: str, 
                                  entry_point: Tuple[int, int, int], 
                                  output_point: Tuple[int, int, int]) -> bool:
-        """Process coordinates for an electrode and calculate contact positions."""
+        """Process coordinates for an electrode and calculate contact positions with tail information."""
         electrode = self.get_electrode(electrode_name)
         if not electrode:
             return False
@@ -98,12 +102,30 @@ class ElectrodeModel:
             with open(elec_def_path, 'rb') as f:
                 elec_def = pickle.load(f)
             
-            # Extract plot positions
+            # Extract plot positions and elements
             plot_positions = []
+            elements = []
+            tail_element = None
+            
             for key, value in elec_def.items():
                 if key.startswith('Plot'):
                     position = value.get('position', [0, 0, 0])
                     plot_positions.append((key, position))
+                elif key.startswith('Element'):
+                    # Create ElectrodeElement from definition
+                    element = ElectrodeElement(
+                        diameter=value.get('diameter', 0.8),
+                        length=value.get('length', 1.5),
+                        vector=tuple(value.get('vector', [0, 0, 1])),
+                        position=tuple(value.get('position', [0, 0, 0])),
+                        type=value.get('type', 'Tube'),
+                        axis=value.get('axis', 'Axe Z')
+                    )
+                    elements.append(element)
+                    
+                    # Check if this is a tail element (long tube element)
+                    if element.is_tail_element():
+                        tail_element = element
             
             if not plot_positions:
                 return False
@@ -141,6 +163,54 @@ class ElectrodeModel:
             # Store contacts
             self._processed_contacts[electrode_name] = contacts
             
+            # Calculate tail endpoint if tail element exists
+            tail_endpoint = None
+            if tail_element:
+                # CORRECTED UNDERSTANDING: In this UI:
+                # - entry_point = "Tip - proximal part" (deep in brain, near center)
+                # - output_point = "End - distal part" (closer to skull surface)
+                # - Tail extends OUTWARD from output_point (away from brain center)
+                
+                # Insertion direction: from output (skull) toward entry (brain center)
+                insertion_direction = entry_array - output_array
+                insertion_direction = insertion_direction / np.linalg.norm(insertion_direction)
+                
+                # Tail direction: opposite to insertion (away from brain center)
+                tail_direction = -insertion_direction
+                
+                # Calculate proper scaling
+                # The contacts span z_span mm in the electrode definition and 
+                # entry_output_distance pixels in the image
+                image_pixels_per_mm = entry_output_distance / z_span
+                
+                # Scale the tail length, but cap it to a reasonable proportion
+                # Medical reality: electrode tails are typically 0.5x to 1.5x the implanted portion
+                # Some definitions have unrealistic tail lengths (6x contact span) that dominate the view
+                tail_length_mm = tail_element.length
+                max_reasonable_tail_mm = z_span * 0.8  # Cap at 0.8x the contact array span
+                tail_length_capped_mm = min(tail_length_mm, max_reasonable_tail_mm)
+                
+                # Apply scaling to the capped length
+                tail_length_scaled = tail_length_capped_mm * image_pixels_per_mm
+                
+                # Tail starts at OUTPUT point (closer to skull) and extends outward
+                tail_endpoint = output_array + tail_direction * tail_length_scaled
+                tail_endpoint = tuple(np.round(tail_endpoint).astype(int))
+            
+            # Create and store electrode structure
+            electrode_structure = ElectrodeStructure(
+                name=electrode_name,
+                electrode_type=electrode.electrode_type,
+                contact_positions=contacts,
+                tail_element=tail_element,
+                elements=elements
+            )
+            # Add calculated tail endpoint to structure
+            if tail_endpoint:
+                electrode_structure.tail_endpoint = tail_endpoint
+            
+            self._electrode_structures[electrode_name] = electrode_structure
+            
             # Update electrode object
             electrode.contacts.clear()
             for i, contact_pos in enumerate(contacts):
@@ -166,6 +236,13 @@ class ElectrodeModel:
                 ]
         return contacts_dict
     
+    def get_electrode_structure(self, electrode_name: str) -> Optional[ElectrodeStructure]:
+        """Get the complete electrode structure including tail information."""
+        return self._electrode_structures.get(electrode_name)
+    
+    def get_all_electrode_structures(self) -> Dict[str, ElectrodeStructure]:
+        """Get all electrode structures for display purposes."""
+        return self._electrode_structures.copy()
     
     def has_processed_contacts(self) -> bool:
         """Check if any electrodes have processed contacts."""

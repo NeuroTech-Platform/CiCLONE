@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QSettings
 
-from ciclone.utils.utility import read_config_file
+from ciclone.services.config_service import ConfigService, ConfigInfo
 
 
 @dataclass
@@ -32,27 +32,37 @@ class ApplicationModel(QObject):
     # Signals for notifying controllers/views of state changes
     output_directory_changed = pyqtSignal(str)  # new_directory_path
     config_loaded = pyqtSignal(dict)  # config_data
+    config_changed = pyqtSignal(str)  # config_name
+    configs_discovered = pyqtSignal(list)  # available_configs
     worker_state_changed = pyqtSignal(bool, int)  # is_running, progress
     images_viewer_state_changed = pyqtSignal(bool)  # is_active
     stages_selection_changed = pyqtSignal(list)  # selected_stage_names
     
-    def __init__(self, config_path: Optional[str] = None):
-        super().__init__()
+    def __init__(self, config_dir_path: str):
+        """Initialize ApplicationModel with multi-config support.
         
-        # Core application state
+        Args:
+            config_dir_path: Path to directory containing configuration files
+        """
+        super().__init__()
+        self._init_state()
+        self._init_config_system(config_dir_path)
+    
+    def _init_state(self):
+        """Initialize core application state."""
         self._output_directory: Optional[str] = None
         self._config: Dict[str, Any] = {}
-        self._config_path: Optional[str] = config_path
-        
-        # Worker state management
         self._worker_state = WorkerState()
-        
-        # UI state management
         self._ui_state = UIState()
-        
-        # Load configuration if path provided
-        if self._config_path:
-            self.load_configuration()
+        self._config_service: Optional[ConfigService] = None
+        self._available_configs: List[ConfigInfo] = []
+        self._current_config_name: Optional[str] = None
+        self._settings = QSettings("CiCLONE", "Application")
+    
+    def _init_config_system(self, config_dir_path: str):
+        """Initialize multi-configuration system."""
+        self._config_service = ConfigService(config_dir_path)
+        self._discover_configs()
     
     # Output Directory Management
     def set_output_directory(self, directory_path: str):
@@ -69,22 +79,6 @@ class ApplicationModel(QObject):
         """Check if output directory is set and exists."""
         return self._output_directory is not None and os.path.exists(self._output_directory)
     
-    # Configuration Management
-    def load_configuration(self, config_path: Optional[str] = None) -> bool:
-        """Load configuration from file."""
-        if config_path:
-            self._config_path = config_path
-        
-        if not self._config_path:
-            return False
-        
-        try:
-            self._config = read_config_file(self._config_path)
-            self.config_loaded.emit(self._config)
-            return True
-        except Exception:
-            self._config = {}
-            return False
     
     def get_config(self) -> Dict[str, Any]:
         """Get the current configuration."""
@@ -191,10 +185,71 @@ class ApplicationModel(QObject):
         self._worker_state = WorkerState()
         self._ui_state = UIState()
         
-        # Emit signals for cleared state
         self.worker_state_changed.emit(False, 0)
         self.images_viewer_state_changed.emit(False)
         self.stages_selection_changed.emit([])
+    
+    # Multi-Config Management
+    def get_available_configs(self) -> List[ConfigInfo]:
+        """Get list of available configurations."""
+        return self._available_configs.copy()
+    
+    def get_current_config_name(self) -> Optional[str]:
+        """Get the name of the currently active configuration."""
+        return self._current_config_name
+    
+    def switch_config(self, config_name: str) -> bool:
+        """Switch to a different configuration.
+        
+        Args:
+            config_name: Name of the configuration to switch to
+            
+        Returns:
+            True if switch was successful, False otherwise
+        """
+        if not self._config_service:
+            return False
+        
+        # Load the new configuration
+        new_config = self._config_service.load_config(config_name)
+        if new_config is None:
+            return False
+        
+        # Update internal state
+        self._config = new_config
+        self._current_config_name = config_name
+        
+        self._settings.setValue("last_config", config_name)
+        
+        self._ui_state.current_stages_selection = []
+        
+        self.config_loaded.emit(self._config)
+        self.config_changed.emit(config_name)
+        self.stages_selection_changed.emit([])
+        
+        return True
+    
+    def refresh_available_configs(self):
+        """Refresh the list of available configurations."""
+        if self._config_service:
+            self._discover_configs()
+    
+    def _discover_configs(self):
+        """Discover available configurations and emit signal."""
+        if not self._config_service:
+            return
+        
+        self._available_configs = self._config_service.discover_configs()
+        self.configs_discovered.emit(self._available_configs)
+        
+        if not self._current_config_name and self._available_configs:
+            last_config = self._settings.value("last_config", None)
+            if last_config and any(c.name == last_config for c in self._available_configs):
+                self.switch_config(last_config)
+            else:
+                default_config = self._config_service.get_default_config_name()
+                if default_config:
+                    self.switch_config(default_config)
     
     def get_application_summary(self) -> Dict[str, Any]:
         """Get a summary of current application state for debugging."""
@@ -202,6 +257,8 @@ class ApplicationModel(QObject):
             "output_directory": self._output_directory,
             "output_directory_exists": self.is_output_directory_set(),
             "config_loaded": bool(self._config),
+            "current_config_name": self._current_config_name,
+            "available_configs_count": len(self._available_configs),
             "config_stages_count": len(self.get_stages_config()),
             "worker_running": self._worker_state.is_running,
             "worker_progress": self._worker_state.progress,
