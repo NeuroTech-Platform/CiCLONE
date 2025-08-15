@@ -311,7 +311,7 @@ def apply_nudgetransformation2image(input_file: Path, transformation_file: Path 
         print(f"Reference file {ref_file} does not exist.")
         return
     
-    if transformation_file is None:
+    if transformation_file is None or not Path(transformation_file).exists():
         print(f"Transformation file is None, copying input file as output file")
         output_file = str(input_file).replace(".nii", "_N.nii")
         execute_command(["cp", "-f", input_file, output_file])
