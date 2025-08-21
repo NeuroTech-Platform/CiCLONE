@@ -76,11 +76,8 @@
              <height>16</height>
             </size>
            </property>
-           <property name="text">
-            <string>●</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignCenter</set>
+           <property name="visible">
+            <bool>false</bool>
            </property>
            <property name="styleSheet">
             <string>QLabel {
@@ -90,8 +87,11 @@
     font-size: 12px;
 }</string>
            </property>
-           <property name="visible">
-            <bool>false</bool>
+           <property name="text">
+            <string>●</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -116,11 +116,8 @@
              <height>16</height>
             </size>
            </property>
-           <property name="text">
-            <string>●</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignCenter</set>
+           <property name="visible">
+            <bool>false</bool>
            </property>
            <property name="styleSheet">
             <string>QLabel {
@@ -130,8 +127,11 @@
     font-size: 12px;
 }</string>
            </property>
-           <property name="visible">
-            <bool>false</bool>
+           <property name="text">
+            <string>●</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -175,11 +175,8 @@
              <height>16</height>
             </size>
            </property>
-           <property name="text">
-            <string>●</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignCenter</set>
+           <property name="visible">
+            <bool>false</bool>
            </property>
            <property name="styleSheet">
             <string>QLabel {
@@ -189,8 +186,11 @@
     font-size: 12px;
 }</string>
            </property>
-           <property name="visible">
-            <bool>false</bool>
+           <property name="text">
+            <string>●</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -234,11 +234,8 @@
              <height>16</height>
             </size>
            </property>
-           <property name="text">
-            <string>●</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignCenter</set>
+           <property name="visible">
+            <bool>false</bool>
            </property>
            <property name="styleSheet">
             <string>QLabel {
@@ -248,8 +245,11 @@
     font-size: 12px;
 }</string>
            </property>
-           <property name="visible">
-            <bool>false</bool>
+           <property name="text">
+            <string>●</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -282,7 +282,7 @@
          <item row="1" column="1">
           <widget class="QLineEdit" name="lineEdit_Name">
            <property name="placeholderText">
-            <string>Subject Name</string>
+            <string>Subject ID</string>
            </property>
           </widget>
          </item>
@@ -300,11 +300,8 @@
              <height>16</height>
             </size>
            </property>
-           <property name="text">
-            <string>●</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignCenter</set>
+           <property name="visible">
+            <bool>false</bool>
            </property>
            <property name="styleSheet">
             <string>QLabel {
@@ -314,8 +311,11 @@
     font-size: 12px;
 }</string>
            </property>
-           <property name="visible">
-            <bool>false</bool>
+           <property name="text">
+            <string>●</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -340,11 +340,8 @@
              <height>16</height>
             </size>
            </property>
-           <property name="text">
-            <string>●</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignCenter</set>
+           <property name="visible">
+            <bool>false</bool>
            </property>
            <property name="styleSheet">
             <string>QLabel {
@@ -354,8 +351,11 @@
     font-size: 12px;
 }</string>
            </property>
-           <property name="visible">
-            <bool>false</bool>
+           <property name="text">
+            <string>●</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -426,7 +426,7 @@
             </size>
            </property>
            <property name="text">
-            <string>Subject Name : </string>
+            <string>Subject ID : </string>
            </property>
           </widget>
          </item>
@@ -656,11 +656,11 @@
    <property name="text">
     <string>Manage Pipelines...</string>
    </property>
-   <property name="shortcut">
-    <string>Ctrl+P</string>
-   </property>
    <property name="toolTip">
     <string>Open pipeline configuration manager</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
    </property>
   </action>
  </widget>
