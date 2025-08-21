@@ -262,6 +262,10 @@ class MainController(QObject):
         """Delete a file within a subject (delegated to SubjectController)."""
         return self.subject_controller.delete_file(file_path)
     
+    def rename_file(self, file_path: str, new_name: str) -> bool:
+        """Rename a file within a subject (delegated to SubjectController)."""
+        return self.subject_controller.rename_file(file_path, new_name)
+    
     def delete_multiple_subjects(self, subject_names: List[str]) -> Tuple[int, List[str]]:
         """Delete multiple subjects (delegated to SubjectController)."""
         return self.subject_controller.delete_multiple_subjects(subject_names)

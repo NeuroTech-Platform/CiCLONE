@@ -313,3 +313,25 @@ The codebase has been enhanced with strict MVC compliance through the following 
   - **Markers OFF**: Clean image view for unobstructed alignment verification
   - **Toggle Button**: Green when active (markers visible), standard when inactive (markers hidden)
   - **Real-time Update**: Immediate visual feedback when toggling state
+
+### File Rename Feature (2025)
+- **Context-Aware Renaming**: Added "Rename File" action to right-click context menu for individual files within subject folders
+- **Single File Only**: Rename action only appears when exactly one file is selected (not available for multiple file selections)
+- **Comprehensive Validation**: Multiple layers of safety checks to prevent data loss and maintain file integrity
+- **Extension Preservation**: Automatically preserves file extensions if user doesn't provide one in the new name
+- **Implementation Details**:
+  - `ciclone/controllers/subject_controller.py`: Added `rename_file()` method with comprehensive validation and safety checks
+  - `ciclone/controllers/main_controller.py`: Added delegation method for file renaming
+  - `ciclone/ui/MainWindow.py`: Enhanced context menu with rename action and `rename_file()` dialog handler
+- **Safety Features**:
+  - Validates file exists and is within a subject folder
+  - Prevents path traversal attacks by blocking path separators in new names
+  - Checks for naming conflicts before renaming
+  - Verifies subject exists in model before allowing operation
+  - Shows wait cursor during rename operation
+- **User Experience**:
+  - **Right-click single file**: Shows "Rename 'filename'" action above delete option
+  - **Input Dialog**: Pre-fills current filename for easy editing
+  - **Clear Context**: Shows which subject the file belongs to in the dialog
+  - **Success Feedback**: Automatic tree refresh and log message on successful rename
+  - **Error Handling**: Clear error messages for validation failures

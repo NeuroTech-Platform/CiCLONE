@@ -20,7 +20,7 @@ file_naming:
   pre_mri: "${name}_${modality}"
   
   # Postoperative MRI naming pattern (modality is auto-detected)
-  post_mri: "${name}_${modality}"
+  post_mri: "${name}_${modality}_post"
 
 # Alternative naming examples (uncomment to use):
 #

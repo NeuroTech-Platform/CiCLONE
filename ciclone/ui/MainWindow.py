@@ -409,10 +409,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # File(s) selected - show file actions
             if len(files_to_delete) == 1:
                 file_name = os.path.basename(files_to_delete[0])
+                
+                # Add rename action for single file
+                rename_action = QAction(f"Rename '{file_name}'", self)
+                rename_action.triggered.connect(lambda: self.rename_file(files_to_delete[0]))
+                context_menu.addAction(rename_action)
+                
+                # Add separator between rename and delete
+                context_menu.addSeparator()
+                
+                # Delete action
                 delete_action = QAction(f"Delete '{file_name}'", self)
                 delete_action.triggered.connect(lambda: self.delete_file(files_to_delete[0]))
                 context_menu.addAction(delete_action)
             else:
+                # Multiple files - only show delete
                 delete_action = QAction(f"Delete {len(files_to_delete)} Files", self)
                 delete_action.triggered.connect(lambda: self.delete_multiple_files(files_to_delete))
                 context_menu.addAction(delete_action)
@@ -498,6 +509,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     success_count += 1
             
             if success_count > 0:
+                self.refresh_subject_tree()
+    
+    def rename_file(self, file_path):
+        """Rename a single file within a subject."""
+        current_name = os.path.basename(file_path)
+        
+        # Get the subject context for information
+        context = self.main_controller.view_delegate.get_selection_context(file_path)
+        subject_name = context.get('subject_name', 'Unknown')
+        
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename File",
+            f"Enter new name for '{current_name}':\n"
+            f"(in subject '{subject_name}')",
+            text=current_name
+        )
+        
+        if ok and new_name.strip() and new_name != current_name:
+            success = self.main_controller.rename_file(file_path, new_name.strip())
+            if success:
                 self.refresh_subject_tree()
     
     def delete_file(self, file_path):

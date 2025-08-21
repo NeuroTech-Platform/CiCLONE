@@ -357,6 +357,95 @@ class SubjectController:
             self._log_message("error", f"Error processing file path: {str(e)}")
             return False
     
+    def rename_file(self, file_path: str, new_name: str) -> bool:
+        """Rename a file within a subject folder with validation."""
+        # Validate inputs
+        if not os.path.exists(file_path):
+            self._log_message("error", f"File does not exist: {file_path}")
+            return False
+        
+        if not os.path.isfile(file_path):
+            self._log_message("error", f"Path is not a file: {file_path}")
+            return False
+        
+        if not new_name or new_name.strip() == "":
+            self._log_message("error", "New filename cannot be empty")
+            return False
+        
+        # Remove any path separators from new name (security)
+        if os.sep in new_name or '/' in new_name or '\\' in new_name:
+            self._log_message("error", "Filename cannot contain path separators")
+            return False
+        
+        output_directory = self.subject_model.get_output_directory()
+        if not output_directory:
+            self._log_message("error", "Output directory not set")
+            return False
+        
+        # Verify file is within a subject directory
+        try:
+            rel_path = os.path.relpath(file_path, output_directory)
+            if rel_path.startswith('..'):
+                self._log_message("error", f"File is outside output directory: {file_path}")
+                return False
+            
+            path_parts = rel_path.split(os.sep)
+            if len(path_parts) < 2:
+                self._log_message("error", f"File is not within a subject folder: {file_path}")
+                return False
+            
+            subject_name = path_parts[0]
+            
+            # Verify the subject exists
+            if subject_name not in self.subject_model.get_subject_names():
+                self._log_message("error", f"Subject '{subject_name}' not found in model")
+                return False
+            
+            # Get current file info
+            current_dir = os.path.dirname(file_path)
+            current_name = os.path.basename(file_path)
+            
+            # Preserve extension if not provided in new name
+            current_ext = os.path.splitext(current_name)[1]
+            new_ext = os.path.splitext(new_name)[1]
+            if not new_ext and current_ext:
+                new_name = new_name + current_ext
+            
+            # Build new file path
+            new_file_path = os.path.join(current_dir, new_name)
+            
+            # Check if target already exists
+            if os.path.exists(new_file_path):
+                self._log_message("error", f"A file named '{new_name}' already exists in this directory")
+                return False
+            
+            # Check if trying to rename to same name
+            if new_file_path == file_path:
+                self._log_message("info", "New filename is the same as current filename")
+                return False
+            
+            # Perform the rename
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                os.rename(file_path, new_file_path)
+                self._log_message("success", f"Renamed file from '{current_name}' to '{new_name}' in subject '{subject_name}'")
+                
+                # Refresh view if available
+                if self._view and hasattr(self._view, 'refresh_subject_tree'):
+                    self._view.refresh_subject_tree()
+                
+                return True
+                
+            except Exception as e:
+                self._log_message("error", f"Failed to rename file: {str(e)}")
+                return False
+            finally:
+                QApplication.restoreOverrideCursor()
+                
+        except Exception as e:
+            self._log_message("error", f"Error processing file path: {str(e)}")
+            return False
+    
     def delete_subject(self, subject_name: str) -> bool:
         """Delete a single subject with validation and file operations."""
         return self._delete_single_subject(subject_name, show_cursor=True, refresh_view=True)
