@@ -5,30 +5,30 @@ stages:
   auto_clean: true
   operations:
   - type: reorient_to_standard
-    workdir: postop/ct
+    workdir: postop/mri
     parameters:
-      input_file: ${name}_CT_Electrodes
-      output_file: ${name}_CT_Electrodes_R2S
+      input_file: ${name}_T1_post
+      output_file: ${name}_T1_post_R2S
   - type: open_fsleyes
-    workdir: postop/ct
+    workdir: postop/mri
     parameters:
-      input_file: ${name}_CT_Electrodes_R2S
+      input_file: ${name}_T1_post_R2S
   - type: apply_nudgetransformation
-    workdir: postop/ct
+    workdir: postop/mri
     parameters:
-      input_file: ${name}_CT_Electrodes_R2S
-      transformation_file: ${name}_CT_Electrodes_R2S.mat
-      ref_file: ${name}_CT_Electrodes_R2S
-      output_file_name: ${name}_CT_Electrodes_R2S_N
+      input_file: ${name}_T1_post_R2S
+      transformation_file: ${name}_T1_post_R2S.mat
+      ref_file: ${name}_T1_post_R2S
+      output_file_name: ${name}_T1_post_R2S_N
   - type: crop
-    workdir: postop/ct
+    workdir: postop/mri
     parameters:
-      input_file: ${name}_CT_Electrodes_R2S_N
-      output_filename: ${name}_CT_Electrodes_C
+      input_file: ${name}_T1_post_R2S_N
+      output_filename: ${name}_T1_post_C
   - type: move
-    workdir: postop/ct
+    workdir: postop/mri
     parameters:
-      input_file: ${name}_CT_Electrodes_C
+      input_file: ${name}_T1_post_C
       output_file: ${subj_dir}/processed_tmp
   - type: reorient_to_standard
     workdir: preop/mri
@@ -64,7 +64,7 @@ stages:
   - type: coregister
     workdir: processed_tmp
     parameters:
-      input_file: ${name}_CT_Electrodes_C
+      input_file: ${name}_T1_post_C
       ref_file: ${name}_T1_C
       output_file_name: postT1_${name}
 - name: mni_registration
@@ -106,7 +106,7 @@ stages:
   - type: copy
     workdir: processed_tmp
     parameters:
-      input_file: ${name}_CT_Electrodes_C
+      input_file: ${name}_T1_post_C
       output_file: ${subj_dir}/pipeline_output
   - type: copy
     workdir: processed_tmp
