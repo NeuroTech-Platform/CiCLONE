@@ -393,11 +393,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 rename_action = QAction("Rename Subject", self)
                 rename_action.triggered.connect(lambda: self.rename_subject(single_path))
                 context_menu.addAction(rename_action)
-                
+                context_menu.addSeparator()
+
                 duplicate_action = QAction("Duplicate Subject", self)
                 duplicate_action.triggered.connect(lambda: self.duplicate_subject(single_path))
                 context_menu.addAction(duplicate_action)
-                
+                context_menu.addSeparator()
+
                 delete_action = QAction("Delete Subject", self)
                 delete_action.triggered.connect(lambda: self.delete_subject(single_path))
                 context_menu.addAction(delete_action)
