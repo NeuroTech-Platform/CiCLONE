@@ -297,3 +297,19 @@ The codebase has been enhanced with strict MVC compliance through the following 
   - **Single-click**: Selects file/folder (enables context menus, file operations)
   - **Double-click**: Opens ImageViewer for previewable files (.nii, .nii.gz, .png, .jpg, etc.)
   - **Right-click**: Shows context menu with appropriate actions (delete, subject operations)
+
+### ImageViewer Marker Toggle Feature (2025)
+- **Quick Alignment Checking**: Added show/hide toggle button for all electrode markers to quickly verify image alignment without visual clutter
+- **Toolbar Integration**: New "🎯 Markers" button alongside existing crosshair controls for consistent UI experience
+- **Keyboard Shortcut**: Ctrl+M shortcut for rapid toggling during workflow
+- **Visual Consistency**: Follows exact same styling and behavior pattern as crosshair toggle button
+- **Implementation Details**:
+  - `ciclone/forms/ImagesViewer_ui.py`: Added `actionToggleMarkers` with checkable state, tooltip, and keyboard shortcut
+  - `ciclone/ui/ImagesViewer.py`: Added `_markers_visible` state tracking and `toggle_markers()` method
+  - Modified `_add_visible_electrode_markers()` to respect visibility state with early return
+  - Connected signal to handler and set initial state (markers visible by default)
+- **User Experience**:
+  - **Markers ON (default)**: Shows all electrode entry/output points and contact markers for precise positioning
+  - **Markers OFF**: Clean image view for unobstructed alignment verification
+  - **Toggle Button**: Green when active (markers visible), standard when inactive (markers hidden)
+  - **Real-time Update**: Immediate visual feedback when toggling state

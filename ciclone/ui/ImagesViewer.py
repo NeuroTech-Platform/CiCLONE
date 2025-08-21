@@ -46,12 +46,14 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         super(ImagesViewer, self).__init__()
         self.setupUi(self)
 
-        # Initialize MVC components
-        self._initialize_mvc_components()
-        
-        # Initialize UI state
+        # Initialize state variables early (before any methods that might use them)
         self.last_clicked_coordinates = None  # Store coordinates of last image click
         self.drag_electrode_info = None
+        self._is_fitted_mode = True  # Track if we're in fitted mode (auto-resize) or user zoom mode
+        self._markers_visible = True  # Track marker visibility state
+        
+        # Initialize MVC components
+        self._initialize_mvc_components()
         
         # Setup UI components
         self._setup_ui_components()
@@ -65,9 +67,6 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         else:
             self.show_default_display()
 
-        # Track if we're in fitted mode (auto-resize) or user zoom mode
-        self._is_fitted_mode = True
-        
         # Timer for debouncing resize events
         self._resize_timer = QTimer()
         self._resize_timer.setSingleShot(True)
@@ -191,6 +190,11 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
     def toggle_crosshairs(self, checked):
         """Toggle crosshair display on all views."""
         self.crosshair_controller.toggle_crosshairs(checked)
+    
+    def toggle_markers(self, checked):
+        """Toggle electrode marker display on all views."""
+        self._markers_visible = checked
+        self.refresh_all_views()
 
     def setup_image_opacity_controls(self):
         """Setup gear buttons near image sliders that open overlay control panels."""
@@ -722,6 +726,10 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
         # Crosshair action from toolbar
         self.actionCrosshairs.triggered.connect(self.toggle_crosshairs)
+        
+        # Marker toggle action from toolbar
+        self.actionToggleMarkers.setChecked(True)  # Start with markers visible
+        self.actionToggleMarkers.triggered.connect(self.toggle_markers)
 
     # =============================================================================
     # VIEW INTERFACE METHODS (Called by Controllers)
@@ -1631,6 +1639,10 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
     
     def _add_visible_electrode_markers(self, label, orientation, slice_index):
         """Add markers for electrode points visible on the current slice."""
+        # Early return if markers are hidden
+        if not self._markers_visible:
+            return
+        
         # Get current slice indices
         current_slices = {
             'axial': self.Axial_horizontalSlider.value(),

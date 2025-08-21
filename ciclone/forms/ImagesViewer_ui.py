@@ -293,6 +293,10 @@ class Ui_ImagesViewer(object):
         self.actionCrosshairs.setCheckable(True)
         self.actionCrosshairs.setObjectName("actionCrosshairs")
         self.mainToolBar.addAction(self.actionCrosshairs)
+        self.actionToggleMarkers = QtGui.QAction(parent=ImagesViewer)
+        self.actionToggleMarkers.setCheckable(True)
+        self.actionToggleMarkers.setObjectName("actionToggleMarkers")
+        self.mainToolBar.addAction(self.actionToggleMarkers)
 
         self.retranslateUi(ImagesViewer)
         self.toolBox.setCurrentIndex(0)
@@ -329,4 +333,8 @@ class Ui_ImagesViewer(object):
         self.actionCrosshairs.setToolTip(_translate("ImagesViewer", "Toggle crosshairs across all views (Ctrl+H)"))
         self.actionCrosshairs.setStatusTip(_translate("ImagesViewer", "Show/hide crosshairs that indicate current slice positions"))
         self.actionCrosshairs.setShortcut(_translate("ImagesViewer", "Ctrl+H"))
+        self.actionToggleMarkers.setText(_translate("ImagesViewer", "🎯 Markers"))
+        self.actionToggleMarkers.setToolTip(_translate("ImagesViewer", "Toggle electrode markers across all views (Ctrl+M)"))
+        self.actionToggleMarkers.setStatusTip(_translate("ImagesViewer", "Show/hide electrode markers and contact points"))
+        self.actionToggleMarkers.setShortcut(_translate("ImagesViewer", "Ctrl+M"))
 from ciclone.ui.widgets.ClickableImageLabel import ClickableImageLabel
