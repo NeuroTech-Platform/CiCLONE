@@ -11,9 +11,10 @@ import os
 import shutil
 import re
 from pathlib import Path
+from typing import Optional
 from ciclone.domain.subject import Subject
 from ciclone.services.io.subject_file_service import SubjectFileService
-
+from ciclone.services.naming_service import NamingService
 from ciclone.services.io.schema_processor import SchemaProcessor
 
 class SubjectImporter:
@@ -54,7 +55,7 @@ class SubjectImporter:
         return 'MRI'
 
     @staticmethod
-    def import_subject(output_directory, subject_data):
+    def import_subject(output_directory, subject_data, naming_service: Optional[NamingService] = None):
         """
         Import subject data according to the schema and create appropriate directory structure.
         
@@ -67,12 +68,18 @@ class SubjectImporter:
                 - pre_mri: Path to preoperative MRI file
                 - post_ct: Path to postoperative CT file
                 - post_mri: Path to postoperative MRI file
+            naming_service (Optional[NamingService]): Service for file naming conventions.
+                                                      If None, uses default naming.
                 
         Returns:
             Subject: The created Subject instance
         """
         if not subject_data.get("name"):
             raise ValueError("Subject name must be provided")
+        
+        # Create or use provided naming service
+        if naming_service is None:
+            naming_service = NamingService()
         
         # Create subject folder
         subject_path = Path(output_directory) / subject_data["name"]
@@ -85,15 +92,15 @@ class SubjectImporter:
         SubjectImporter._import_schema_files(subject_data, subject.documents)
         
         # Import files if they exist with appropriate renaming
-        SubjectImporter._import_file(subject_data.get("pre_ct"), subject.preop_ct, subject_name, "pre_ct")
-        SubjectImporter._import_file(subject_data.get("pre_mri"), subject.preop_mri, subject_name, "pre_mri")
-        SubjectImporter._import_file(subject_data.get("post_ct"), subject.postop_ct, subject_name, "post_ct")
-        SubjectImporter._import_file(subject_data.get("post_mri"), subject.postop_mri, subject_name, "post_mri")
+        SubjectImporter._import_file(subject_data.get("pre_ct"), subject.preop_ct, subject_name, "pre_ct", naming_service)
+        SubjectImporter._import_file(subject_data.get("pre_mri"), subject.preop_mri, subject_name, "pre_mri", naming_service)
+        SubjectImporter._import_file(subject_data.get("post_ct"), subject.postop_ct, subject_name, "post_ct", naming_service)
+        SubjectImporter._import_file(subject_data.get("post_mri"), subject.postop_mri, subject_name, "post_mri", naming_service)
         
         return subject
     
     @staticmethod
-    def _import_file(source_path, destination_dir, subject_name, file_type):
+    def _import_file(source_path, destination_dir, subject_name, file_type, naming_service: NamingService):
         """
         Import a file to the appropriate destination directory with custom naming.
         
@@ -102,6 +109,7 @@ class SubjectImporter:
             destination_dir (Path): Destination directory
             subject_name (str): Name of the subject
             file_type (str): Type of file (pre_ct, post_ct, pre_mri, post_mri)
+            naming_service (NamingService): Service for file naming conventions
         """
         if not source_path:
             return
@@ -111,23 +119,23 @@ class SubjectImporter:
             print(f"Warning: Source file {source_path} does not exist")
             return
         
-        # Determine the new filename based on file type
+        # Determine the new filename based on file type and naming conventions
         file_extension = source_path.suffix
         if source_path.name.endswith('.nii.gz'):
             file_extension = '.nii.gz'
         
         if file_type == "pre_ct":
-            new_filename = f"{subject_name}_CT_Bone{file_extension}"
+            new_filename = f"{naming_service.get_pre_ct_filename(subject_name)}{file_extension}"
         elif file_type == "post_ct":
-            new_filename = f"{subject_name}_CT_Electrodes{file_extension}"
+            new_filename = f"{naming_service.get_post_ct_filename(subject_name)}{file_extension}"
         elif file_type == "pre_mri":
             # Detect MRI modality from filename
             modality = SubjectImporter._detect_mri_modality(source_path.name)
-            new_filename = f"{subject_name}_{modality}{file_extension}"
+            new_filename = f"{naming_service.get_pre_mri_filename(subject_name, modality)}{file_extension}"
         elif file_type == "post_mri":
-            # Detect MRI modality from filename (no postop suffix)
+            # Detect MRI modality from filename
             modality = SubjectImporter._detect_mri_modality(source_path.name)
-            new_filename = f"{subject_name}_{modality}{file_extension}"
+            new_filename = f"{naming_service.get_post_mri_filename(subject_name, modality)}{file_extension}"
         else:
             # Fallback to original filename if type is unknown
             new_filename = source_path.name

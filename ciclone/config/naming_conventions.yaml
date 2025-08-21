@@ -1,0 +1,46 @@
+# File Naming Conventions Configuration
+# 
+# This file defines the naming patterns used when importing subject files.
+# You can customize these patterns to match your workflow requirements.
+#
+# Available variables:
+#   ${name}     - Subject name
+#   ${modality} - MRI modality (T1, T2, FLAIR, etc.) - only for MRI files
+#
+# Default patterns maintain backward compatibility with existing pipelines.
+
+file_naming:
+  # Preoperative CT naming pattern
+  pre_ct: "${name}_CT_Bone"
+  
+  # Postoperative CT naming pattern  
+  post_ct: "${name}_CT_Electrodes"
+  
+  # Preoperative MRI naming pattern (modality is auto-detected)
+  pre_mri: "${name}_${modality}"
+  
+  # Postoperative MRI naming pattern (modality is auto-detected)
+  post_mri: "${name}_${modality}"
+
+# Alternative naming examples (uncomment to use):
+#
+# Example 1: Include pre/post indicators for all files
+# file_naming:
+#   pre_ct: "${name}_pre_CT"
+#   post_ct: "${name}_post_CT"
+#   pre_mri: "${name}_pre_${modality}"
+#   post_mri: "${name}_post_${modality}"
+#
+# Example 2: Clinical naming convention
+# file_naming:
+#   pre_ct: "${name}_baseline_CT"
+#   post_ct: "${name}_implant_CT"
+#   pre_mri: "${name}_baseline_${modality}"
+#   post_mri: "${name}_followup_${modality}"
+#
+# Example 3: Simplified naming
+# file_naming:
+#   pre_ct: "${name}_CT1"
+#   post_ct: "${name}_CT2"
+#   pre_mri: "${name}_${modality}"
+#   post_mri: "${name}_${modality}_post"

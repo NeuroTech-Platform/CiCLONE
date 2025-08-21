@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt
 
 from ciclone.models.subject_model import SubjectModel, SubjectData, SubjectValidationResult
 from ciclone.services.io.subject_importer import SubjectImporter
+from ciclone.services.naming_service import NamingService
 
 
 class SubjectController:
@@ -16,6 +17,7 @@ class SubjectController:
         self._view = None
         self._log_callback: Optional[Callable[[str, str], None]] = None
         self._dialog_service = None
+        self._naming_service = NamingService()  # Initialize naming service with defaults
         
     def set_view(self, view):
         """Set the view reference for UI updates."""
@@ -72,8 +74,8 @@ class SubjectController:
                 "post_mri": subject_data.post_mri
             }
             
-            # Perform the actual file operations
-            SubjectImporter.import_subject(output_directory, subject_dict)
+            # Perform the actual file operations with naming service
+            SubjectImporter.import_subject(output_directory, subject_dict, self._naming_service)
             
             # Add to model if file operations succeeded
             success = self.subject_model.add_subject(subject_data, skip_existence_check=True)
