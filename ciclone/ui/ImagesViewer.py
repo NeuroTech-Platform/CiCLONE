@@ -1688,7 +1688,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     )
                     if pixel_coords:
                         x, y = pixel_coords
-                        label.add_marker(x, y, contact_color, radius=0.5,
+                        label.add_marker(x, y, contact_color, radius=1,
                                        electrode_name=electrode_name,
                                        coord_type='contact',
                                        contact_index=contact_index)
