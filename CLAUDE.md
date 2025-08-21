@@ -147,6 +147,10 @@ python -m unittest tests.test_subject_domain
 - `ciclone/config/config.yaml.template`: Base pipeline configuration template
 - `ciclone/config/config_ct.yaml`: CT-specific pipeline configuration
 - `ciclone/config/config_mri.yaml`: MRI-specific pipeline configuration
+- `ciclone/config/naming_conventions.yaml`: Configurable file naming patterns for imported subjects
+  - Customizable naming for CT and MRI files
+  - Template variables: ${name} for subject name, ${modality} for MRI type
+  - Default patterns maintain backward compatibility
 - `ciclone/config/electrodes/`: Electrode definition files (.elecdef format)
   - DIXI series electrodes (D08-05AM through D08-18CM)
   - Pickled Python dictionaries with element definitions
@@ -219,6 +223,20 @@ The codebase has been enhanced with strict MVC compliance through the following 
 - Enhanced service layer abstraction
 - Better dependency injection patterns
 - Comprehensive error handling in background workers
+
+### File Naming Convention System (2025)
+- **Configurable File Naming**: Parametrized naming patterns for imported CT and MRI files
+- **NamingService**: Clean service layer for managing file naming conventions
+- **Template-Based Configuration**: YAML configuration with ${name} and ${modality} variables
+- **Backward Compatibility**: Default patterns preserve existing pipeline compatibility (_CT_Bone, _CT_Electrodes)
+- **Easy Customization**: Users can modify naming patterns via `naming_conventions.yaml` without code changes
+- **Full Test Coverage**: Comprehensive unit tests for all naming scenarios
+- **Files Added/Modified**:
+  - `ciclone/config/naming_conventions.yaml`: Configuration file for naming patterns
+  - `ciclone/services/naming_service.py`: Service class for naming logic
+  - `ciclone/services/io/subject_importer.py`: Updated to use NamingService
+  - `ciclone/controllers/subject_controller.py`: Integrated NamingService
+  - `tests/test_naming_service.py`: Unit tests for naming functionality
 
 ### Configuration Transaction Management Redesign (2025)
 - **Complete UX Overhaul**: Redesigned configuration editing workflow to keep all changes in memory until explicitly saved
