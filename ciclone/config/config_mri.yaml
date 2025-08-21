@@ -5,32 +5,6 @@ stages:
   auto_clean: true
   operations:
   - type: reorient_to_standard
-    workdir: preop/ct
-    parameters:
-      input_file: ${name}_CT_Bone
-      output_file: ${name}_CT_Bone_R2S
-  - type: open_fsleyes
-    workdir: preop/ct
-    parameters:
-      input_file: ${name}_CT_Bone_R2S
-  - type: apply_nudgetransformation
-    workdir: preop/ct
-    parameters:
-      input_file: ${name}_CT_Bone_R2S
-      transformation_file: ${name}_CT_Bone_R2S.mat
-      ref_file: ${name}_CT_Bone_R2S
-      output_file_name: ${name}_CT_Bone_R2S_N
-  - type: crop
-    workdir: preop/ct
-    parameters:
-      input_file: ${name}_CT_Bone_R2S_N
-      output_filename: ${name}_CT_Bone_C
-  - type: move
-    workdir: preop/ct
-    parameters:
-      input_file: ${name}_CT_Bone_C
-      output_file: ${subj_dir}/processed_tmp
-  - type: reorient_to_standard
     workdir: postop/ct
     parameters:
       input_file: ${name}_CT_Electrodes
