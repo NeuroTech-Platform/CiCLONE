@@ -11,6 +11,8 @@ import os
 import shutil
 import re
 from pathlib import Path
+import nibabel as nib
+import numpy as np
 from typing import Optional
 from ciclone.domain.subject import Subject
 from ciclone.services.io.subject_file_service import SubjectFileService
@@ -19,12 +21,68 @@ from ciclone.services.io.schema_processor import SchemaProcessor
 
 class SubjectImporter:
     @staticmethod
-    def _detect_mri_modality(filename):
+    def _detect_mri_modality_from_header(filepath):
         """
-        Detect MRI modality from filename.
+        Try to detect MRI modality from NIFTI header metadata.
+        
+        Args:
+            filepath (str): Path to the NIFTI file
+            
+        Returns:
+            str or None: Detected modality or None if unable to determine
+        """
+        try:
+            # Load NIFTI file
+            img = nib.load(filepath)
+            header = img.header
+            
+            # Get description field which often contains sequence info
+            descrip = header.get('descrip', b'')
+            
+            # Handle bytes or array
+            if isinstance(descrip, bytes):
+                descrip_str = descrip.decode('utf-8', errors='ignore').strip()
+            elif isinstance(descrip, np.ndarray):
+                descrip_str = descrip.tobytes().decode('utf-8', errors='ignore').strip().rstrip('\x00')
+            else:
+                descrip_str = str(descrip)
+            
+            descrip_lower = descrip_str.lower()
+            
+            # Check for modality patterns in description
+            if any(x in descrip_lower for x in ['t1', 'mprage', 'spgr', r'ir\gr', '3d ir']):
+                return 'T1'
+            elif any(x in descrip_lower for x in ['t2', 'tse', 'fse']) and 'flair' not in descrip_lower:
+                return 'T2'
+            elif 'flair' in descrip_lower:
+                return 'FLAIR'
+            elif any(x in descrip_lower for x in ['dwi', 'diffusion', 'dti']):
+                return 'DWI'
+            elif any(x in descrip_lower for x in ['swi', 'susceptibility']):
+                return 'SWI'
+            elif any(x in descrip_lower for x in ['tof', 'time of flight']):
+                return 'TOF'
+            elif any(x in descrip_lower for x in ['pd', 'proton']):
+                return 'PDW'
+            elif any(x in descrip_lower for x in ['bold', 'functional', 'fmri']):
+                return 'BOLD'
+            elif any(x in descrip_lower for x in ['asl', 'arterial']):
+                return 'ASL'
+                
+        except Exception as e:
+            # If we can't read the header, return None
+            print(f"Warning: Could not read NIFTI header from {filepath}: {e}")
+            
+        return None
+    
+    @staticmethod
+    def _detect_mri_modality(filename, filepath=None):
+        """
+        Detect MRI modality from filename patterns and/or NIFTI header.
         
         Args:
             filename (str): The filename to analyze
+            filepath (str, optional): Full path to the file for reading header
             
         Returns:
             str: Detected modality (T1, T2, FLAIR, DWI, etc.) or 'MRI' if unknown
@@ -45,11 +103,17 @@ class SubjectImporter:
             'ASL': [r'asl', r'arterial_spin', r'arterial-spin']
         }
         
-        # Check each modality pattern
+        # First check filename patterns
         for modality, patterns in modality_patterns.items():
             for pattern in patterns:
                 if re.search(pattern, filename_lower):
                     return modality
+        
+        # If no filename match and filepath provided, try to read header
+        if filepath and os.path.exists(filepath):
+            header_modality = SubjectImporter._detect_mri_modality_from_header(filepath)
+            if header_modality:
+                return header_modality
         
         # Default fallback
         return 'MRI'
@@ -129,12 +193,12 @@ class SubjectImporter:
         elif file_type == "post_ct":
             new_filename = f"{naming_service.get_post_ct_filename(subject_name)}{file_extension}"
         elif file_type == "pre_mri":
-            # Detect MRI modality from filename
-            modality = SubjectImporter._detect_mri_modality(source_path.name)
+            # Detect MRI modality from filename and/or header
+            modality = SubjectImporter._detect_mri_modality(source_path.name, str(source_path))
             new_filename = f"{naming_service.get_pre_mri_filename(subject_name, modality)}{file_extension}"
         elif file_type == "post_mri":
-            # Detect MRI modality from filename
-            modality = SubjectImporter._detect_mri_modality(source_path.name)
+            # Detect MRI modality from filename and/or header
+            modality = SubjectImporter._detect_mri_modality(source_path.name, str(source_path))
             new_filename = f"{naming_service.get_post_mri_filename(subject_name, modality)}{file_extension}"
         else:
             # Fallback to original filename if type is unknown
