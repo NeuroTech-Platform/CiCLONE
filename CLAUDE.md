@@ -252,3 +252,17 @@ The codebase has been enhanced with strict MVC compliance through the following 
   - `ciclone/controllers/config_dialog_controller.py`: Updated dialog handling and context switching
   - `ciclone/ui/PipelineConfigDialog.py`: Visual indicators and real-time UI updates
 - **Key Benefits**: Safer experimentation, clearer visual feedback, reduced user friction, atomic saves, consistent "Save" meaning across the application
+
+### Subject Duplication Feature (2025)
+- **Context Menu Integration**: Added "Duplicate Subject" action to right-click context menu for subjects
+- **Smart File Renaming**: Automatically renames all internal files containing the original subject name during duplication
+- **Metadata Preservation**: Copies all subject metadata (schema, pre/post CT/MRI paths) to the new subject
+- **Code Reuse Architecture**: Maximizes reuse of existing rename and validation logic to minimize code duplication
+- **Files Handled**: Properly renames special files like MNI transformation matrices (`MNI_${subject}_ref_brain.mat`), pipeline outputs, and processed files
+- **Implementation Details**:
+  - `ciclone/ui/MainWindow.py`: Added duplicate action to context menu
+  - `ciclone/controllers/main_controller.py`: Delegation method for duplication
+  - `ciclone/controllers/subject_controller.py`: Core duplication logic with file copying and renaming
+  - Reuses existing `_rename_internal_files` method for efficient file renaming
+  - Reuses `validate_subject_rename` for validation (same rules apply)
+- **User Experience**: Prompts for new name with sensible default (`${original}_copy`), provides clear success/error feedback

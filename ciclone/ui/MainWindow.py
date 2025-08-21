@@ -367,6 +367,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             rename_action.triggered.connect(lambda: self.rename_subject(single_path))
             context_menu.addAction(rename_action)
             
+            duplicate_action = QAction("Duplicate Subject", self)
+            duplicate_action.triggered.connect(lambda: self.duplicate_subject(single_path))
+            context_menu.addAction(duplicate_action)
+            
             delete_action = QAction("Delete Subject", self)
             delete_action.triggered.connect(lambda: self.delete_subject(single_path))
             context_menu.addAction(delete_action)
@@ -390,6 +394,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         if ok and new_name.strip() and new_name != current_name:
             success = self.main_controller.rename_subject(current_name, new_name.strip())
+            if success:
+                self.refresh_subject_tree()
+
+    def duplicate_subject(self, subject_path):
+        """Duplicate a subject directory."""
+        current_name = os.path.basename(subject_path)
+        
+        new_name, ok = QInputDialog.getText(
+            self, 
+            "Duplicate Subject", 
+            f"Enter name for duplicate of '{current_name}':",
+            text=f"{current_name}_copy"
+        )
+        
+        if ok and new_name.strip() and new_name != current_name:
+            success = self.main_controller.duplicate_subject(current_name, new_name.strip())
             if success:
                 self.refresh_subject_tree()
 
