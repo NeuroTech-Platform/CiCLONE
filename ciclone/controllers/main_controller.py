@@ -247,6 +247,10 @@ class MainController(QObject):
         """Rename a subject (delegated to SubjectController)."""
         return self.subject_controller.rename_subject(current_name, new_name)
     
+    def duplicate_subject(self, original_name: str, new_name: str) -> bool:
+        """Duplicate a subject (delegated to SubjectController)."""
+        return self.subject_controller.duplicate_subject(original_name, new_name)
+    
     def delete_subject(self, subject_name: str) -> bool:
         """Delete a subject (delegated to SubjectController)."""
         return self.subject_controller.delete_subject(subject_name)

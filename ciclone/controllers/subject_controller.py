@@ -213,6 +213,84 @@ class SubjectController:
         
         return renamed_count
     
+    def duplicate_subject(self, original_name: str, new_name: str) -> bool:
+        """Duplicate a subject with validation and file operations, including renaming internal files."""
+        # Validate the duplication operation (reusing rename validation logic)
+        validation = self.subject_model.validate_subject_rename(original_name, new_name)
+        if not validation.is_valid:
+            self._log_message("error", f"Duplication validation failed: {validation.error_message}")
+            return False
+        
+        output_directory = self.subject_model.get_output_directory()
+        if not output_directory:
+            self._log_message("error", "Output directory not set")
+            return False
+        
+        original_path = os.path.join(output_directory, original_name)
+        new_path = os.path.join(output_directory, new_name)
+        
+        # Show loading cursor during duplication
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        
+        try:
+            self._log_message("info", f"Duplicating subject '{original_name}' as '{new_name}'...")
+            
+            # Copy the entire subject directory
+            shutil.copytree(original_path, new_path)
+            
+            # Rename internal files that contain the original subject name
+            renamed_files = self._rename_internal_files(new_path, original_name, new_name)
+            
+            # Get the original subject data to copy its metadata
+            original_subject = self.subject_model.get_subject(original_name)
+            if not original_subject:
+                # This should not happen if validation passed, but handle it gracefully
+                shutil.rmtree(new_path)
+                self._log_message("error", f"Original subject '{original_name}' not found in model")
+                return False
+            
+            # Create a copy of the subject data with the new name
+            new_subject_data = SubjectData(
+                name=new_name,
+                schema=original_subject.schema,
+                pre_ct=original_subject.pre_ct,
+                pre_mri=original_subject.pre_mri,
+                post_ct=original_subject.post_ct,
+                post_mri=original_subject.post_mri
+            )
+            
+            # Add the new subject to the model (skip existence check since we just created it)
+            new_subject = self.subject_model.add_subject(new_subject_data, skip_existence_check=True)
+            
+            if new_subject:
+                if renamed_files > 0:
+                    self._log_message("success", f"Subject duplicated as '{new_name}' (including {renamed_files} renamed internal files)")
+                else:
+                    self._log_message("success", f"Subject duplicated as '{new_name}'")
+                
+                # Notify view to refresh if available
+                if self._view and hasattr(self._view, 'refresh_subject_tree'):
+                    self._view.refresh_subject_tree()
+                    
+                return True
+            else:
+                # If model update failed, clean up the copied directory
+                shutil.rmtree(new_path)
+                self._log_message("error", "Failed to register duplicated subject in model")
+                return False
+                
+        except Exception as e:
+            self._log_message("error", f"Failed to duplicate subject: {str(e)}")
+            # Clean up if directory was partially created
+            if os.path.exists(new_path):
+                try:
+                    shutil.rmtree(new_path)
+                except:
+                    pass
+            return False
+        finally:
+            QApplication.restoreOverrideCursor()
+    
     def delete_subject(self, subject_name: str) -> bool:
         """Delete a single subject with validation and file operations."""
         return self._delete_single_subject(subject_name, show_cursor=True, refresh_view=True)
