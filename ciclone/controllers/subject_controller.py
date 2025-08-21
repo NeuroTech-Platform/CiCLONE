@@ -291,6 +291,72 @@ class SubjectController:
         finally:
             QApplication.restoreOverrideCursor()
     
+    def delete_file(self, file_path: str) -> bool:
+        """Delete a file within a subject folder with validation."""
+        if not os.path.exists(file_path):
+            self._log_message("error", f"File does not exist: {file_path}")
+            return False
+        
+        if not os.path.isfile(file_path):
+            self._log_message("error", f"Path is not a file: {file_path}")
+            return False
+        
+        output_directory = self.subject_model.get_output_directory()
+        if not output_directory:
+            self._log_message("error", "Output directory not set")
+            return False
+        
+        # Verify file is within a subject directory
+        try:
+            rel_path = os.path.relpath(file_path, output_directory)
+            if rel_path.startswith('..'):
+                self._log_message("error", f"File is outside output directory: {file_path}")
+                return False
+            
+            path_parts = rel_path.split(os.sep)
+            if len(path_parts) < 2:
+                self._log_message("error", f"File is not within a subject folder: {file_path}")
+                return False
+            
+            subject_name = path_parts[0]
+            
+            # Verify the subject exists
+            if subject_name not in self.subject_model.get_subject_names():
+                self._log_message("error", f"Subject '{subject_name}' not found in model")
+                return False
+            
+            # Don't allow deletion of protected directories
+            protected_dirs = {'images', 'documents', 'processed_tmp', 'pipeline_output'}
+            parent_dir = os.path.basename(os.path.dirname(file_path))
+            file_name = os.path.basename(file_path)
+            
+            # Check if trying to delete a protected directory itself
+            if file_name in protected_dirs and os.path.isdir(file_path):
+                self._log_message("error", f"Cannot delete protected directory: {file_name}")
+                return False
+            
+            # Delete the file
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                os.remove(file_path)
+                self._log_message("success", f"Deleted file: {file_name} from subject '{subject_name}'")
+                
+                # Refresh view if available
+                if self._view and hasattr(self._view, 'refresh_subject_tree'):
+                    self._view.refresh_subject_tree()
+                
+                return True
+                
+            except Exception as e:
+                self._log_message("error", f"Failed to delete file: {str(e)}")
+                return False
+            finally:
+                QApplication.restoreOverrideCursor()
+                
+        except Exception as e:
+            self._log_message("error", f"Error processing file path: {str(e)}")
+            return False
+    
     def delete_subject(self, subject_name: str) -> bool:
         """Delete a single subject with validation and file operations."""
         return self._delete_single_subject(subject_name, show_cursor=True, refresh_view=True)

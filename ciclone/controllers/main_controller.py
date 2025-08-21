@@ -67,6 +67,9 @@ class MainController(QObject):
         if hasattr(view, 'subjectTreeView'):
             self.tree_view_controller.set_tree_view(view.subjectTreeView)
             self.view_delegate.set_tree_view(view.subjectTreeView)
+            
+            # Connect double-click signal for file preview
+            self.view_delegate.item_activated.connect(self.on_file_double_click)
         
     def set_log_callback(self, callback: Callable[[str, str], None]):
         """Set logging callback and propagate to child controllers."""
@@ -254,6 +257,10 @@ class MainController(QObject):
     def delete_subject(self, subject_name: str) -> bool:
         """Delete a subject (delegated to SubjectController)."""
         return self.subject_controller.delete_subject(subject_name)
+    
+    def delete_file(self, file_path: str) -> bool:
+        """Delete a file within a subject (delegated to SubjectController)."""
+        return self.subject_controller.delete_file(file_path)
     
     def delete_multiple_subjects(self, subject_names: List[str]) -> Tuple[int, List[str]]:
         """Delete multiple subjects (delegated to SubjectController)."""
@@ -505,6 +512,11 @@ class MainController(QObject):
     def is_previewable_file(self, file_path: str) -> bool:
         """Check if file can be previewed (delegated to ViewDelegate)."""
         return self.view_delegate.is_previewable_file(file_path)
+    
+    def on_file_double_click(self, file_path: str):
+        """Handle double-click on file to open preview."""
+        if file_path and self.is_previewable_file(file_path):
+            self.open_file_preview(file_path)
     
     def open_file_preview(self, file_path: str) -> bool:
         """Open appropriate preview for any supported file type."""

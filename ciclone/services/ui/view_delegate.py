@@ -108,6 +108,69 @@ class ViewDelegate(QObject):
         
         return list(dict.fromkeys(subject_names))
     
+    def get_selection_context(self, file_path: str) -> Dict[str, Any]:
+        """
+        Determine the context of a selected file or directory.
+        
+        Returns:
+            Dictionary with:
+            - 'type': 'file', 'subject_folder', or 'other'
+            - 'is_file': Boolean indicating if it's a file
+            - 'is_subject_folder': Boolean indicating if it's a subject folder
+            - 'subject_name': Name of the containing subject (if applicable)
+            - 'is_deletable': Whether the item can be deleted
+            - 'parent_path': Parent directory path
+        """
+        context = {
+            'type': 'other',
+            'is_file': False,
+            'is_subject_folder': False,
+            'subject_name': None,
+            'is_deletable': False,
+            'parent_path': None
+        }
+        
+        if not file_path or not self._output_directory:
+            return context
+        
+        # Determine if it's a file or directory
+        is_file = os.path.isfile(file_path)
+        is_dir = os.path.isdir(file_path)
+        
+        if not (is_file or is_dir):
+            return context
+        
+        context['is_file'] = is_file
+        context['parent_path'] = os.path.dirname(file_path)
+        
+        # Check if it's a subject folder (direct child of output directory)
+        if is_dir and context['parent_path'] == self._output_directory:
+            context['type'] = 'subject_folder'
+            context['is_subject_folder'] = True
+            context['subject_name'] = os.path.basename(file_path)
+            context['is_deletable'] = True  # Subject folders can be deleted through existing mechanism
+            return context
+        
+        # Check if it's a file within a subject folder
+        if is_file:
+            # Parse the path to find the subject folder
+            rel_path = os.path.relpath(file_path, self._output_directory)
+            path_parts = rel_path.split(os.sep)
+            
+            if len(path_parts) >= 2:  # At least subject_name/file
+                subject_name = path_parts[0]
+                subject_path = os.path.join(self._output_directory, subject_name)
+                
+                # Verify this is actually a subject folder
+                if os.path.isdir(subject_path):
+                    context['type'] = 'file'
+                    context['subject_name'] = subject_name
+                    
+                    # Files are deletable by default
+                    context['is_deletable'] = True
+        
+        return context
+    
     def get_file_path_from_index(self, index: QModelIndex) -> Optional[str]:
         """Extract file path from tree view model index."""
         if not index.isValid() or not self._tree_view:

@@ -266,3 +266,34 @@ The codebase has been enhanced with strict MVC compliance through the following 
   - Reuses existing `_rename_internal_files` method for efficient file renaming
   - Reuses `validate_subject_rename` for validation (same rules apply)
 - **User Experience**: Prompts for new name with sensible default (`${original}_copy`), provides clear success/error feedback
+
+### File Deletion Within Subjects Feature (2025)
+- **Context-Aware Menus**: Enhanced right-click context menu to detect files vs. subject folders and show appropriate actions
+- **Smart Selection Detection**: Added `get_selection_context()` method in ViewDelegate to determine if selected item is a file within a subject folder
+- **Safety-First Architecture**: Multiple validation layers prevent accidental deletion of critical directories or files outside subject folders
+- **Mixed Selection Handling**: Intelligently handles mixed file/folder selections with clear user feedback
+- **Implementation Details**:
+  - `ciclone/services/ui/view_delegate.py`: Added context detection with path analysis and safety checks
+  - `ciclone/ui/MainWindow.py`: Enhanced context menu logic with separate file and subject actions
+  - `ciclone/controllers/subject_controller.py`: Added `delete_file()` method with comprehensive validation
+  - `ciclone/controllers/main_controller.py`: Delegation method for file deletion
+- **Security Features**: 
+  - Only allows deletion of files within verified subject folders
+  - Prevents deletion of files outside output directory
+  - Validates subject exists in model before allowing file operations
+  - Protects against deletion of system directories (though allows files within them)
+- **User Experience**: Clear confirmation dialogs showing file name, subject context, and full path for informed decisions
+
+### Double-Click File Opening Behavior (2025)
+- **Improved UX**: Changed file opening from single-click to double-click to prevent interference with file management operations
+- **OS-Standard Behavior**: Aligns with standard operating system conventions (double-click to open, single-click to select)
+- **Enhanced File Management**: Single-click now only handles selection, enabling easier context menu access and file deletion workflows
+- **Code Reuse Architecture**: Leveraged existing ViewDelegate double-click infrastructure (`item_activated` signal)
+- **Implementation Details**:
+  - `ciclone/ui/MainWindow.py`: Modified `on_tree_item_clicked()` to handle selection only
+  - `ciclone/controllers/main_controller.py`: Added `on_file_double_click()` handler and connected ViewDelegate signal
+  - `ciclone/services/ui/view_delegate.py`: Existing double-click detection via `activated` signal (already implemented)
+- **User Experience**:
+  - **Single-click**: Selects file/folder (enables context menus, file operations)
+  - **Double-click**: Opens ImageViewer for previewable files (.nii, .nii.gz, .png, .jpg, etc.)
+  - **Right-click**: Shows context menu with appropriate actions (delete, subject operations)

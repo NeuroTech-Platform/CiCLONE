@@ -339,13 +339,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.textBrowser.ensureCursorVisible()
 
     def on_tree_item_clicked(self, index):
-        """Handle tree item clicks for file preview."""
-        file_path = self.main_controller.get_file_path_from_tree_index(index)
-        if file_path and self.main_controller.is_previewable_file(file_path):
-            self.main_controller.open_file_preview(file_path)
+        """Handle tree item clicks for selection only."""
+        # Single-click now only handles selection
+        # File preview is handled by double-click in ViewDelegate
+        pass
 
     def show_context_menu(self, position):
-        """Show context menu for subject management."""
+        """Show context menu for subject and file management."""
         index = self.subjectTreeView.indexAt(position)
         if not index.isValid():
             return
@@ -354,32 +354,76 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not selected_indexes:
             return
         
-        subject_paths = self.main_controller.get_selected_subject_paths_from_tree(selected_indexes)
-        if not subject_paths:
+        # Get all selected paths (can be mix of files and folders)
+        selected_paths = self.main_controller.view_delegate.get_selected_items()
+        if not selected_paths:
             return
         
         context_menu = QMenu(self)
         
-        if len(subject_paths) == 1:
-            single_path = subject_paths[0]
-            
-            rename_action = QAction("Rename Subject", self)
-            rename_action.triggered.connect(lambda: self.rename_subject(single_path))
-            context_menu.addAction(rename_action)
-            
-            duplicate_action = QAction("Duplicate Subject", self)
-            duplicate_action.triggered.connect(lambda: self.duplicate_subject(single_path))
-            context_menu.addAction(duplicate_action)
-            
-            delete_action = QAction("Delete Subject", self)
-            delete_action.triggered.connect(lambda: self.delete_subject(single_path))
-            context_menu.addAction(delete_action)
-        else:
-            delete_action = QAction(f"Delete {len(subject_paths)} Subjects", self)
-            delete_action.triggered.connect(lambda: self.delete_multiple_subjects(subject_paths))
-            context_menu.addAction(delete_action)
+        # Analyze selection to determine what actions to show
+        selection_contexts = []
+        subject_folders = []
+        files_to_delete = []
         
-        context_menu.exec(self.subjectTreeView.mapToGlobal(position))
+        for path in selected_paths:
+            context = self.main_controller.view_delegate.get_selection_context(path)
+            selection_contexts.append(context)
+            
+            if context['type'] == 'subject_folder':
+                subject_folders.append(path)
+            elif context['type'] == 'file' and context['is_deletable']:
+                files_to_delete.append(path)
+        
+        # Determine what kind of selection we have
+        has_subjects = len(subject_folders) > 0
+        has_files = len(files_to_delete) > 0
+        has_mixed = has_subjects and has_files
+        
+        if has_mixed:
+            # Mixed selection - no actions
+            info_action = QAction("Mixed selection - no actions available", self)
+            info_action.setEnabled(False)
+            context_menu.addAction(info_action)
+        elif has_subjects:
+            # Subject folder(s) selected - show subject actions
+            if len(subject_folders) == 1:
+                single_path = subject_folders[0]
+                
+                rename_action = QAction("Rename Subject", self)
+                rename_action.triggered.connect(lambda: self.rename_subject(single_path))
+                context_menu.addAction(rename_action)
+                
+                duplicate_action = QAction("Duplicate Subject", self)
+                duplicate_action.triggered.connect(lambda: self.duplicate_subject(single_path))
+                context_menu.addAction(duplicate_action)
+                
+                delete_action = QAction("Delete Subject", self)
+                delete_action.triggered.connect(lambda: self.delete_subject(single_path))
+                context_menu.addAction(delete_action)
+            else:
+                delete_action = QAction(f"Delete {len(subject_folders)} Subjects", self)
+                delete_action.triggered.connect(lambda: self.delete_multiple_subjects(subject_folders))
+                context_menu.addAction(delete_action)
+        elif has_files:
+            # File(s) selected - show file actions
+            if len(files_to_delete) == 1:
+                file_name = os.path.basename(files_to_delete[0])
+                delete_action = QAction(f"Delete '{file_name}'", self)
+                delete_action.triggered.connect(lambda: self.delete_file(files_to_delete[0]))
+                context_menu.addAction(delete_action)
+            else:
+                delete_action = QAction(f"Delete {len(files_to_delete)} Files", self)
+                delete_action.triggered.connect(lambda: self.delete_multiple_files(files_to_delete))
+                context_menu.addAction(delete_action)
+        else:
+            # Other selection - no actions
+            info_action = QAction("No actions available for this selection", self)
+            info_action.setEnabled(False)
+            context_menu.addAction(info_action)
+        
+        if context_menu.actions():
+            context_menu.exec(self.subjectTreeView.mapToGlobal(position))
 
     def rename_subject(self, subject_path):
         """Rename a subject directory."""
@@ -455,14 +499,63 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
             if success_count > 0:
                 self.refresh_subject_tree()
+    
+    def delete_file(self, file_path):
+        """Delete a single file within a subject."""
+        file_name = os.path.basename(file_path)
+        
+        # Get the subject context
+        context = self.main_controller.view_delegate.get_selection_context(file_path)
+        subject_name = context.get('subject_name', 'Unknown')
+        
+        reply = QMessageBox.question(
+            self,
+            "Delete File",
+            f"Are you sure you want to delete '{file_name}'?\n\n"
+            f"Subject: {subject_name}\n"
+            f"Path: {file_path}\n\n"
+            f"This action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            success = self.main_controller.delete_file(file_path)
+            if success:
+                self.refresh_subject_tree()
+    
+    def delete_multiple_files(self, file_paths):
+        """Delete multiple files."""
+        files_list = "\n".join(f"• {os.path.basename(path)}" for path in file_paths[:10])
+        if len(file_paths) > 10:
+            files_list += f"\n... and {len(file_paths) - 10} more"
+        
+        reply = QMessageBox.question(
+            self,
+            "Delete Multiple Files",
+            f"Are you sure you want to delete {len(file_paths)} files?\n\n"
+            f"{files_list}\n\n"
+            f"This action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            success_count = 0
+            for file_path in file_paths:
+                if self.main_controller.delete_file(file_path):
+                    success_count += 1
+            
+            if success_count > 0:
+                self.refresh_subject_tree()
                 
-            if success_count != len(subject_paths):
-                failed_count = len(subject_paths) - success_count
+            if success_count != len(file_paths):
+                failed_count = len(file_paths) - success_count
                 QMessageBox.warning(
                     self,
                     "Partial Deletion",
-                    f"Successfully deleted {success_count} subjects.\n"
-                    f"Failed to delete {failed_count} subjects."
+                    f"Successfully deleted {success_count} files.\n"
+                    f"Failed to delete {failed_count} files."
                 )
 
     def refresh_subject_tree(self):
