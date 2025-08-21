@@ -29,6 +29,11 @@ class ParameterWidget(QFrame):
     def set_value(self, value: Any) -> None:
         """Set the value of the parameter."""
         raise NotImplementedError
+    
+    def cleanup(self) -> None:
+        """Clean up resources when widget is being destroyed."""
+        # Default implementation - subclasses can override for specific cleanup
+        pass
 
 
 class PathParameterWidget(ParameterWidget):
@@ -58,12 +63,22 @@ class PathParameterWidget(ParameterWidget):
             self.line_edit.setText(str(default_value))
         
         # Connect signal - use editingFinished to avoid prompting on every keystroke
-        self.line_edit.editingFinished.connect(lambda: self.valueChanged.emit(self.param_name, self.line_edit.text()))
+        # Use a safe signal connection that checks if the widget still exists
+        self.line_edit.editingFinished.connect(self._on_text_changed)
         
         layout.addWidget(label)
         layout.addWidget(self.line_edit)
         
         self.setLayout(layout)
+    
+    def _on_text_changed(self):
+        """Safe signal handler that checks if widget still exists."""
+        try:
+            if hasattr(self, 'line_edit') and self.line_edit is not None:
+                self.valueChanged.emit(self.param_name, self.line_edit.text())
+        except RuntimeError:
+            # Widget has been deleted, ignore the signal
+            pass
     
     def get_value(self) -> str:
         return self.line_edit.text()
@@ -111,12 +126,21 @@ class FloatParameterWidget(ParameterWidget):
         if default_value is not None:
             self.spin_box.setValue(float(default_value))
         
-        # Connect signal
-        self.spin_box.valueChanged.connect(lambda v: self.valueChanged.emit(self.param_name, v))
+        # Connect signal with safe handler
+        self.spin_box.valueChanged.connect(self._on_value_changed)
         
         layout.addWidget(label)
         layout.addWidget(self.spin_box)
         self.setLayout(layout)
+    
+    def _on_value_changed(self, value):
+        """Safe signal handler that checks if widget still exists."""
+        try:
+            if hasattr(self, 'spin_box') and self.spin_box is not None:
+                self.valueChanged.emit(self.param_name, value)
+        except RuntimeError:
+            # Widget has been deleted, ignore the signal
+            pass
     
     def get_value(self) -> float:
         return self.spin_box.value()
@@ -153,12 +177,21 @@ class IntParameterWidget(ParameterWidget):
         if default_value is not None:
             self.spin_box.setValue(int(default_value))
         
-        # Connect signal
-        self.spin_box.valueChanged.connect(lambda v: self.valueChanged.emit(self.param_name, v))
+        # Connect signal with safe handler
+        self.spin_box.valueChanged.connect(self._on_value_changed)
         
         layout.addWidget(label)
         layout.addWidget(self.spin_box)
         self.setLayout(layout)
+    
+    def _on_value_changed(self, value):
+        """Safe signal handler that checks if widget still exists."""
+        try:
+            if hasattr(self, 'spin_box') and self.spin_box is not None:
+                self.valueChanged.emit(self.param_name, value)
+        except RuntimeError:
+            # Widget has been deleted, ignore the signal
+            pass
     
     def get_value(self) -> int:
         return self.spin_box.value()
@@ -187,12 +220,21 @@ class BoolParameterWidget(ParameterWidget):
         if default_value is not None:
             self.checkbox.setChecked(bool(default_value))
         
-        # Connect signal
-        self.checkbox.toggled.connect(lambda v: self.valueChanged.emit(self.param_name, v))
+        # Connect signal with safe handler
+        self.checkbox.toggled.connect(self._on_toggled)
         
         layout.addWidget(self.checkbox)
         layout.addStretch()
         self.setLayout(layout)
+    
+    def _on_toggled(self, checked):
+        """Safe signal handler that checks if widget still exists."""
+        try:
+            if hasattr(self, 'checkbox') and self.checkbox is not None:
+                self.valueChanged.emit(self.param_name, checked)
+        except RuntimeError:
+            # Widget has been deleted, ignore the signal
+            pass
     
     def get_value(self) -> bool:
         return self.checkbox.isChecked()
@@ -228,11 +270,21 @@ class StringParameterWidget(ParameterWidget):
             self.line_edit.setText(str(default_value))
         
         # Connect signal - use editingFinished to avoid prompting on every keystroke
-        self.line_edit.editingFinished.connect(lambda: self.valueChanged.emit(self.param_name, self.line_edit.text()))
+        # Use a safe signal connection that checks if the widget still exists
+        self.line_edit.editingFinished.connect(self._on_text_changed)
         
         layout.addWidget(label)
         layout.addWidget(self.line_edit)
         self.setLayout(layout)
+    
+    def _on_text_changed(self):
+        """Safe signal handler that checks if widget still exists."""
+        try:
+            if hasattr(self, 'line_edit') and self.line_edit is not None:
+                self.valueChanged.emit(self.param_name, self.line_edit.text())
+        except RuntimeError:
+            # Widget has been deleted, ignore the signal
+            pass
     
     def get_value(self) -> str:
         return self.line_edit.text()
@@ -268,12 +320,21 @@ class ChoiceParameterWidget(ParameterWidget):
         if default_value is not None and str(default_value) in [str(c) for c in choices]:
             self.combo_box.setCurrentText(str(default_value))
         
-        # Connect signal
-        self.combo_box.currentTextChanged.connect(lambda v: self.valueChanged.emit(self.param_name, v))
+        # Connect signal with safe handler
+        self.combo_box.currentTextChanged.connect(self._on_text_changed)
         
         layout.addWidget(label)
         layout.addWidget(self.combo_box)
         self.setLayout(layout)
+    
+    def _on_text_changed(self, text):
+        """Safe signal handler that checks if widget still exists."""
+        try:
+            if hasattr(self, 'combo_box') and self.combo_box is not None:
+                self.valueChanged.emit(self.param_name, text)
+        except RuntimeError:
+            # Widget has been deleted, ignore the signal
+            pass
     
     def get_value(self) -> str:
         return self.combo_box.currentText()

@@ -82,16 +82,28 @@ class ConfigService:
         return None
     
     def validate_config(self, config: Dict[str, Any]) -> bool:
-        """Validate config has required structure."""
-        stages = config.get('stages', [])
+        """Validate config has required pipeline structure.
+        
+        Valid pipeline configs must have:
+        - A 'name' field (pipeline display name)
+        - A 'stages' field (list of pipeline stages)
+        
+        This filters out system configs like naming_conventions.yaml
+        which don't have these pipeline-specific fields.
+        """
+        # Must have a pipeline name
+        if 'name' not in config or not isinstance(config['name'], str):
+            return False
+        
+        # Must have stages field (can be empty for new configs)
+        if 'stages' not in config:
+            return False
+            
+        stages = config['stages']
         if not isinstance(stages, list):
             return False
         
-        # Allow empty stages for new configurations
-        if not stages:
-            return True
-        
-        # Check each stage has required fields
+        # If stages exist, validate their structure
         for stage in stages:
             if not isinstance(stage, dict):
                 return False
