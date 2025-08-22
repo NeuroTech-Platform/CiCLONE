@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file 'ImagesViewer.ui'
+# Form implementation generated from reading ui file 'ciclone/forms/ImagesViewer.ui'
 #
 # Created by: PyQt6 UI code generator 6.9.1
 #
@@ -64,7 +64,7 @@ class Ui_ImagesViewer(object):
         self.gridLayout_4.addWidget(self.treeScrollArea_2, 0, 0, 1, 1)
         self.toolBox.addItem(self.page_4, "")
         self.page_5 = QtWidgets.QWidget()
-        self.page_5.setGeometry(QtCore.QRect(0, 0, 546, 123))
+        self.page_5.setGeometry(QtCore.QRect(0, 0, 203, 123))
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -104,7 +104,7 @@ class Ui_ImagesViewer(object):
         self.verticalLayout_2.addWidget(self.AddElectrodePushButton)
         self.toolBox.addItem(self.page_5, "")
         self.page_6 = QtWidgets.QWidget()
-        self.page_6.setGeometry(QtCore.QRect(0, 0, 546, 110))
+        self.page_6.setGeometry(QtCore.QRect(0, 0, 546, 160))
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -149,7 +149,7 @@ class Ui_ImagesViewer(object):
         self.verticalLayout_5.addWidget(self.ProcessCoordinatesPushButton)
         self.toolBox.addItem(self.page_6, "")
         self.page_7 = QtWidgets.QWidget()
-        self.page_7.setGeometry(QtCore.QRect(0, 0, 138, 366))
+        self.page_7.setGeometry(QtCore.QRect(0, 0, 266, 366))
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(1)
@@ -198,7 +198,7 @@ class Ui_ImagesViewer(object):
         self.verticalLayout_4.addLayout(self.horizontalLayout_4)
         self.toolBox.addItem(self.page_7, "")
         self.page_8 = QtWidgets.QWidget()
-        self.page_8.setGeometry(QtCore.QRect(0, 0, 205, 78))
+        self.page_8.setGeometry(QtCore.QRect(0, 0, 546, 78))
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -292,10 +292,11 @@ class Ui_ImagesViewer(object):
         self.actionCrosshairs = QtGui.QAction(parent=ImagesViewer)
         self.actionCrosshairs.setCheckable(True)
         self.actionCrosshairs.setObjectName("actionCrosshairs")
-        self.mainToolBar.addAction(self.actionCrosshairs)
         self.actionToggleMarkers = QtGui.QAction(parent=ImagesViewer)
         self.actionToggleMarkers.setCheckable(True)
+        self.actionToggleMarkers.setChecked(True)
         self.actionToggleMarkers.setObjectName("actionToggleMarkers")
+        self.mainToolBar.addAction(self.actionCrosshairs)
         self.mainToolBar.addAction(self.actionToggleMarkers)
 
         self.retranslateUi(ImagesViewer)
@@ -313,9 +314,9 @@ class Ui_ImagesViewer(object):
         self.AddElectrodePushButton.setText(_translate("ImagesViewer", "Add Electrodes"))
         self.toolBox.setItemText(self.toolBox.indexOf(self.page_5), _translate("ImagesViewer", "Add Electrodes"))
         self.SetEntryPushButton.setText(_translate("ImagesViewer", "Set"))
-        self.EntryCoordinatesLabel.setText(_translate("ImagesViewer", "Tip - proximal part : "))
+        self.EntryCoordinatesLabel.setText(_translate("ImagesViewer", "Tip Point : "))
         self.SetOutputPushButton.setText(_translate("ImagesViewer", "Set"))
-        self.OutputCoordinatesLabel.setText(_translate("ImagesViewer", "End - distal part : "))
+        self.OutputCoordinatesLabel.setText(_translate("ImagesViewer", "Entry Point : "))
         self.ProcessCoordinatesPushButton.setText(_translate("ImagesViewer", "Process"))
         self.toolBox.setItemText(self.toolBox.indexOf(self.page_6), _translate("ImagesViewer", "Define Electrode Entry"))
         self.ElectrodeTreeWidget.headerItem().setText(0, _translate("ImagesViewer", "Name"))
@@ -334,7 +335,7 @@ class Ui_ImagesViewer(object):
         self.actionCrosshairs.setStatusTip(_translate("ImagesViewer", "Show/hide crosshairs that indicate current slice positions"))
         self.actionCrosshairs.setShortcut(_translate("ImagesViewer", "Ctrl+H"))
         self.actionToggleMarkers.setText(_translate("ImagesViewer", "🎯 Markers"))
-        self.actionToggleMarkers.setToolTip(_translate("ImagesViewer", "Toggle electrode markers across all views (Ctrl+M)"))
-        self.actionToggleMarkers.setStatusTip(_translate("ImagesViewer", "Show/hide electrode markers and contact points"))
+        self.actionToggleMarkers.setToolTip(_translate("ImagesViewer", "Toggle electrode markers visibility (Ctrl+M)"))
+        self.actionToggleMarkers.setStatusTip(_translate("ImagesViewer", "Show/hide electrode markers on all views"))
         self.actionToggleMarkers.setShortcut(_translate("ImagesViewer", "Ctrl+M"))
 from ciclone.ui.widgets.ClickableImageLabel import ClickableImageLabel

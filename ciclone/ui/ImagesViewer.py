@@ -940,8 +940,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             coords = self.last_clicked_coordinates
             
             # Update the electrode coordinate - same as setting it manually
-            if coord_type in ['entry', 'output']:
-                # Update entry/output point
+            if coord_type in ['tip', 'entry']:
+                # Update tip or entry point
                 success = self.electrode_controller.move_electrode_coordinate(electrode_name, coord_type, coords)
             else:
                 # Update individual contact point
@@ -968,17 +968,17 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             
         coordinates = self.electrode_controller.get_coordinates(electrode_name)
         
+        if coordinates and 'tip' in coordinates:
+            tip = coordinates['tip']
+            self.EntryCoordinatesLabel.setText(f"Tip Point : ({tip[0]}, {tip[1]}, {tip[2]})")
+        else:
+            self.EntryCoordinatesLabel.setText("Tip Point : ")
+            
         if coordinates and 'entry' in coordinates:
             entry = coordinates['entry']
-            self.EntryCoordinatesLabel.setText(f"Tip - proximal part : ({entry[0]}, {entry[1]}, {entry[2]})")
+            self.OutputCoordinatesLabel.setText(f"Entry Point : ({entry[0]}, {entry[1]}, {entry[2]})")
         else:
-            self.EntryCoordinatesLabel.setText("Tip - proximal part : ")
-            
-        if coordinates and 'output' in coordinates:
-            output = coordinates['output']
-            self.OutputCoordinatesLabel.setText(f"End - distal part : ({output[0]}, {output[1]}, {output[2]})")
-        else:
-            self.OutputCoordinatesLabel.setText("End - distal part : ")
+            self.OutputCoordinatesLabel.setText("Entry Point : ")
 
     def refresh_coordinate_display(self):
         """Refresh coordinate display for current electrode."""
@@ -1709,31 +1709,31 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         for electrode_name, structure in electrode_structures.items():
             if structure.has_tail and structure.tail_endpoint:
                 # Get output point from electrode points (tail extends outward from output point)
-                # CORRECTED: output = "End - distal part" (closer to skull surface, where tail starts)
-                if electrode_name in electrode_points and 'output' in electrode_points[electrode_name]:
+                # output_point = "Electrode Entry Point" (where electrode enters skull, tail starts here)
+                if electrode_name in electrode_points and 'entry' in electrode_points[electrode_name]:
                     hue = abs(hash(electrode_name)) % 360
                     tail_color = QColor()
                     tail_color.setHsv(hue, 150, 200, 120)  # Slightly more transparent/muted than contacts
                     
-                    output_point = electrode_points[electrode_name]['output']
+                    entry_point = electrode_points[electrode_name]['entry']
                     tail_endpoint = structure.tail_endpoint
                     
                     # Check if either point is visible on this slice
-                    if (self.image_controller.is_point_visible_on_slice(output_point, orientation, current_slices) or
+                    if (self.image_controller.is_point_visible_on_slice(entry_point, orientation, current_slices) or
                         self.image_controller.is_point_visible_on_slice(tail_endpoint, orientation, current_slices)):
                         
                         # Convert to pixel coordinates
-                        output_point_pixel = self.image_controller.convert_3d_to_pixel_coords(
-                            output_point, orientation, scaled_width, scaled_height
+                        entry_point_pixel = self.image_controller.convert_3d_to_pixel_coords(
+                            entry_point, orientation, scaled_width, scaled_height
                         )
                         tail_endpoint_pixel = self.image_controller.convert_3d_to_pixel_coords(
                             tail_endpoint, orientation, scaled_width, scaled_height
                         )
                         
-                        if output_point_pixel and tail_endpoint_pixel:
-                            # Add line segment for tail (from output point outward toward skull exterior)
+                        if entry_point_pixel and tail_endpoint_pixel:
+                            # Add line segment for tail (from entry point outward toward skull exterior)
                             label.add_line(
-                                output_point_pixel[0], output_point_pixel[1],
+                                entry_point_pixel[0], entry_point_pixel[1],
                                 tail_endpoint_pixel[0], tail_endpoint_pixel[1],
                                 tail_color, width=3,
                                 electrode_name=electrode_name,

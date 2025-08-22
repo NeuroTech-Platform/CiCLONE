@@ -290,20 +290,21 @@ class ElectrodeController:
             # Store the processed contacts in the model
             self.electrode_model._processed_contacts[name] = contacts
             
-            # Derive entry and output coordinates from the contacts
+            # Derive tip and entry coordinates from the contacts
             if len(contacts) >= 2:
-                # Use first contact as entry point and last contact as output point
-                entry_point = tuple(int(coord) for coord in contacts[0])
-                output_point = tuple(int(coord) for coord in contacts[-1])
+                # First contact is the electrode tip (deepest in brain)
+                # Last contact is the skull entry point
+                tip_point = tuple(int(coord) for coord in contacts[0])
+                entry_point = tuple(int(coord) for coord in contacts[-1])
                 
                 # Set the derived coordinates in the coordinate model
+                self.coordinate_model.set_tip_point(name, tip_point)
                 self.coordinate_model.set_entry_point(name, entry_point)
-                self.coordinate_model.set_output_point(name, output_point)
             elif len(contacts) == 1:
-                # Single contact electrode - use the same point for both entry and output
+                # Single contact electrode - use the same point for both tip and entry
                 single_point = tuple(int(coord) for coord in contacts[0])
+                self.coordinate_model.set_tip_point(name, single_point)
                 self.coordinate_model.set_entry_point(name, single_point)
-                self.coordinate_model.set_output_point(name, single_point)
             
             # Tree widget will be updated by the view's refresh methods
             
@@ -314,24 +315,24 @@ class ElectrodeController:
             return False
     
     def set_entry_coordinate(self, electrode_name: str, coordinates: Tuple[int, int, int]) -> bool:
-        """Set entry coordinates for an electrode."""
+        """Set tip coordinates for an electrode."""
         if not electrode_name:
             self._show_warning("Please select an electrode first.")
             return False
         
-        self.coordinate_model.set_entry_point(electrode_name, coordinates)
+        self.coordinate_model.set_tip_point(electrode_name, coordinates)
         if self._view:
             self._view.update_coordinate_display(electrode_name)
         
         return True
     
     def set_output_coordinate(self, electrode_name: str, coordinates: Tuple[int, int, int]) -> bool:
-        """Set output coordinates for an electrode."""
+        """Set entry coordinates for an electrode."""
         if not electrode_name:
             self._show_warning("Please select an electrode first.")
             return False
         
-        self.coordinate_model.set_output_point(electrode_name, coordinates)
+        self.coordinate_model.set_entry_point(electrode_name, coordinates)
         if self._view:
             self._view.update_coordinate_display(electrode_name)
         
@@ -349,15 +350,15 @@ class ElectrodeController:
             return False
         
         coordinates = self.coordinate_model.get_coordinates(electrode_name)
-        if not coordinates or 'entry' not in coordinates or 'output' not in coordinates:
-            self._show_warning("Please set both entry and output coordinates first.")
+        if not coordinates or 'tip' not in coordinates or 'entry' not in coordinates:
+            self._show_warning("Please set both tip and entry coordinates first.")
             return False
         
         # Process coordinates using the electrode model
         success = self.electrode_model.process_electrode_contacts(
             electrode_name, 
-            coordinates['entry'], 
-            coordinates['output']
+            coordinates['tip'], 
+            coordinates['entry']
         )
         
         if success:
@@ -431,7 +432,7 @@ class ElectrodeController:
         
         Args:
             electrode_name: Name of the electrode
-            coord_type: Type of coordinate ('entry' or 'output')
+            coord_type: Type of coordinate ('tip' or 'entry')
             new_coordinates: New coordinates
             
         Returns:
@@ -441,19 +442,21 @@ class ElectrodeController:
             return False
         
         success = False
-        if coord_type == 'entry':
+        # Map coord_type to the correct method
+        # After refactoring: 'tip' = electrode tip, 'entry' = skull entry point
+        if coord_type == 'tip':
+            success = self.coordinate_model.move_tip_point(electrode_name, new_coordinates)
+        elif coord_type == 'entry':
             success = self.coordinate_model.move_entry_point(electrode_name, new_coordinates)
-        elif coord_type == 'output':
-            success = self.coordinate_model.move_output_point(electrode_name, new_coordinates)
         
         if success:
-            # If both entry and output points exist, reprocess contacts
+            # If both tip and entry points exist, reprocess contacts
             coordinates = self.coordinate_model.get_coordinates(electrode_name)
-            if 'entry' in coordinates and 'output' in coordinates:
+            if 'tip' in coordinates and 'entry' in coordinates:
                 self.electrode_model.process_electrode_contacts(
                     electrode_name, 
-                    coordinates['entry'], 
-                    coordinates['output']
+                    coordinates['tip'], 
+                    coordinates['entry']
                 )
             
             if self._view:

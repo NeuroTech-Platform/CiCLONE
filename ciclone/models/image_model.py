@@ -322,13 +322,13 @@ class ImageModel:
             electrode_color = QColor()
             electrode_color.setHsv(hue, 200, 255, 180)
 
-            if 'entry' in points:
-                self._draw_point_if_visible(painter, points['entry'], orientation,
+            if 'tip' in points:
+                self._draw_point_if_visible(painter, points['tip'], orientation,
                                           current_slices, orig_width, orig_height,
                                           scaled_width, scaled_height, electrode_color)
 
-            if 'output' in points:
-                self._draw_point_if_visible(painter, points['output'], orientation,
+            if 'entry' in points:
+                self._draw_point_if_visible(painter, points['entry'], orientation,
                                           current_slices, orig_width, orig_height,
                                           scaled_width, scaled_height, electrode_color)
 
