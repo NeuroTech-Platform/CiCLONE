@@ -85,9 +85,15 @@ class ElectrodeModel:
     
     def process_electrode_contacts(self, 
                                  electrode_name: str, 
-                                 entry_point: Tuple[int, int, int], 
-                                 output_point: Tuple[int, int, int]) -> bool:
-        """Process coordinates for an electrode and calculate contact positions with tail information."""
+                                 tip_point: Tuple[int, int, int], 
+                                 entry_point: Tuple[int, int, int]) -> bool:
+        """Process coordinates for an electrode and calculate contact positions with tail information.
+        
+        Args:
+            electrode_name: Name of the electrode
+            tip_point: Electrode tip (deepest point in brain)
+            entry_point: Electrode entry point (where electrode enters skull)
+        """
         electrode = self.get_electrode(electrode_name)
         if not electrode:
             return False
@@ -134,9 +140,9 @@ class ElectrodeModel:
             plot_positions.sort(key=lambda x: x[1][2])
             
             # Calculate direction vector
+            tip_array = np.array(tip_point)
             entry_array = np.array(entry_point)
-            output_array = np.array(output_point)
-            direction = output_array - entry_array
+            direction = entry_array - tip_array
             direction_norm = np.linalg.norm(direction)
             
             if direction_norm == 0:
@@ -152,12 +158,12 @@ class ElectrodeModel:
             if z_span == 0:
                 return False
             
-            entry_output_distance = np.linalg.norm(output_array - entry_array)
+            tip_entry_distance = np.linalg.norm(entry_array - tip_array)
             contacts = []
             
             for plot_name, plot_pos in plot_positions:
                 relative_pos = (plot_pos[2] - min_z) / z_span
-                contact_pos = entry_array + relative_pos * direction * entry_output_distance
+                contact_pos = tip_array + relative_pos * direction * tip_entry_distance
                 contacts.append(tuple(np.round(contact_pos).astype(int)))
             
             # Store contacts
@@ -166,13 +172,13 @@ class ElectrodeModel:
             # Calculate tail endpoint if tail element exists
             tail_endpoint = None
             if tail_element:
-                # CORRECTED UNDERSTANDING: In this UI:
-                # - entry_point = "Tip - proximal part" (deep in brain, near center)
-                # - output_point = "End - distal part" (closer to skull surface)
-                # - Tail extends OUTWARD from output_point (away from brain center)
+                # Electrode positioning:
+                # - tip_point: Deepest point in brain (electrode tip)
+                # - entry_point: Where electrode enters skull
+                # - Tail extends outward from entry_point away from brain center
                 
-                # Insertion direction: from output (skull) toward entry (brain center)
-                insertion_direction = entry_array - output_array
+                # Insertion direction: from entry (skull) toward tip (brain center)
+                insertion_direction = tip_array - entry_array
                 insertion_direction = insertion_direction / np.linalg.norm(insertion_direction)
                 
                 # Tail direction: opposite to insertion (away from brain center)
@@ -180,8 +186,8 @@ class ElectrodeModel:
                 
                 # Calculate proper scaling
                 # The contacts span z_span mm in the electrode definition and 
-                # entry_output_distance pixels in the image
-                image_pixels_per_mm = entry_output_distance / z_span
+                # tip_entry_distance pixels in the image
+                image_pixels_per_mm = tip_entry_distance / z_span
                 
                 # Scale the tail length, but cap it to a reasonable proportion
                 # Medical reality: electrode tails are typically 0.5x to 1.5x the implanted portion
@@ -193,8 +199,8 @@ class ElectrodeModel:
                 # Apply scaling to the capped length
                 tail_length_scaled = tail_length_capped_mm * image_pixels_per_mm
                 
-                # Tail starts at OUTPUT point (closer to skull) and extends outward
-                tail_endpoint = output_array + tail_direction * tail_length_scaled
+                # Tail starts at entry point (skull) and extends outward
+                tail_endpoint = entry_array + tail_direction * tail_length_scaled
                 tail_endpoint = tuple(np.round(tail_endpoint).astype(int))
             
             # Create and store electrode structure
