@@ -83,7 +83,7 @@ stages:
     parameters:
       input_file: ${name}_T1_C
       ref_file: ${name}_CT_Electrodes_C
-      output_file_name: v_${name}_ref
+      output_file_name: v_${name}_T1_ref
   - type: coregister
     workdir: processed_tmp
     parameters:
@@ -140,15 +140,15 @@ stages:
   - type: extract_brain
     workdir: processed_tmp
     parameters:
-      input_file: v_${name}_ref
-      output_file: v_${name}_ref_brain
+      input_file: v_${name}_T1_ref
+      output_file: v_${name}_T1_ref_brain
       fractional_intensity: 0.25
       gradient_threshold: 0.0
       generate_mask: false
   - type: register_mri_to_mni
     workdir: processed_tmp
     parameters:
-      input_file: v_${name}_ref_brain
+      input_file: v_${name}_T1_ref_brain
       output_file_name: MNI_${name}_ref_brain
 - name: cortical_extraction
   depends_on:
@@ -158,7 +158,7 @@ stages:
   - type: reconstruct
     workdir: processed_tmp
     parameters:
-      input_file: v_${name}_ref
+      input_file: v_${name}_T1_ref
       fs_output_dir: ${subj_dir}/processed_tmp/freesurfer_${name}
 - name: export_outputs
   depends_on:
@@ -176,12 +176,7 @@ stages:
   - type: copy
     workdir: processed_tmp
     parameters:
-      input_file: ${name}_T1_C
-      output_file: ${subj_dir}/pipeline_output
-  - type: copy
-    workdir: processed_tmp
-    parameters:
-      input_file: v_${name}_ref
+      input_file: v_${name}_T1_ref
       output_file: ${subj_dir}/pipeline_output
   - type: copy
     workdir: processed_tmp
