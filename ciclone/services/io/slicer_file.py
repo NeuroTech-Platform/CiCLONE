@@ -117,7 +117,8 @@ class SlicerFile:
             "lastUsedControlPointNumber": len(contacts),
             "controlPoints": [],
             "measurements": [],
-            "display": self._create_fiducial_display(color)
+            "display": self._create_fiducial_display(color),
+            "name": electrode_name
         }
         
         # Add control points (contacts) for this electrode
