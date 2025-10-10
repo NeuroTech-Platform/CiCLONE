@@ -45,24 +45,30 @@ class SubjectController:
         return self.subject_model.get_output_directory()
     
     def create_subject(self, subject_data: SubjectData) -> bool:
-        """Create a new subject with validation and file operations."""
-        # Validate the subject data
-        validation = self.subject_model.validate_subject_data(subject_data)
+        """Create a new subject with validation and file operations, or add files to existing subject."""
+        # Check if subject already exists
+        subject_exists = self.subject_model.subject_exists(subject_data.name)
+
+        # Validate the subject data (allow existing if adding files to existing subject)
+        validation = self.subject_model.validate_subject_data(subject_data, allow_existing=subject_exists)
         if not validation.is_valid:
             self._log_message("error", f"Validation failed: {validation.error_message}")
             return False
-        
+
         output_directory = self.subject_model.get_output_directory()
         if not output_directory:
             self._log_message("error", "Output directory not set")
             return False
-        
+
         # Show loading cursor during import
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        
+
         try:
-            self._log_message("info", f"Starting import of subject '{subject_data.name}'...")
-            
+            if subject_exists:
+                self._log_message("info", f"Adding files to existing subject '{subject_data.name}'...")
+            else:
+                self._log_message("info", f"Starting import of subject '{subject_data.name}'...")
+
             # Convert SubjectData to dictionary for SubjectImporter
             subject_dict = {
                 "name": subject_data.name,
@@ -73,46 +79,55 @@ class SubjectController:
                 "post_ct": subject_data.post_ct,
                 "post_mri": subject_data.post_mri
             }
-            
+
             # Perform the actual file operations with naming service
+            # This will add files to existing directory if it already exists
             SubjectImporter.import_subject(output_directory, subject_dict, self._naming_service)
-            
-            # Add to model if file operations succeeded
-            success = self.subject_model.add_subject(subject_data, skip_existence_check=True)
-            if success:
-                self._log_message("success", f"Subject '{subject_data.name}' imported successfully")
-                
-                # Show success feedback to user
-                if self._dialog_service:
-                    self._dialog_service.show_subject_operation_result(
-                        "Import", subject_data.name, True
-                    )
-                
-                # Notify view to refresh if available
-                if self._view and hasattr(self._view, 'refresh_subject_tree'):
-                    self._view.refresh_subject_tree()
-                    
-                return True
+
+            # Add to model only if it's a new subject
+            if not subject_exists:
+                success = self.subject_model.add_subject(subject_data, skip_existence_check=True)
+                if not success:
+                    self._log_message("error", f"Failed to add subject to model")
+
+                    # Show error feedback to user
+                    if self._dialog_service:
+                        self._dialog_service.show_subject_operation_result(
+                            "Import", subject_data.name, False, "Failed to add subject to model"
+                        )
+
+                    return False
+
+            # Success message
+            if subject_exists:
+                self._log_message("success", f"Files added to existing subject '{subject_data.name}' successfully")
             else:
-                self._log_message("error", f"Failed to add subject to model")
-                
-                # Show error feedback to user
-                if self._dialog_service:
-                    self._dialog_service.show_subject_operation_result(
-                        "Import", subject_data.name, False, "Failed to add subject to model"
-                    )
-                
-                return False
-                
+                self._log_message("success", f"Subject '{subject_data.name}' imported successfully")
+
+            # Show success feedback to user
+            if self._dialog_service:
+                operation = "Add Files" if subject_exists else "Import"
+                self._dialog_service.show_subject_operation_result(
+                    operation, subject_data.name, True
+                )
+
+            # Notify view to refresh if available
+            if self._view and hasattr(self._view, 'refresh_subject_tree'):
+                self._view.refresh_subject_tree()
+
+            return True
+
         except Exception as e:
-            self._log_message("error", f"Failed to import subject '{subject_data.name}': {str(e)}")
-            
+            error_msg = f"Failed to {'add files to' if subject_exists else 'import'} subject '{subject_data.name}': {str(e)}"
+            self._log_message("error", error_msg)
+
             # Show error feedback to user
             if self._dialog_service:
+                operation = "Add Files" if subject_exists else "Import"
                 self._dialog_service.show_subject_operation_result(
-                    "Import", subject_data.name, False, str(e)
+                    operation, subject_data.name, False, str(e)
                 )
-            
+
             return False
         finally:
             QApplication.restoreOverrideCursor()

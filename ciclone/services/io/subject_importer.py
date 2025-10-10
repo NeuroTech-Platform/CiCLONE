@@ -164,10 +164,44 @@ class SubjectImporter:
         return subject
     
     @staticmethod
+    def _get_unique_filename(destination_dir: Path, base_filename: str) -> str:
+        """
+        Generate a unique filename by adding (N) suffix if file already exists.
+
+        Args:
+            destination_dir (Path): Destination directory
+            base_filename (str): Base filename (including extension)
+
+        Returns:
+            str: Unique filename that doesn't conflict with existing files
+        """
+        destination_path = destination_dir / base_filename
+
+        # If file doesn't exist, use the base filename
+        if not destination_path.exists():
+            return base_filename
+
+        # Extract name and extension
+        if base_filename.endswith('.nii.gz'):
+            name_part = base_filename[:-7]  # Remove '.nii.gz'
+            extension = '.nii.gz'
+        else:
+            name_part, extension = os.path.splitext(base_filename)
+
+        # Find the next available number
+        counter = 1
+        while True:
+            new_filename = f"{name_part} ({counter}){extension}"
+            new_path = destination_dir / new_filename
+            if not new_path.exists():
+                return new_filename
+            counter += 1
+
+    @staticmethod
     def _import_file(source_path, destination_dir, subject_name, file_type, naming_service: NamingService):
         """
         Import a file to the appropriate destination directory with custom naming.
-        
+
         Args:
             source_path (str): Path to the source file
             destination_dir (Path): Destination directory
@@ -177,17 +211,17 @@ class SubjectImporter:
         """
         if not source_path:
             return
-        
+
         source_path = Path(source_path)
         if not source_path.exists():
             print(f"Warning: Source file {source_path} does not exist")
             return
-        
+
         # Determine the new filename based on file type and naming conventions
         file_extension = source_path.suffix
         if source_path.name.endswith('.nii.gz'):
             file_extension = '.nii.gz'
-        
+
         if file_type == "pre_ct":
             new_filename = f"{naming_service.get_pre_ct_filename(subject_name)}{file_extension}"
         elif file_type == "post_ct":
@@ -203,11 +237,19 @@ class SubjectImporter:
         else:
             # Fallback to original filename if type is unknown
             new_filename = source_path.name
-        
-        # Copy file to destination with new name
-        destination_path = destination_dir / new_filename
+
+        # Get unique filename to avoid conflicts
+        unique_filename = SubjectImporter._get_unique_filename(destination_dir, new_filename)
+
+        # Copy file to destination with unique name
+        destination_path = destination_dir / unique_filename
         shutil.copy2(source_path, destination_path)
-        print(f"Imported {source_path} to {destination_path}")
+
+        # Log differently if filename was changed due to conflict
+        if unique_filename != new_filename:
+            print(f"Imported {source_path} to {destination_path} (renamed to avoid conflict)")
+        else:
+            print(f"Imported {source_path} to {destination_path}")
 
     @staticmethod
     def _import_schema_files(subject_data, subject_path):
