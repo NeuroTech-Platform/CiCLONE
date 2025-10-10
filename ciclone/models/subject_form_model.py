@@ -116,19 +116,20 @@ class SubjectFormModel(QObject):
         """Validate subject name field."""
         if not name.strip():
             return FieldValidationResult(False, "Subject name is required")
-        
+
         # Check for invalid characters
         if not re.match(r'^[a-zA-Z0-9_\-\s]+$', name):
             return FieldValidationResult(False, "Subject name contains invalid characters")
-        
+
         # Check if name already exists (if subject model is available)
+        # Instead of returning an error, return a warning to allow adding files
         if self._subject_model and self._subject_model.subject_exists(name):
-            return FieldValidationResult(False, f"Subject '{name}' already exists")
-        
+            return FieldValidationResult(True, "", f"Subject '{name}' already exists. Files will be added to existing subject.")
+
         # Check length
         if len(name) > 100:
             return FieldValidationResult(False, "Subject name too long (max 100 characters)")
-        
+
         return FieldValidationResult(True)
     
     def _validate_schema_field(self, schema_path: str) -> FieldValidationResult:
@@ -194,19 +195,29 @@ class SubjectFormModel(QObject):
             elif validation.warning_message:
                 warning_messages.append(f"{field_name.replace('_', ' ').title()}: {validation.warning_message}")
         
-        # Cross-field validation: at least one image file should be provided
+        # Cross-field validation: at least one image file or schema should be provided
         image_fields = ['pre_ct', 'pre_mri', 'post_ct', 'post_mri']
         has_image = any(self._fields[field].strip() for field in image_fields)
-        
-        if not has_image:
-            warning_messages.append("Consider adding at least one medical image file")
-        
+        has_schema = bool(self._fields['schema'].strip())
+
+        if not has_image and not has_schema:
+            error_messages.append("At least one medical image file or schema file must be provided")
+
         is_valid = len(error_messages) == 0
         return FormValidationResult(is_valid, error_messages, warning_messages)
     
     def is_form_valid(self) -> bool:
-        """Check if entire form is valid."""
-        return all(result.is_valid for result in self._field_validity.values())
+        """Check if entire form is valid, including cross-field validation."""
+        # Check individual field validity
+        if not all(result.is_valid for result in self._field_validity.values()):
+            return False
+
+        # Check cross-field validation: at least one file must be provided
+        image_fields = ['pre_ct', 'pre_mri', 'post_ct', 'post_mri']
+        has_image = any(self._fields[field].strip() for field in image_fields)
+        has_schema = bool(self._fields['schema'].strip())
+
+        return has_image or has_schema
     
     def is_form_dirty(self) -> bool:
         """Check if form has unsaved changes."""

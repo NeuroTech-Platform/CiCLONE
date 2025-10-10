@@ -269,41 +269,85 @@ Images Extracted: {total_images}
 
 
     @classmethod
-    def copy_and_rename_images(cls, image_paths: List[str], output_dir: str, 
+    def _find_next_schema_number(cls, output_dir: str, base_name: str, file_ext: str) -> int:
+        """
+        Find the next available number for schema files to avoid conflicts.
+
+        Args:
+            output_dir: Directory to check for existing files
+            base_name: Base name for schema files
+            file_ext: File extension
+
+        Returns:
+            Next available number for schema file (1 if no files, 2+ for additional files)
+        """
+        existing_files = [f for f in os.listdir(output_dir) if f.startswith(base_name) and f.endswith(file_ext)]
+        if not existing_files:
+            return 1
+
+        # Extract numbers from existing schema files
+        # Handle both formats: "base_name.ext" (count as 1) and "base_name_NNN.ext"
+        numbers = []
+
+        # Pattern for numbered files (e.g., "TestSubject_schema_001.png")
+        pattern_numbered = re.compile(rf'{re.escape(base_name)}_(\d+){re.escape(file_ext)}')
+
+        # Exact match for unnumbered file (e.g., "TestSubject_schema.png")
+        unnumbered_file = f"{base_name}{file_ext}"
+
+        for filename in existing_files:
+            if filename == unnumbered_file:
+                # Unnumbered file counts as #1
+                numbers.append(1)
+            else:
+                match = pattern_numbered.match(filename)
+                if match:
+                    numbers.append(int(match.group(1)))
+
+        # Return next available number
+        return max(numbers) + 1 if numbers else 1
+
+    @classmethod
+    def copy_and_rename_images(cls, image_paths: List[str], output_dir: str,
                               base_name: str = "schema") -> Tuple[bool, List[str], str]:
         """
         Copy multiple image files to output directory with consistent naming.
-        
+
         Args:
             image_paths: List of source image file paths
             output_dir: Directory to copy images to
             base_name: Base name for renamed files
-        
+
         Returns:
             Tuple of (success, list_of_copied_paths, error_message)
         """
         if not FileUtils.ensure_directory(output_dir):
             return False, [], f"Cannot create output directory: {output_dir}"
-        
+
         copied_paths = []
         errors = []
-        
-        for i, image_path in enumerate(image_paths, 1):
+
+        # Get the first extension to determine the starting number
+        first_ext = FileUtils.get_file_extension(image_paths[0]) if image_paths else ""
+        starting_number = cls._find_next_schema_number(output_dir, base_name, first_ext)
+
+        for i, image_path in enumerate(image_paths):
             if not cls.is_image_file(image_path):
                 continue
-            
-            # Generate new filename using utility
+
+            # Generate new filename using utility with adjusted numbering
             file_ext = FileUtils.get_file_extension(image_path)
-            new_filename = FileUtils.generate_filename(base_name, file_ext, i, len(image_paths))
+            file_number = starting_number + i
+            new_filename = FileUtils.generate_filename(base_name, file_ext, file_number, len(image_paths) + starting_number - 1)
             output_path = os.path.join(output_dir, new_filename)
-            
+
             # Use centralized copy utility
             success, error = FileUtils.safe_copy_file(image_path, output_path)
             if success:
                 copied_paths.append(output_path)
             else:
                 errors.append(error)
-        
+
         if copied_paths:
             error_msg = "; ".join(errors) if errors else ""
             return True, copied_paths, error_msg
