@@ -89,18 +89,24 @@ class SubjectModel(QObject):
                 # Create a basic SubjectData for existing subjects
                 self._subjects[item] = SubjectData(name=item)
     
-    def validate_subject_data(self, subject_data: SubjectData) -> SubjectValidationResult:
-        """Validate subject data before creation."""
+    def validate_subject_data(self, subject_data: SubjectData, allow_existing: bool = False) -> SubjectValidationResult:
+        """Validate subject data before creation.
+
+        Args:
+            subject_data: The subject data to validate
+            allow_existing: If True, allow validation to pass even if subject directory already exists
+                          (used when adding files to existing subject)
+        """
         if not subject_data.name.strip():
             return SubjectValidationResult(False, "Subject name cannot be empty")
-        
+
         if not self._output_directory:
             return SubjectValidationResult(False, "Output directory not set")
-        
+
         subject_dir = os.path.join(self._output_directory, subject_data.name)
-        if os.path.exists(subject_dir):
+        if os.path.exists(subject_dir) and not allow_existing:
             return SubjectValidationResult(False, "Subject already exists")
-        
+
         return SubjectValidationResult(True)
     
     def validate_subject_rename(self, current_name: str, new_name: str) -> SubjectValidationResult:

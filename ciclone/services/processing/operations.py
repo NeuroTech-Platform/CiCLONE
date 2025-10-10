@@ -432,7 +432,8 @@ def cortical_reconstruction(input_file: Path, fs_output_dir: str):
         
     print(f"Reconstructing {input_file.stem} using FreeSurfer => {fs_subject_dir.stem}")
     execute_command([
-        tool_config.get_freesurfer_tool_path("recon-all"), "-sd", str(fs_subject_dir.parent), "-s", str(fs_subject_dir.stem), "-i", str(input_file), "-all"
+        "sh", "-c",
+        f"export FS_V8_XOPTS=0 && {tool_config.get_freesurfer_tool_path('recon-all')} -sd {fs_subject_dir.parent} -s {fs_subject_dir.stem} -i {input_file} -all"
     ])
 
 def transform_coordinates(input_json: Path, transformation_matrix: Path, output_json: str) -> None:
