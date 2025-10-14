@@ -14,6 +14,7 @@ from ciclone.controllers.main_controller import MainController
 from ciclone.services.processing.tool_config import tool_config
 from ciclone.interfaces.view_interfaces import IMainView, IBaseView
 from ciclone.ui.PipelineConfigDialog import PipelineConfigDialog
+from ciclone.ui.AboutDialog import AboutDialog
 
 from ..forms.MainWindow_ui import Ui_MainWindow
 
@@ -41,8 +42,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         form_controller.validation_feedback_ready.connect(self._on_field_validation_changed)
         form_controller.form_state_updated.connect(self._on_form_state_changed)
         form_controller.form_submission_complete.connect(self._on_form_submission_complete)
-        
-        self._setup_validation_indicators()
+        form_controller.images_list_changed.connect(self._on_images_list_changed)
         
         # Set view and callbacks
         self.main_controller.set_view(self)
@@ -56,7 +56,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Configuration menu actions
         self.actionManage_Pipelines.triggered.connect(self.open_pipeline_config_dialog)
-        
+
+        # Help menu actions
+        self.actionAbout.triggered.connect(self.show_about_dialog)
+
         # Directory and subject management
         self.lineEdit_outputDirectory.textChanged.connect(self.on_output_directory_changed)
         self.pushButton_addSubject.clicked.connect(self.add_subject)
@@ -68,18 +71,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # Browse buttons
         self.browse_Schema.clicked.connect(lambda: self.main_controller.browse_for_form_field("schema", "Schema"))
-        self.browse_preCT.clicked.connect(lambda: self.main_controller.browse_for_form_field("pre_ct", "PreCT"))
-        self.browse_preMRI.clicked.connect(lambda: self.main_controller.browse_for_form_field("pre_mri", "PreMRI"))
-        self.browse_postCT.clicked.connect(lambda: self.main_controller.browse_for_form_field("post_ct", "PostCT"))
-        self.browse_postMRI.clicked.connect(lambda: self.main_controller.browse_for_form_field("post_mri", "PostMRI"))
-        
+        self.browse_image.clicked.connect(self.browse_for_image)
+
         # Form field connections for real-time validation
-        self.lineEdit_Name.textChanged.connect(lambda text: self.main_controller.handle_form_field_change("name", text))
+        self.lineEdit_Name.textChanged.connect(lambda text: self._on_subject_name_changed(text))
         self.lineEdit_Schema.textChanged.connect(lambda text: self.main_controller.handle_form_field_change("schema", text))
-        self.lineEdit_preCT.textChanged.connect(lambda text: self.main_controller.handle_form_field_change("pre_ct", text))
-        self.lineEdit_preMRI.textChanged.connect(lambda text: self.main_controller.handle_form_field_change("pre_mri", text))
-        self.lineEdit_postCT.textChanged.connect(lambda text: self.main_controller.handle_form_field_change("post_ct", text))
-        self.lineEdit_postMRI.textChanged.connect(lambda text: self.main_controller.handle_form_field_change("post_mri", text))
+
+        # Image management connections
+        self.addFile_pushButton.clicked.connect(self.add_image_to_list)
+        self.images_listWidget.itemSelectionChanged.connect(self._on_image_selection_changed)
+        self.images_listWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.images_listWidget.customContextMenuRequested.connect(self._show_images_context_menu)
+
+        # Connect combobox changes to update registration targets
+        self.session_comboBox.currentTextChanged.connect(self._update_registration_targets)
+        self.modality_comboBox.currentTextChanged.connect(self._update_registration_targets)
 
         # Processing buttons
         self.runAllStages_PushButton.clicked.connect(self.run_all_stages)
@@ -120,19 +126,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 error_text
             )
     
-    def _setup_validation_indicators(self):
-        """Map field names to validation indicator widgets from UI file."""
-        self.validation_indicators = {
-            'name': self.validation_indicator_name,
-            'schema': self.validation_indicator_schema,
-            'pre_ct': self.validation_indicator_pre_ct,
-            'pre_mri': self.validation_indicator_pre_mri,
-            'post_ct': self.validation_indicator_post_ct,
-            'post_mri': self.validation_indicator_post_mri
-        }
-        
-        for indicator in self.validation_indicators.values():
-            indicator.hide()
     
     @property
     def output_directory(self):
@@ -168,78 +161,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         try:
             # Get config directory from main controller's application model
             config_dir_path = str(self.main_controller.application_model._config_service.config_dir)
-            
+
             # Create and show the dialog
             dialog = PipelineConfigDialog(config_dir_path, self)
             result = dialog.exec()
-            
+
             # If changes were made, refresh the config UI
             if result == dialog.DialogCode.Accepted:
                 self._setup_config_ui()  # Refresh config dropdown
                 self.add_log_message("info", "Pipeline configurations updated")
-                
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open pipeline configuration dialog: {str(e)}")
 
+    def show_about_dialog(self):
+        """Show the About dialog."""
+        about_dialog = AboutDialog(self)
+        about_dialog.exec()
+
     def _on_field_validation_changed(self, field: str, valid: bool, error_msg: str, warning_msg: str):
-        """Handle field validation feedback using colored indicators."""
-        field_widgets = {
-            'name': self.lineEdit_Name,
-            'schema': self.lineEdit_Schema,
-            'pre_ct': self.lineEdit_preCT,
-            'pre_mri': self.lineEdit_preMRI,
-            'post_ct': self.lineEdit_postCT,
-            'post_mri': self.lineEdit_postMRI
-        }
-        
-        field_widget = field_widgets.get(field)
-        indicator = self.validation_indicators.get(field)
-        
-        if field_widget and indicator:
-            field_widget.setStyleSheet("")
-            
-            if not valid and error_msg:
-                indicator.setStyleSheet("""
-                    QLabel {
-                        border-radius: 8px;
-                        background-color: #f44336;
-                        font-size: 12px;
-                        color: #f44336;
-                        text-align: center;
-                    }
-                """)
-                indicator.setToolTip(f"Error: {error_msg}")
-                indicator.show()
-                
-            elif warning_msg:
-                indicator.setStyleSheet("""
-                    QLabel {
-                        border-radius: 8px;
-                        background-color: #ff9800;
-                        font-size: 12px;
-                        color: #ff9800;
-                        text-align: center;
-                    }
-                """)
-                indicator.setToolTip(f"Warning: {warning_msg}")
-                indicator.show()
-                
-            else:
-                if field_widget.text().strip():
-                    indicator.setStyleSheet("""
-                        QLabel {
-                            border-radius: 8px;
-                            background-color: #4caf50;
-                            font-size: 12px;
-                            color: #4caf50;
-                            text-align: center;
-                        }
-                    """)
-                    indicator.setToolTip("Valid")
-                    indicator.show()
-                else:
-                    indicator.hide()
-                    indicator.setToolTip("")
+        """Handle field validation feedback."""
+        # Only handle validation for name and schema fields now
+        # Image validation is handled by the form model internally
+        pass
     
     def _on_form_state_changed(self, is_valid: bool, is_dirty: bool):
         """Handle form state changes."""
@@ -285,21 +229,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Clear form fields
         self.lineEdit_Name.clear()
         self.lineEdit_Schema.clear()
-        self.lineEdit_preCT.clear()
-        self.lineEdit_preMRI.clear()
-        self.lineEdit_postCT.clear()
-        self.lineEdit_postMRI.clear()
-        
+        self.lineEdit_image.clear()
+
+        # Clear images list
+        self.images_listWidget.clear()
+
+        # Reset comboboxes to defaults
+        self.session_comboBox.setCurrentIndex(0)  # Pre
+        self.modality_comboBox.setCurrentIndex(0)  # CT
+        self.register_combobox.setCurrentIndex(0)  # None
+
         # Clear field styling and tooltips
-        for field_widget in [self.lineEdit_Name, self.lineEdit_Schema, self.lineEdit_preCT, 
-                           self.lineEdit_preMRI, self.lineEdit_postCT, self.lineEdit_postMRI]:
+        for field_widget in [self.lineEdit_Name, self.lineEdit_Schema, self.lineEdit_image]:
             field_widget.setStyleSheet("")
             field_widget.setToolTip("")
-        
-        # Hide validation indicators
-        for indicator in self.validation_indicators.values():
-            indicator.hide()
-            indicator.setToolTip("")
 
     def add_subject(self):
         """Add subject using form controller."""
@@ -600,10 +543,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Clear subject form fields."""
         self.lineEdit_Name.clear()
         self.lineEdit_Schema.clear()
-        self.lineEdit_preCT.clear()
-        self.lineEdit_preMRI.clear()
-        self.lineEdit_postCT.clear()
-        self.lineEdit_postMRI.clear()
+        self.lineEdit_image.clear()
+        self.images_listWidget.clear()
 
     def _setup_stages_ui(self):
         """Initialize stages UI from configuration."""
@@ -670,6 +611,117 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         """Stop current processing operation."""
         self.main_controller.stop_processing()
 
+    # Image Management Methods
+    def browse_for_image(self):
+        """Browse for a medical image file."""
+        form_controller = self.main_controller.get_subject_form_controller()
+        file_path = form_controller.browse_for_image()
+        if file_path:
+            self.lineEdit_image.setText(file_path)
+
+    def add_image_to_list(self):
+        """Add the currently selected image to the list."""
+        file_path = self.lineEdit_image.text().strip()
+        if not file_path:
+            QMessageBox.warning(self, "No File", "Please select an image file first")
+            return
+
+        session = self.session_comboBox.currentText()
+        modality = self.modality_comboBox.currentText()
+        register_to = self.register_combobox.currentText()
+        if register_to == "None":
+            register_to = None
+
+        form_controller = self.main_controller.get_subject_form_controller()
+        success = form_controller.add_image_to_list(file_path, session, modality, register_to)
+
+        if success:
+            # Clear the input field after successful add
+            self.lineEdit_image.clear()
+            self.add_log_message("debug", f"Added image: [{session}] {modality} - {os.path.basename(file_path)}")
+        else:
+            QMessageBox.warning(self, "Invalid Image", "Failed to add image. Please check the file path.")
+
+    def _on_images_list_changed(self):
+        """Handle changes to the images list."""
+        # Update the list widget display
+        self.images_listWidget.clear()
+
+        form_controller = self.main_controller.get_subject_form_controller()
+        images = form_controller.get_images_list()
+
+        for image_entry in images:
+            self.images_listWidget.addItem(image_entry.display_name())
+
+        # Update registration targets
+        self._update_registration_targets()
+
+    def _on_image_selection_changed(self):
+        """Handle image selection changes in the list."""
+        # Currently just for future use (e.g., enabling remove button)
+        pass
+
+    def _show_images_context_menu(self, position):
+        """Show context menu for images list."""
+        item = self.images_listWidget.itemAt(position)
+        if not item:
+            return
+
+        context_menu = QMenu(self)
+
+        remove_action = QAction(f"Remove '{item.text()}'", self)
+        remove_action.triggered.connect(lambda: self._remove_selected_image())
+        context_menu.addAction(remove_action)
+
+        context_menu.exec(self.images_listWidget.mapToGlobal(position))
+
+    def _remove_selected_image(self):
+        """Remove the currently selected image from the list."""
+        current_row = self.images_listWidget.currentRow()
+        if current_row >= 0:
+            form_controller = self.main_controller.get_subject_form_controller()
+            success = form_controller.remove_image_from_list(current_row)
+
+            if success:
+                self.add_log_message("debug", f"Removed image at index {current_row}")
+
+    def _update_registration_targets(self):
+        """Update the registration targets combobox based on current images."""
+        form_controller = self.main_controller.get_subject_form_controller()
+        targets = form_controller.get_available_registration_targets()
+
+        # Save current selection
+        current_selection = self.register_combobox.currentText()
+
+        # Clear and repopulate (targets already includes "None" from model)
+        self.register_combobox.clear()
+        for target in targets:
+            self.register_combobox.addItem(target)
+
+        # Try to restore selection
+        index = self.register_combobox.findText(current_selection)
+        if index >= 0:
+            self.register_combobox.setCurrentIndex(index)
+        else:
+            # Default to "None" if previous selection no longer exists
+            self.register_combobox.setCurrentIndex(0)
+
+    def _on_subject_name_changed(self, text: str):
+        """Handle subject name field changes."""
+        # First, do the normal validation
+        self.main_controller.handle_form_field_change("name", text)
+
+        # Refresh subject data if it's an existing subject
+        text = text.strip()
+        if text:
+            subject_model = self.main_controller.subject_controller.subject_model
+            if subject_model.subject_exists(text):
+                # Refresh the subject's image data from disk
+                subject_model.refresh_subject_data(text)
+
+        # Then, update registration targets
+        self._update_registration_targets()
+
     # IMainView Interface Implementation
     def set_output_directory_text(self, directory: str) -> None:
         """Set output directory text field."""
@@ -678,12 +730,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def enable_form_controls(self, enabled: bool) -> None:
         """Enable or disable form controls."""
         controls = [
-            self.lineEdit_Name, self.lineEdit_Schema, self.lineEdit_preCT,
-            self.lineEdit_preMRI, self.lineEdit_postCT, self.lineEdit_postMRI,
-            self.browse_Schema, self.browse_preCT, self.browse_preMRI,
-            self.browse_postCT, self.browse_postMRI, self.pushButton_addSubject
+            self.lineEdit_Name, self.lineEdit_Schema, self.lineEdit_image,
+            self.browse_Schema, self.browse_image,
+            self.session_comboBox, self.modality_comboBox, self.register_combobox,
+            self.addFile_pushButton, self.images_listWidget,
+            self.pushButton_addSubject
         ]
-        
+
         for control in controls:
             control.setEnabled(enabled)
     
