@@ -163,11 +163,11 @@ def coregister_images(input_file: Path, ref_file: Path, output_file_name: str) -
         print(f"Reference file {ref_file} does not exist.")
         return
 
-    print(f"Registering {input_file.stem} to {ref_file.stem} => {output_file_name}")
+    print(f"Registering {input_file.name} to {ref_file.name} => {output_file_name}")
     execute_command([
         tool_config.get_fsl_tool_path("flirt"),
-        "-in", input_file.stem,
-        "-ref", ref_file.stem,
+        "-in", str(input_file),
+        "-ref", str(ref_file),
         "-out", output_file_name,
         "-omat", f"{output_file_name}.mat",
         "-bins", "256",
