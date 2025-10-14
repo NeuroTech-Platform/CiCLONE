@@ -4,6 +4,7 @@ from typing import Dict, Optional, NamedTuple, List
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from ciclone.services.io.schema_processor import SchemaProcessor
+from ciclone.models.image_entry import ImageEntry
 
 
 class FieldValidationResult(NamedTuple):
@@ -22,35 +23,36 @@ class FormValidationResult(NamedTuple):
 
 class SubjectFormModel(QObject):
     """Model for managing subject form validation, state, and real-time feedback."""
-    
+
     # Signals for real-time validation feedback
     field_validation_changed = pyqtSignal(str, bool, str, str)  # field, valid, error_msg, warning_msg
     form_state_changed = pyqtSignal(bool, bool)  # is_valid, is_dirty
     form_reset = pyqtSignal()  # Form has been reset
-    
+    images_list_changed = pyqtSignal()  # Images list has been modified
+
     def __init__(self):
         super().__init__()
-        
-        # Form fields with default values
+
+        # Form fields with default values (removed individual image fields)
         self._fields = {
             'name': '',
-            'schema': '',
-            'pre_ct': '',
-            'pre_mri': '',
-            'post_ct': '',
-            'post_mri': ''
+            'schema': ''
         }
-        
+
+        # List of images to be imported
+        self._images: List[ImageEntry] = []
+
         # Track validation state for each field
         self._field_validity: Dict[str, FieldValidationResult] = {}
-        
+
         # Form state tracking
         self._is_dirty = False
         self._original_values = self._fields.copy()
-        
+        self._original_images = []
+
         # Dependencies
         self._subject_model = None
-        
+
         # Initialize validation state
         self._initialize_validation_state()
     
@@ -107,8 +109,6 @@ class SubjectFormModel(QObject):
             return self._validate_subject_name(value)
         elif field_name == 'schema':
             return self._validate_schema_field(value)
-        elif field_name in ['pre_ct', 'pre_mri', 'post_ct', 'post_mri']:
-            return self._validate_file_path(value, field_name)
         else:
             return FieldValidationResult(True)
     
@@ -157,36 +157,11 @@ class SubjectFormModel(QObject):
         
         return FieldValidationResult(True)
     
-    def _validate_file_path(self, file_path: str, field_type: str) -> FieldValidationResult:
-        """Validate file path fields (CT/MRI files)."""
-        if not file_path.strip():
-            return FieldValidationResult(True, "", f"{field_type.replace('_', ' ').title()} is optional")
-        
-        if not os.path.exists(file_path):
-            return FieldValidationResult(False, f"File not found: '{os.path.basename(file_path)}'")
-        
-        if not os.path.isfile(file_path):
-            return FieldValidationResult(False, "Path is not a file")
-        
-        # Check file extension for medical images
-        valid_extensions = ['.nii', '.nii.gz', '.dcm', '.img', '.hdr']
-        file_ext = ''.join(os.path.splitext(file_path))
-        if file_path.endswith('.nii.gz'):
-            file_ext = '.nii.gz'
-        
-        if not any(file_path.lower().endswith(ext) for ext in valid_extensions):
-            return FieldValidationResult(
-                True, "", 
-                f"File format '{file_ext}' may not be supported (expected: {', '.join(valid_extensions)})"
-            )
-        
-        return FieldValidationResult(True)
-    
     def validate_form(self) -> FormValidationResult:
         """Validate entire form and return comprehensive result."""
         error_messages = []
         warning_messages = []
-        
+
         # Validate all fields
         for field_name, value in self._fields.items():
             validation = self.validate_field(field_name, value)
@@ -194,14 +169,19 @@ class SubjectFormModel(QObject):
                 error_messages.append(f"{field_name.replace('_', ' ').title()}: {validation.error_message}")
             elif validation.warning_message:
                 warning_messages.append(f"{field_name.replace('_', ' ').title()}: {validation.warning_message}")
-        
-        # Cross-field validation: at least one image file or schema should be provided
-        image_fields = ['pre_ct', 'pre_mri', 'post_ct', 'post_mri']
-        has_image = any(self._fields[field].strip() for field in image_fields)
+
+        # Validate all images in the list
+        for idx, image_entry in enumerate(self._images):
+            is_valid, error_msg = image_entry.validate()
+            if not is_valid:
+                error_messages.append(f"Image {idx + 1}: {error_msg}")
+
+        # Cross-field validation: at least one image or schema should be provided
+        has_images = len(self._images) > 0
         has_schema = bool(self._fields['schema'].strip())
 
-        if not has_image and not has_schema:
-            error_messages.append("At least one medical image file or schema file must be provided")
+        if not has_images and not has_schema:
+            error_messages.append("At least one medical image or schema file must be provided")
 
         is_valid = len(error_messages) == 0
         return FormValidationResult(is_valid, error_messages, warning_messages)
@@ -212,12 +192,11 @@ class SubjectFormModel(QObject):
         if not all(result.is_valid for result in self._field_validity.values()):
             return False
 
-        # Check cross-field validation: at least one file must be provided
-        image_fields = ['pre_ct', 'pre_mri', 'post_ct', 'post_mri']
-        has_image = any(self._fields[field].strip() for field in image_fields)
+        # Check cross-field validation: at least one image or schema must be provided
+        has_images = len(self._images) > 0
         has_schema = bool(self._fields['schema'].strip())
 
-        return has_image or has_schema
+        return has_images or has_schema
     
     def is_form_dirty(self) -> bool:
         """Check if form has unsaved changes."""
@@ -230,14 +209,18 @@ class SubjectFormModel(QObject):
             old_form_valid = self.is_form_valid()
         if old_dirty is None:
             old_dirty = self._is_dirty
-        
-        # Update dirty state
-        self._is_dirty = self._fields != self._original_values
-        
+
+        # Update dirty state (check both fields and images)
+        fields_changed = self._fields != self._original_values
+        images_changed = len(self._images) != len(self._original_images) or \
+                         any(img.to_dict() != orig.to_dict()
+                             for img, orig in zip(self._images, self._original_images))
+        self._is_dirty = fields_changed or images_changed
+
         # Calculate new state
         new_valid = self.is_form_valid()
         new_dirty = self._is_dirty
-        
+
         # Emit state change signal if state changed
         if old_form_valid != new_valid or old_dirty != new_dirty:
             self.form_state_changed.emit(new_valid, new_dirty)
@@ -247,17 +230,24 @@ class SubjectFormModel(QObject):
         # Reset all field values
         for field_name in self._fields:
             self._fields[field_name] = ''
-        
+
+        # Clear images list
+        self._images.clear()
+
         # Reset validation state by actually validating the (now empty) fields
         self._initialize_validation_state()
-        
+
         # Reset form state
         self._is_dirty = False
         self._original_values = self._fields.copy()
-        
+        self._original_images = []
+
         # Emit reset signal
         self.form_reset.emit()
-        
+
+        # Emit images list changed signal
+        self.images_list_changed.emit()
+
         # Emit validation signals for all fields with correct validation results
         for field_name in self._fields:
             validation_result = self._field_validity[field_name]
@@ -267,14 +257,16 @@ class SubjectFormModel(QObject):
                 validation_result.error_message,
                 validation_result.warning_message
             )
-        
+
         # Emit correct form state (should be invalid since name field is now empty)
         is_valid = self.is_form_valid()
         self.form_state_changed.emit(is_valid, False)
-    
+
     def mark_as_clean(self):
         """Mark form as clean (typically after successful save)."""
         self._original_values = self._fields.copy()
+        self._original_images = [ImageEntry(img.file_path, img.session, img.modality, img.register_to)
+                                  for img in self._images]
         self._is_dirty = False
         self.form_state_changed.emit(self.is_form_valid(), False)
     
@@ -289,10 +281,173 @@ class SubjectFormModel(QObject):
     def get_form_data_for_submission(self) -> Dict[str, any]:
         """Get form data formatted for subject creation."""
         form_data = self._fields.copy()
-        
+
         # Add schema files list for proper processing
         schema_files = self.get_schema_files_list()
         if schema_files:
             form_data['schema_files'] = schema_files
-        
-        return form_data 
+
+        # Add images list
+        form_data['images'] = [img.to_dict() for img in self._images]
+
+        return form_data
+
+    # Image Management Methods
+    def add_image(self, image_entry: ImageEntry) -> bool:
+        """
+        Add an image to the list.
+
+        Args:
+            image_entry: ImageEntry to add
+
+        Returns:
+            True if added successfully, False otherwise
+        """
+        # Validate the image entry
+        is_valid, error_msg = image_entry.validate()
+        if not is_valid:
+            return False
+
+        # Store old states BEFORE making any changes
+        old_valid = self.is_form_valid()
+        old_dirty = self._is_dirty
+
+        # Add to list
+        self._images.append(image_entry)
+
+        # Update form state
+        self._update_form_state(old_valid, old_dirty)
+
+        # Emit images list changed signal
+        self.images_list_changed.emit()
+
+        return True
+
+    def remove_image(self, index: int) -> bool:
+        """
+        Remove an image from the list by index.
+
+        Args:
+            index: Index of image to remove
+
+        Returns:
+            True if removed successfully, False otherwise
+        """
+        if 0 <= index < len(self._images):
+            # Store old states BEFORE making any changes
+            old_valid = self.is_form_valid()
+            old_dirty = self._is_dirty
+
+            # Remove from list
+            self._images.pop(index)
+
+            # Update form state
+            self._update_form_state(old_valid, old_dirty)
+
+            # Emit images list changed signal
+            self.images_list_changed.emit()
+
+            return True
+        return False
+
+    def get_images_list(self) -> List[ImageEntry]:
+        """Get the current list of images."""
+        return self._images.copy()
+
+    def get_image_count(self) -> int:
+        """Get the number of images in the list."""
+        return len(self._images)
+
+    def get_available_registration_targets(self) -> List[str]:
+        """
+        Get list of available registration target identifiers for display in dropdown.
+        Combines existing subject images (if any) with newly added images.
+
+        Returns:
+            List of human-readable identifiers that can be used as registration targets
+        """
+        targets = ["None"]  # Always include None as first option
+
+        # First, add existing subject images if we're editing an existing subject
+        subject_name = self._fields.get('name', '').strip()
+        if subject_name and self._subject_model and self._subject_model.subject_exists(subject_name):
+            existing_targets = self._get_existing_subject_targets(subject_name)
+            targets.extend(existing_targets)
+
+        # Then, add newly added images from the form
+        for idx, img in enumerate(self._images):
+            # Create human-readable identifier
+            display_name = f"[{img.session}] {img.modality}"
+            # Add index if multiple images of same session/modality exist
+            count_same_type = sum(1 for i in self._images[:idx+1]
+                                 if i.session == img.session and i.modality == img.modality)
+            if count_same_type > 1:
+                display_name += f" #{count_same_type}"
+            # Mark as new to distinguish from existing
+            display_name += " (new)"
+            targets.append(display_name)
+
+        return targets
+
+    def _get_existing_subject_targets(self, subject_name: str) -> List[str]:
+        """
+        Get registration targets from existing subject's images.
+
+        Args:
+            subject_name: Name of the existing subject
+
+        Returns:
+            List of target identifiers from existing images
+        """
+        if not self._subject_model:
+            return []
+
+        subject_data = self._subject_model.get_subject(subject_name)
+        if not subject_data or not subject_data.images:
+            return []
+
+        targets = []
+        for idx, img_dict in enumerate(subject_data.images):
+            session = img_dict.get('session', 'Unknown')
+            modality = img_dict.get('modality', 'Unknown')
+            display_name = f"[{session}] {modality}"
+            # Count duplicates
+            count_same_type = sum(1 for i in subject_data.images[:idx+1]
+                                 if i.get('session') == session and i.get('modality') == modality)
+            if count_same_type > 1:
+                display_name += f" #{count_same_type}"
+            targets.append(display_name)
+
+        return targets
+
+    def load_existing_subject_images(self, subject_name: str) -> List[str]:
+        """
+        Load images from an existing subject directory and return available targets.
+
+        Args:
+            subject_name: Name of the existing subject
+
+        Returns:
+            List of registration target identifiers from existing subject
+        """
+        if not self._subject_model:
+            return ["None"]
+
+        subject_data = self._subject_model.get_subject(subject_name)
+        if not subject_data or not subject_data.images:
+            return ["None"]
+
+        # Build targets from existing images
+        targets = ["None"]
+        for idx, img_dict in enumerate(subject_data.images):
+            session = img_dict.get('session', 'Unknown')
+            modality = img_dict.get('modality', 'Unknown')
+            display_name = f"[{session}] {modality}"
+            # Count duplicates
+            count_same_type = sum(1 for i in subject_data.images[:idx+1]
+                                 if i.get('session') == session and i.get('modality') == modality)
+            if count_same_type > 1:
+                display_name += f" #{count_same_type}"
+            targets.append(display_name)
+
+        return targets 

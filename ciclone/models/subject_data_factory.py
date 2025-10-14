@@ -16,19 +16,19 @@ class SubjectDataFactory:
     def create_from_form_data(form_data: Dict[str, Any]) -> SubjectData:
         """
         Create a SubjectData object from form data.
-        
+
         Args:
             form_data: Dictionary containing form field values
-            
+
         Returns:
             SubjectData: Configured subject data object
-            
+
         Raises:
             KeyError: If required 'name' field is missing
         """
         if 'name' not in form_data:
             raise KeyError("Subject name is required")
-        
+
         # Create subject data object with form values
         subject_data = SubjectData(
             name=form_data['name'],
@@ -36,13 +36,14 @@ class SubjectDataFactory:
             pre_ct=form_data.get('pre_ct', ''),
             pre_mri=form_data.get('pre_mri', ''),
             post_ct=form_data.get('post_ct', ''),
-            post_mri=form_data.get('post_mri', '')
+            post_mri=form_data.get('post_mri', ''),
+            images=form_data.get('images', [])  # New: Pass through images list
         )
-        
+
         # Set schema files if provided
         if 'schema_files' in form_data:
             subject_data.set_schema_files(form_data['schema_files'])
-        
+
         return subject_data
     
     @staticmethod

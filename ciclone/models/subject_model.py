@@ -13,18 +13,22 @@ class SubjectData:
     name: str
     schema: str = ""  # For backward compatibility (will store comma-separated paths)
     schema_files: List[str] = None  # List of schema file paths
-    pre_ct: str = ""
-    pre_mri: str = ""
-    post_ct: str = ""
-    post_mri: str = ""
-    
+    pre_ct: str = ""  # Legacy field for backward compatibility
+    pre_mri: str = ""  # Legacy field for backward compatibility
+    post_ct: str = ""  # Legacy field for backward compatibility
+    post_mri: str = ""  # Legacy field for backward compatibility
+    images: List[Dict] = None  # New: List of image dictionaries
+
     def __post_init__(self):
-        """Initialize schema_files list if not provided."""
+        """Initialize schema_files and images lists if not provided."""
         if self.schema_files is None:
             self.schema_files = []
             # If schema (legacy) is provided, add it to schema_files
             if self.schema:
                 self.schema_files = [path.strip() for path in self.schema.split(',') if path.strip()]
+
+        if self.images is None:
+            self.images = []
     
     def get_schema_files(self) -> List[str]:
         """Get list of schema files."""
@@ -79,15 +83,71 @@ class SubjectModel(QObject):
     def _scan_existing_subjects(self):
         """Scan the output directory for existing subjects."""
         self._subjects.clear()
-        
+
         if not self._output_directory or not os.path.exists(self._output_directory):
             return
-            
+
         for item in os.listdir(self._output_directory):
             item_path = os.path.join(self._output_directory, item)
             if os.path.isdir(item_path):
-                # Create a basic SubjectData for existing subjects
-                self._subjects[item] = SubjectData(name=item)
+                # Create SubjectData and scan for images
+                subject_data = SubjectData(name=item)
+                subject_data.images = self._scan_subject_images(item_path)
+                self._subjects[item] = subject_data
+
+    def _scan_subject_images(self, subject_path: str) -> List[Dict]:
+        """
+        Scan a subject directory for existing image files.
+
+        Args:
+            subject_path: Path to the subject directory
+
+        Returns:
+            List of image dictionaries with session, modality, and file_path
+        """
+        images = []
+        subject_path_obj = Path(subject_path)
+        images_dir = subject_path_obj / 'images'
+
+        if not images_dir.exists():
+            return images
+
+        # Scan for preop and postop subdirectories
+        for session_name in ['preop', 'postop']:
+            session_dir = images_dir / session_name
+            if not session_dir.exists():
+                continue
+
+            session = "Pre" if session_name == "preop" else "Post"
+
+            # Scan for modality subdirectories (ct, mri, pet)
+            for modality_name in ['ct', 'mri', 'pet']:
+                modality_dir = session_dir / modality_name
+                if not modality_dir.exists():
+                    continue
+
+                modality = modality_name.upper()
+
+                # Find all image files in this modality directory
+                for file_path in modality_dir.iterdir():
+                    if file_path.is_file() and file_path.suffix in ['.nii', '.gz', '.dcm']:
+                        # Handle .nii.gz files
+                        if file_path.suffix == '.gz' and file_path.stem.endswith('.nii'):
+                            images.append({
+                                'file_path': str(file_path),
+                                'session': session,
+                                'modality': modality,
+                                'register_to': None
+                            })
+                        elif file_path.suffix in ['.nii', '.dcm']:
+                            images.append({
+                                'file_path': str(file_path),
+                                'session': session,
+                                'modality': modality,
+                                'register_to': None
+                            })
+
+        return images
     
     def validate_subject_data(self, subject_data: SubjectData, allow_existing: bool = False) -> SubjectValidationResult:
         """Validate subject data before creation.
@@ -212,7 +272,30 @@ class SubjectModel(QObject):
     def subject_exists(self, subject_name: str) -> bool:
         """Check if a subject exists."""
         return subject_name in self._subjects
-    
+
     def is_output_directory_set(self) -> bool:
         """Check if output directory is set."""
-        return self._output_directory is not None 
+        return self._output_directory is not None
+
+    def refresh_subject_data(self, subject_name: str) -> bool:
+        """
+        Refresh a specific subject's data by rescanning its directory.
+
+        Args:
+            subject_name: Name of the subject to refresh
+
+        Returns:
+            True if subject was refreshed, False if not found
+        """
+        if subject_name not in self._subjects:
+            return False
+
+        subject_path = self.get_subject_path(subject_name)
+        if not subject_path or not os.path.exists(subject_path):
+            return False
+
+        # Rescan the subject's images
+        subject_data = self._subjects[subject_name]
+        subject_data.images = self._scan_subject_images(subject_path)
+
+        return True 

@@ -2,6 +2,7 @@ from typing import Optional, Callable
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from ciclone.models.subject_form_model import SubjectFormModel, FormValidationResult
+from ciclone.models.image_entry import ImageEntry
 
 
 class SubjectFormController(QObject):
@@ -11,6 +12,7 @@ class SubjectFormController(QObject):
     validation_feedback_ready = pyqtSignal(str, bool, str, str)  # field, valid, error_msg, warning_msg
     form_state_updated = pyqtSignal(bool, bool)  # is_valid, is_dirty
     form_submission_complete = pyqtSignal(bool)  # success
+    images_list_changed = pyqtSignal()  # images list has been modified
     
     def __init__(self, main_controller, dialog_service):
         super().__init__()
@@ -32,6 +34,7 @@ class SubjectFormController(QObject):
         self.form_model.field_validation_changed.connect(self._on_field_validation_changed)
         self.form_model.form_state_changed.connect(self._on_form_state_changed)
         self.form_model.form_reset.connect(self._on_form_reset)
+        self.form_model.images_list_changed.connect(self._on_images_list_changed)
     
     def _emit_initial_validation_signals(self):
         """Emit initial validation signals for all fields to update UI."""
@@ -153,40 +156,111 @@ class SubjectFormController(QObject):
             if schema_files:
                 schema_text = ', '.join(schema_files)
                 self.handle_field_change('schema', schema_text)
-                
+
                 if self._view and hasattr(self._view, 'update_schema_field'):
                     self._view.update_schema_field(schema_text)
+
+    def browse_for_image(self) -> Optional[str]:
+        """
+        Browse for a medical image file.
+
+        Returns:
+            Selected file path or None if cancelled
+        """
+        filter_text = "Medical Images (*.nii *.nii.gz *.dcm);;All Files (*)"
+        title = "Select Medical Image File"
+
+        file_path = self.dialog_service.browse_file(title, filter_text)
+        return file_path
+
+    # Image Management Methods
+    def add_image_to_list(self, file_path: str, session: str, modality: str, register_to: Optional[str] = None) -> bool:
+        """
+        Add an image to the form's image list.
+
+        Args:
+            file_path: Path to the image file
+            session: "Pre" or "Post"
+            modality: "CT", "MRI", or "PET"
+            register_to: Optional registration target identifier
+
+        Returns:
+            True if added successfully, False otherwise
+        """
+        try:
+            image_entry = ImageEntry(file_path, session, modality, register_to)
+            success = self.form_model.add_image(image_entry)
+
+            if success:
+                self._log_message("debug", f"Added image: [{session}] {modality} - {file_path}")
+            else:
+                self._log_message("warning", f"Failed to add image: {file_path}")
+
+            return success
+        except Exception as e:
+            self._log_message("error", f"Error adding image: {str(e)}")
+            return False
+
+    def remove_image_from_list(self, index: int) -> bool:
+        """
+        Remove an image from the form's image list.
+
+        Args:
+            index: Index of image to remove
+
+        Returns:
+            True if removed successfully, False otherwise
+        """
+        success = self.form_model.remove_image(index)
+
+        if success:
+            self._log_message("debug", f"Removed image at index {index}")
         else:
-            file_filters = {
-                'pre_ct': "CT Images (*.nii *.nii.gz *.dcm);;All Files (*)",
-                'pre_mri': "MRI Images (*.nii *.nii.gz *.dcm);;All Files (*)",
-                'post_ct': "CT Images (*.nii *.nii.gz *.dcm);;All Files (*)",
-                'post_mri': "MRI Images (*.nii *.nii.gz *.dcm);;All Files (*)"
-            }
-            
-            filter_text = file_filters.get(field_name, "Medical Images (*.nii *.nii.gz *.dcm);;All Files (*)")
-            title = f"Select {field_name.replace('_', ' ').title()} File"
-            
-            file_path = self.dialog_service.browse_file(title, filter_text)
-            if file_path:
-                self.handle_field_change(field_name, file_path)
-                
-                if self._view and hasattr(self._view, 'update_field'):
-                    self._view.update_field(field_name, file_path)
-    
+            self._log_message("warning", f"Failed to remove image at index {index}")
+
+        return success
+
+    def get_images_list(self):
+        """Get the current list of images."""
+        return self.form_model.get_images_list()
+
+    def get_image_count(self) -> int:
+        """Get the number of images in the list."""
+        return self.form_model.get_image_count()
+
+    def get_available_registration_targets(self):
+        """Get list of available registration target identifiers."""
+        return self.form_model.get_available_registration_targets()
+
+    def load_existing_subject_images(self, subject_name: str):
+        """
+        Load images from an existing subject and return available registration targets.
+
+        Args:
+            subject_name: Name of the existing subject
+
+        Returns:
+            List of registration target identifiers
+        """
+        return self.form_model.load_existing_subject_images(subject_name)
+
     # Signal Handlers
     def _on_field_validation_changed(self, field: str, valid: bool, error_msg: str, warning_msg: str):
         """Handle field validation changes from form model."""
         self.validation_feedback_ready.emit(field, valid, error_msg, warning_msg)
-    
+
     def _on_form_state_changed(self, is_valid: bool, is_dirty: bool):
         """Handle form state changes from form model."""
         self.form_state_updated.emit(is_valid, is_dirty)
-    
+
     def _on_form_reset(self):
         """Handle form reset signal from form model."""
         if self._view and hasattr(self._view, 'on_form_reset'):
             self._view.on_form_reset()
+
+    def _on_images_list_changed(self):
+        """Handle images list changes from form model."""
+        self.images_list_changed.emit()
     
     # Validation Helpers
     def validate_field_for_view(self, field_name: str, value: str):

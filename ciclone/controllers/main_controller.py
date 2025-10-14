@@ -7,6 +7,7 @@ from ciclone.models.subject_model import SubjectModel, SubjectData
 from ciclone.models.subject_data_factory import SubjectDataFactory
 from ciclone.controllers.subject_controller import SubjectController
 from ciclone.controllers.processing_controller import ProcessingController
+from ciclone.controllers.import_controller import ImportController
 from ciclone.controllers.tree_view_controller import TreeViewController
 from ciclone.controllers.subject_form_controller import SubjectFormController
 from ciclone.ui.ImagesViewer import ImagesViewer
@@ -34,8 +35,9 @@ class MainController(QObject):
         # Initialize child controllers
         self.subject_controller = SubjectController(self.subject_model)
         self.processing_controller = ProcessingController(self.application_model)
+        self.import_controller = ImportController(self.application_model)
         self.tree_view_controller = TreeViewController()
-        
+
         # Initialize form controller after dialog service is available
         self.subject_form_controller = SubjectFormController(self, self.dialog_service)
         
@@ -61,6 +63,7 @@ class MainController(QObject):
         
         self.subject_controller.set_view(view)
         self.processing_controller.set_view(view)
+        self.import_controller.set_view(view)
         self.subject_form_controller.set_view(view)
         
         # Set up tree view if available
@@ -78,6 +81,8 @@ class MainController(QObject):
         controller_callback = lambda level, msg: self._log_message(level, msg)
         self.subject_controller.set_log_callback(controller_callback)
         self.processing_controller.set_log_callback(controller_callback)
+        self.import_controller.set_log_callback(controller_callback)
+        self.subject_form_controller.set_log_callback(controller_callback)
         self.tree_view_controller.set_log_callback(controller_callback)
         
     def _log_message(self, level: str, message: str):
@@ -98,12 +103,16 @@ class MainController(QObject):
         """Setup relationships between controllers."""
         # Pass dialog service to subject controller for user feedback
         self.subject_controller.set_dialog_service(self.dialog_service)
-        
+
+        # Set import callback for subject controller (unified import workflow)
+        self.subject_controller.set_import_callback(self.run_import)
+
         # Setup logging for all controllers
         if self._log_callback:
             controller_callback = lambda level, msg: self._log_message(level, msg)
             self.subject_controller.set_log_callback(controller_callback)
             self.processing_controller.set_log_callback(controller_callback)
+            self.import_controller.set_log_callback(controller_callback)
             self.subject_form_controller.set_log_callback(controller_callback)
     
     def _on_output_directory_changed(self, directory_path: str):
@@ -311,7 +320,31 @@ class MainController(QObject):
     def is_processing_running(self) -> bool:
         """Check if processing is running (delegated to ProcessingController)."""
         return self.processing_controller.is_processing_running()
-    
+
+    # Import Management (delegated)
+    def run_import(self, import_jobs: List) -> bool:
+        """
+        Run unified import workflow (crop + optional registration).
+
+        Each ImportJob contains all information for a complete image import workflow.
+        Progress is natural 0-100% across all operations within import jobs.
+
+        Args:
+            import_jobs: List of ImportJob objects to process
+
+        Returns:
+            bool: True if import started successfully, False otherwise
+        """
+        return self.import_controller.run_imports(import_jobs)
+
+    def stop_import(self) -> bool:
+        """Stop current import operation (delegated to ImportController)."""
+        return self.import_controller.stop_import()
+
+    def is_import_running(self) -> bool:
+        """Check if import is running (delegated to ImportController)."""
+        return self.import_controller.is_import_running()
+
     # Images Viewer Management
     def open_nifti_file(self, file_path: str) -> bool:
         """Open a NIFTI file in the images viewer."""

@@ -11,13 +11,14 @@ from ciclone.services.naming_service import NamingService
 
 class SubjectController:
     """Controller for managing subject operations and coordinating between subject model and services."""
-    
+
     def __init__(self, subject_model: SubjectModel):
         self.subject_model = subject_model
         self._view = None
         self._log_callback: Optional[Callable[[str, str], None]] = None
         self._dialog_service = None
         self._naming_service = NamingService()  # Initialize naming service with defaults
+        self._import_callback: Optional[Callable[[List], bool]] = None  # Callback to trigger unified import workflow
         
     def set_view(self, view):
         """Set the view reference for UI updates."""
@@ -30,7 +31,16 @@ class SubjectController:
     def set_dialog_service(self, dialog_service):
         """Set dialog service for user feedback."""
         self._dialog_service = dialog_service
-        
+
+    def set_import_callback(self, callback: Callable[[List], bool]):
+        """
+        Set callback function for triggering unified import workflow.
+
+        Args:
+            callback: Function taking List[ImportJob] that returns success status
+        """
+        self._import_callback = callback
+
     def _log_message(self, level: str, message: str):
         """Log a message if callback is set."""
         if self._log_callback:
@@ -77,12 +87,14 @@ class SubjectController:
                 "pre_ct": subject_data.pre_ct,
                 "pre_mri": subject_data.pre_mri,
                 "post_ct": subject_data.post_ct,
-                "post_mri": subject_data.post_mri
+                "post_mri": subject_data.post_mri,
+                "images": subject_data.images if subject_data.images else []
             }
 
             # Perform the actual file operations with naming service
             # This will add files to existing directory if it already exists
-            SubjectImporter.import_subject(output_directory, subject_dict, self._naming_service)
+            # import_subject now returns subject and unified import jobs
+            subject, import_jobs = SubjectImporter.import_subject(output_directory, subject_dict, self._naming_service)
 
             # Add to model only if it's a new subject
             if not subject_exists:
@@ -98,15 +110,21 @@ class SubjectController:
 
                     return False
 
-            # Success message
+            # Success message for subject creation (directory structure only, not file processing)
+            # Don't log success yet if there are import jobs - let the import worker log final success
+            if not import_jobs:
+                if subject_exists:
+                    self._log_message("success", f"Subject '{subject_data.name}' updated successfully")
+                else:
+                    self._log_message("success", f"Subject '{subject_data.name}' created successfully")
+
+            # Refresh the subject's data to reflect the newly added files
             if subject_exists:
-                self._log_message("success", f"Files added to existing subject '{subject_data.name}' successfully")
-            else:
-                self._log_message("success", f"Subject '{subject_data.name}' imported successfully")
+                self.subject_model.refresh_subject_data(subject_data.name)
 
             # Show success feedback to user
             if self._dialog_service:
-                operation = "Add Files" if subject_exists else "Import"
+                operation = "Add Files" if subject_exists else "Create"
                 self._dialog_service.show_subject_operation_result(
                     operation, subject_data.name, True
                 )
@@ -114,6 +132,19 @@ class SubjectController:
             # Notify view to refresh if available
             if self._view and hasattr(self._view, 'refresh_subject_tree'):
                 self._view.refresh_subject_tree()
+
+            # Trigger unified import workflow if there are import jobs
+            if import_jobs and self._import_callback:
+                job_count = len(import_jobs)
+                registration_count = sum(1 for job in import_jobs if job.needs_registration())
+                if registration_count > 0:
+                    self._log_message("info", f"Starting import of {job_count} file(s) ({registration_count} with coregistration)")
+                else:
+                    self._log_message("info", f"Starting import of {job_count} file(s)")
+                self._import_callback(import_jobs)
+            else:
+                # No import jobs means schema-only or legacy format
+                self._log_message("success", f"Subject '{subject_data.name}' ready for use")
 
             return True
 
