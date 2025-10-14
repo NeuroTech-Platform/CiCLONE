@@ -14,6 +14,7 @@ from ciclone.controllers.main_controller import MainController
 from ciclone.services.processing.tool_config import tool_config
 from ciclone.interfaces.view_interfaces import IMainView, IBaseView
 from ciclone.ui.PipelineConfigDialog import PipelineConfigDialog
+from ciclone.ui.AboutDialog import AboutDialog
 
 from ..forms.MainWindow_ui import Ui_MainWindow
 
@@ -55,7 +56,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         # Configuration menu actions
         self.actionManage_Pipelines.triggered.connect(self.open_pipeline_config_dialog)
-        
+
+        # Help menu actions
+        self.actionAbout.triggered.connect(self.show_about_dialog)
+
         # Directory and subject management
         self.lineEdit_outputDirectory.textChanged.connect(self.on_output_directory_changed)
         self.pushButton_addSubject.clicked.connect(self.add_subject)
@@ -157,18 +161,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         try:
             # Get config directory from main controller's application model
             config_dir_path = str(self.main_controller.application_model._config_service.config_dir)
-            
+
             # Create and show the dialog
             dialog = PipelineConfigDialog(config_dir_path, self)
             result = dialog.exec()
-            
+
             # If changes were made, refresh the config UI
             if result == dialog.DialogCode.Accepted:
                 self._setup_config_ui()  # Refresh config dropdown
                 self.add_log_message("info", "Pipeline configurations updated")
-                
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open pipeline configuration dialog: {str(e)}")
+
+    def show_about_dialog(self):
+        """Show the About dialog."""
+        about_dialog = AboutDialog(self)
+        about_dialog.exec()
 
     def _on_field_validation_changed(self, field: str, valid: bool, error_msg: str, warning_msg: str):
         """Handle field validation feedback."""
