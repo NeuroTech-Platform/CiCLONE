@@ -61,5 +61,5 @@ class Subject:
             return None
         
         subject_name = self.get_subject_name()
-        mat_file = self.pipeline_output / f'MNI_{subject_name}_ref_brain.mat'
+        mat_file = self.pipeline_output / f'MNI_{subject_name}_ref.mat'
         return mat_file if mat_file.exists() else None

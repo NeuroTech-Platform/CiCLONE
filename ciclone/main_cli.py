@@ -122,7 +122,7 @@ Use ciclone -h to see all available commands''',
             
         for subject_name in args.subjects:
             subject_folder = output_directory_path / subject_name
-            transform_mat = subject_folder / 'processed_tmp' / f'MNI_{subject_name}_ref_brain.mat'
+            transform_mat = subject_folder / 'processed_tmp' / f'MNI_{subject_name}_ref.mat'
 
             if not transform_mat.exists():
                 print(f"[ERROR] Transformation matrix not found for subject {subject_name}")

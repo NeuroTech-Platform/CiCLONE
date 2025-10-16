@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/fl6985/Documents/Repository/HIP/app-in-browser/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
