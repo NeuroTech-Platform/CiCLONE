@@ -115,7 +115,7 @@ class TestSubjectFileService(unittest.TestCase):
         SubjectFileService.create_subject_directories(self.subject_path)
         pipeline_output = self.subject_path / 'pipeline_output'
         subject_name = self.subject_path.name
-        mat_file = pipeline_output / f'MNI_{subject_name}_ref_brain.mat'
+        mat_file = pipeline_output / f'MNI_{subject_name}_ref.mat'
         mat_file.write_text('matrix data')
         
         # Act
