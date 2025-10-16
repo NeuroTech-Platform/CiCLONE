@@ -7,8 +7,6 @@ import numpy as np
 import os
 import subprocess
 
-
-
 def open_fsleyes(input_file: Path):
     """
     Opens a NIFTI image file in FSLEyes viewer for visual inspection.
@@ -370,7 +368,6 @@ def extract_brain(input_file: Path, output_file: Path,
     
     execute_command(cmd)
 
-
 def mask_image(input_file: Path, mask_file: Path, output_file_name: str):
     """
     Applies a binary mask to an image using FSLmaths masking operation.
@@ -495,22 +492,22 @@ def transform_coordinates(input_json: Path, transformation_matrix: Path, output_
 
 def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
     """
-    Registers a T1 MRI brain image to MNI space using two-stage FSL FLIRT registration.
-    
-    This operation performs high-quality registration to MNI standard space using
-    a two-stage approach: rigid registration (6 DOF) for rough alignment followed
-    by affine registration (12 DOF) for fine-tuning. Uses MNI152_T1_2mm_brain template.
-    
+    Registers a T1 MRI brain image to MNI space using FSL FLIRT rigid-body transformation.
+
+    This operation registers a brain-extracted T1-weighted MRI to the MNI152_T1_1mm standard template
+    with FSL FLIRT using a rigid-body (6 DOF) transformation and mutual information cost function.
+    Outputs the registered MRI volume and the corresponding transformation matrix.
+
     Parameters:
         input_file: T1 brain image (brain-extracted) to register
-        output_file_name: Base name for output files (creates multiple outputs)
-    
+        output_file_name: Base name for output files (produces registered NIfTI and .mat transformation)
+
     Example:
         Input: postT1_${name}_brain
-        Output: MNI_${name} (plus _rigid and .mat files)
+        Output: MNI_${name} (plus MNI_${name}.mat)
     """
     input_file = Path(input_file)
-    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_2mm_brain.nii.gz")
+    ref_file = Path(f"{os.environ.get('FSLDIR')}/data/standard/MNI152_T1_1mm.nii.gz")
 
     if not input_file.exists():
         print(f"Input file {input_file} does not exist.")
@@ -520,34 +517,19 @@ def register_mri_to_mni(input_file: Path, output_file_name: str) -> None:
         return
 
     print(f"Registering {input_file.stem} to {ref_file.stem} => {output_file_name}")
-    # First stage: rigid registration (6 DOF)
     execute_command([
         tool_config.get_fsl_tool_path("flirt"),
-        "-in", input_file.stem,
-        "-ref", ref_file,
-        "-omat", f"{output_file_name}_rigid.mat",
-        "-out", f"{output_file_name}_rigid",
-        "-dof", "6",                    # Rigid registration (rotation + translation)
-        "-cost", "normmi",              # Normalized mutual information
-        "-searchrx", "-180", "180",     # Full rotation search
-        "-searchry", "-180", "180",
-        "-searchrz", "-180", "180",
-        "-bins", "256",
-        "-interp", "spline"             # High quality interpolation
-    ])
-
-    # Second stage: affine registration (12 DOF) initialized with rigid result
-    execute_command([
-        tool_config.get_fsl_tool_path("flirt"),
-        "-in", input_file.stem,
-        "-ref", ref_file,
-        "-init", f"{output_file_name}_rigid.mat",  # Initialize with rigid transform
+        "-in", str(input_file),
+        "-ref", str(ref_file),
+        "-out", f"{output_file_name}",
         "-omat", f"{output_file_name}.mat",
-        "-out", output_file_name,
-        "-dof", "12",                   # Affine registration
-        "-cost", "normmi",
         "-bins", "256",
-        "-interp", "spline"
+        "-cost", "mutualinfo",
+        "-searchrx", "-90", "90",
+        "-searchry", "-90", "90",
+        "-searchrz", "-90", "90",
+        "-dof", "6",
+        "-interp", "nearestneighbour"
     ])
 
 def register_ct_to_mni(input_file: Path, output_file_name: str) -> None:

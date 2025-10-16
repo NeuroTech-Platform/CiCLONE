@@ -72,18 +72,10 @@ stages:
   - coregisteration
   auto_clean: true
   operations:
-  - type: extract_brain
-    workdir: processed_tmp
-    parameters:
-      input_file: postT1_${name}
-      output_file: postT1_${name}_brain
-      fractional_intensity: 0.25
-      gradient_threshold: 0.0
-      generate_mask: false
   - type: register_mri_to_mni
     workdir: processed_tmp
     parameters:
-      input_file: postT1_${name}_brain
+      input_file: postT1_${name}
       output_file_name: MNI_${name}
 - name: cortical_extraction
   depends_on:

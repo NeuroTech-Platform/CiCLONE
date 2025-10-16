@@ -51,5 +51,5 @@ class SubjectFileService:
             return None
         
         subject_name = subject_path.stem
-        mat_file = pipeline_output / f'MNI_{subject_name}_ref_brain.mat'
+        mat_file = pipeline_output / f'MNI_{subject_name}_ref.mat'
         return mat_file if mat_file.exists() else None

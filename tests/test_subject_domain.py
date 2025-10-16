@@ -195,7 +195,7 @@ class TestSubjectDomain(unittest.TestCase):
         pipeline_output = self.subject_path / 'pipeline_output'
         pipeline_output.mkdir(parents=True)
         
-        mat_file = pipeline_output / 'MNI_test_subject_ref_brain.mat'
+        mat_file = pipeline_output / 'MNI_test_subject_ref.mat'
         mat_file.write_text('matrix data')
         
         subject = Subject(self.subject_path)
