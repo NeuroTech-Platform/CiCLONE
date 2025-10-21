@@ -88,35 +88,66 @@ CiCLONE/
 │   │   │   └── tool_config.py      # External tool configuration
 │   │   └── io/                 # I/O operations
 │   │       ├── electrode_reader.py  # Electrode file I/O
+│   │       ├── electrode_file_service.py # Electrode file operations
 │   │       ├── schema_processor.py  # Data schema validation
 │   │       ├── slicer_file.py      # 3D Slicer file operations
-│   │       └── subject_importer.py # Subject data import
+│   │       ├── subject_importer.py # Subject data import with MRI modality detection
+│   │       └── subject_file_service.py # Subject file operations
+│   │   ├── config_service.py        # Pipeline configuration management
+│   │   ├── naming_service.py        # File naming conventions
+│   │   ├── operation_metadata_parser.py # Operation metadata extraction
+│   │   └── registration_target_resolver.py # Registration target resolution
 │   ├── controllers/            # MVC controllers (business logic coordination)
 │   │   ├── main_controller.py       # Central application coordination
+│   │   ├── abstract_worker_controller.py # Base class for worker management
 │   │   ├── electrode_controller.py  # Electrode operations
 │   │   ├── image_controller.py      # Image display coordination
 │   │   ├── processing_controller.py # Processing pipeline management
-│   │   └── subject_controller.py    # Subject management
+│   │   ├── import_controller.py     # Image import operations
+│   │   ├── subject_controller.py    # Subject management
+│   │   ├── subject_form_controller.py # Form validation coordination
+│   │   ├── tree_view_controller.py  # Tree view navigation
+│   │   ├── crosshair_controller.py  # Crosshair synchronization
+│   │   └── config_dialog_controller.py # Configuration editing
+│   ├── managers/                # System managers
+│   │   └── config_transaction_manager.py # Transactional config editing
 │   ├── models/                 # MVC models (data and state management)
 │   │   ├── application_model.py     # Central application state
 │   │   ├── electrode_model.py       # Electrode data management
+│   │   ├── coordinate_model.py      # 3D coordinate management
+│   │   ├── crosshair_model.py       # Crosshair state management
 │   │   ├── image_model.py          # Medical image data
+│   │   ├── image_entry.py          # Image import metadata
+│   │   ├── import_job.py           # Import operation definition
+│   │   ├── job_validation_mixin.py # Job validation utilities
 │   │   ├── subject_model.py        # Subject data management
-│   │   └── subject_form_model.py   # Form validation model
+│   │   ├── subject_form_model.py   # Form validation with unified images list
+│   │   └── subject_data_factory.py # Factory for subject data creation
 │   ├── interfaces/             # Type-safe view interfaces
 │   │   └── view_interfaces.py       # Protocol-based view contracts
 │   ├── ui/                     # Views and UI components
 │   │   ├── MainWindow.py           # Main application window
 │   │   ├── ImagesViewer.py         # Medical image viewer
+│   │   ├── PipelineConfigDialog.py # Configuration editor dialog
+│   │   ├── AboutDialog.py          # About dialog
+│   │   ├── PreviewDialog.py        # Preview dialogs
 │   │   ├── Viewer3D.py             # 3D visualization
-│   │   └── ClickableImageLabel.py  # Custom image interaction widget
+│   │   └── widgets/                # Custom widgets
+│   │       ├── ClickableImageLabel.py  # Image interaction widget
+│   │       ├── MultiSelectComboBox.py  # Multi-select combo box
+│   │       └── parameter_widget_factory.py # Dynamic parameter widgets
 │   ├── forms/                  # Auto-generated UI forms
 │   │   ├── MainWindow.ui/.py        # Main window UI definition
 │   │   ├── ImagesViewer.ui/.py     # Image viewer UI definition
+│   │   ├── PipelineConfig.ui/.py   # Pipeline config dialog UI
+│   │   ├── AboutDialog.ui/.py      # About dialog UI
 │   │   └── Viewer3D.ui/.py         # 3D viewer UI definition
 │   ├── workers/                # Background processing
-│   │   ├── ImageProcessingWorker.py # Qt thread worker
-│   │   └── ImageProcessingProcess.py # Multiprocessing support
+│   │   ├── AbstractWorker.py       # Base QThread worker class
+│   │   ├── ImageProcessingWorker.py # Qt thread worker for pipelines
+│   │   ├── ImageProcessingProcess.py # Process function for pipelines
+│   │   ├── ImportWorker.py         # Qt thread worker for imports
+│   │   └── ImportProcess.py        # Process function for imports
 │   ├── utils/                  # General utilities
 │   │   ├── utility.py              # Command execution, file utilities
 │   │   └── file_utils.py           # File system operations
@@ -157,11 +188,17 @@ For detailed architecture information about specific components, see:
 - Form validation system and controller coordination
 - MainController and child controller specifications
 
-### 🖼️ [ImagesViewer Architecture](./imagesviewer.md)  
+### 🖼️ [ImagesViewer Architecture](./imagesviewer.md)
 - Medical image viewer and electrode localization architecture
 - Multi-controller coordination (Image, Electrode, Crosshair)
 - Advanced overlay system and coordinate transformation
 - MVC patterns specific to medical image processing
+
+### ⚙️ [Configuration Transaction Management](./config-transaction-management.md)
+- Transactional editing system for pipeline configurations
+- Change tracking and dirty state management
+- Save/discard workflows with context-aware prompting
+- Hierarchical state management (Pipeline/Stage/Operation levels)
 
 ### 📋 [Architecture Overview](./README.md)
 - Documentation navigation and quick reference
@@ -213,9 +250,29 @@ Contains business logic services organized by functional domain, providing clean
 
 #### I/O Services (`services/io/`)
 - **`electrode_reader.py`**: Reads electrode definition files (.elecdef)
+- **`electrode_file_service.py`**: Electrode file operations and management
 - **`slicer_file.py`**: Handles 3D Slicer file format operations
-- **`subject_importer.py`**: Imports subject data and creates directory structures
+- **`subject_importer.py`**: Imports subject data with MRI modality detection
+  - Reads NIFTI headers to detect MRI sequences (T1, T2, FLAIR, DWI, SWI, etc.)
+  - Creates standardized subject directory structures
+  - Handles batch import with metadata extraction
+- **`subject_file_service.py`**: Subject file system operations
 - **`schema_processor.py`**: Handles data schema validation and processing
+
+#### Configuration and Naming Services
+- **`config_service.py`**: Pipeline configuration loading and management
+  - YAML configuration parsing for processing pipelines
+  - Configuration validation and defaults
+- **`naming_service.py`**: File naming conventions management
+  - Standardized naming patterns for medical images
+  - Session/modality-based file naming
+- **`operation_metadata_parser.py`**: Operation metadata extraction
+  - Parses operation definitions from configuration
+  - Extracts parameter schemas for dynamic UI generation
+- **`registration_target_resolver.py`**: Registration target resolution
+  - Resolves target identifiers like "[Pre] CT", "[Post] MRI #2"
+  - Supports both newly-imported and existing subject images
+  - Handles ambiguous references with user prompting
 
 ### 3. Complete MVC Architecture
 
@@ -247,10 +304,22 @@ Manage data and business logic for the application state with comprehensive vali
   - NIFTI file loading and processing
   - Volume data management and slice extraction
 - **`subject_model.py`**: Subject data and directory management
-- **`subject_form_model.py`**: Comprehensive form validation
+- **`subject_form_model.py`**: Comprehensive form validation with unified images list
   - Real-time validation with elegant visual feedback
+  - Manages list of `ImageEntry` objects for import operations
   - Form state management with dependencies
   - Signal-based validation state communication
+- **`image_entry.py`**: Image import metadata structure
+  - Represents individual images with session, modality, and registration target
+  - Provides display name generation and directory mapping
+- **`import_job.py`**: Unified import operation definition
+  - Combines crop and optional registration operations
+  - Includes job serialization for multiprocessing
+- **`job_validation_mixin.py`**: Reusable validation utilities for jobs
+  - Common validation methods for file existence, directory access
+  - Shared across import and processing jobs
+- **`subject_data_factory.py`**: Factory pattern for subject data creation
+  - Encapsulates subject data construction logic
 
 #### Controllers (`ciclone/controllers/`)
 Coordinate between models and views, handling user interactions with clean separation of concerns.
@@ -258,7 +327,26 @@ Coordinate between models and views, handling user interactions with clean separ
 - **`main_controller.py`**: Central application coordination
   - Application lifecycle management
   - Cross-component communication coordination
-  - Integration with processing pipeline
+  - Integration with processing and import pipelines
+- **`abstract_worker_controller.py`**: Base class for worker management
+  - Template method pattern for background worker operations
+  - Common lifecycle management (start, stop, progress tracking)
+  - Provides hooks for subclasses: `_create_worker_instance()`, `_get_operation_name()`
+  - Shared by both `ProcessingController` and `ImportController`
+- **`import_controller.py`**: Image import operations
+  - Manages image import workflows (crop + optional registration)
+  - Inherits from `AbstractWorkerController` for worker management
+  - Coordinates with `RegistrationTargetResolver` for target resolution
+  - Public API: `run_imports()`, `stop_import()`, `is_import_running()`
+- **`processing_controller.py`**: Manages processing pipeline execution
+  - Inherits from `AbstractWorkerController` for worker management
+  - Background processing coordination
+  - Progress tracking and user feedback
+  - Clean process termination without message spam
+- **`config_dialog_controller.py`**: Configuration editing
+  - Uses `ConfigTransactionManager` for transactional editing
+  - Manages pipeline, stage, and operation editing
+  - Provides save/discard workflows with context-aware prompting
 - **`electrode_controller.py`**: Manages electrode-related operations
   - Electrode CRUD operations
   - Coordinate setting and processing
@@ -268,10 +356,6 @@ Coordinate between models and views, handling user interactions with clean separ
   - Slice navigation and visualization
   - Coordinate mapping between views
 - **`crosshair_controller.py`**: Coordinates crosshair display across views
-- **`processing_controller.py`**: Manages processing pipeline execution
-  - Background processing coordination
-  - Progress tracking and user feedback
-  - Clean process termination without message spam
 - **`subject_controller.py`**: Subject management operations
   - Directory creation and organization
   - Subject deletion and renaming
@@ -295,25 +379,77 @@ Handle user interface and presentation logic with elegant validation feedback.
   - Advanced gear button overlay system for image management
   - Real-time opacity control with percentage feedback
   - Professional medical imaging interface optimized for neurosurgical workflows
-- **`Viewer3D.py`**: 3D visualization component
-- **`ClickableImageLabel.py`**: Custom widget for image interaction
+- **`PipelineConfigDialog.py`**: Configuration editor dialog
+  - Transactional editing interface for pipelines, stages, and operations
+  - Real-time dirty state visualization with asterisk indicators
+  - Save/discard workflows with smart prompting
+- **`AboutDialog.py`**: About dialog window
 - **`PreviewDialog.py`**: Preview dialogs for data validation
+- **`Viewer3D.py`**: 3D visualization component
+- **Custom Widgets** (`ui/widgets/`):
+  - `ClickableImageLabel.py`: Image interaction widget with click coordinate mapping
+  - `MultiSelectComboBox.py`: Multi-select combo box for advanced filtering
+  - `parameter_widget_factory.py`: Dynamic parameter UI generation from schemas
 
-### 4. Supporting Components
+### 4. Managers Layer (`ciclone/managers/`)
+
+Specialized system managers for complex, cross-cutting concerns.
+
+#### Configuration Transaction Manager
+- **`config_transaction_manager.py`**: Transactional editing system for pipeline configurations
+  - **Change Tracking**: Hierarchical tracking at Pipeline/Stage/Operation levels
+  - **Transaction Lifecycle**: Begin/commit/rollback operations with atomic saves
+  - **Dirty State Management**: Real-time tracking of modified entities
+  - **Context-Aware Prompting**: Smart prompts only when necessary during context switches
+  - **Revert Detection**: Automatic cleanup when values revert to original state
+  - **Change Records**: Complete audit trail with timestamps
+  - **Entity Hierarchy**: `"pipeline:0:stage:1:operation:2"` path format
+  - See **[Configuration Transaction Management](./config-transaction-management.md)** for details
+
+### 5. Supporting Components
 
 #### Forms (`ciclone/forms/`)
 Auto-generated UI forms from Qt Designer files with validation integration.
 - `MainWindow_ui.py` - Enhanced with validation indicator layout
-- `ImagesViewer_ui.py`
-- `Viewer3D_ui.py`
+- `ImagesViewer_ui.py` - Medical image viewer interface
+- `PipelineConfig_ui.py` - Configuration editor dialog interface
+- `AboutDialog_ui.py` - About dialog interface
+- `Viewer3D_ui.py` - 3D visualization interface
 
 #### Workers (`ciclone/workers/`)
-Background processing components for long-running operations with clean termination.
-- **`ImageProcessingWorker.py`**: Qt thread worker for image processing
-- **`ImageProcessingProcess.py`**: Multiprocessing support for pipeline execution
+Background processing components implementing a two-level worker pattern for long-running operations.
+
+**Abstract Worker Pattern**:
+- **`AbstractWorker.py`**: Base QThread class for background processes
+  - Template method pattern for worker implementations
+  - Manages multiprocessing.Process spawning and communication
+  - Provides hooks: `_get_process_function()`, `_get_process_args()`, `_get_progress_signal_params()`
+  - Signals: `progress_signal`, `log_signal`, `job_complete_signal`, `finished`, `error_signal`
+
+**Processing Pipeline Workers**:
+- **`ImageProcessingWorker.py`**: QThread worker for pipeline processing
+  - Inherits from `AbstractWorker` for common functionality
+  - Coordinates pipeline stage execution in background process
+- **`ImageProcessingProcess.py`**: Process function for pipeline execution
+  - Function: `processPipeline(conn, processing_jobs, ...)`
+  - Executes FSL/FreeSurfer operations in isolated process
   - Clean process termination without message spam
   - Proper signal handling and cleanup coordination
-  - Cross-platform compatibility ensured
+
+**Import Workers**:
+- **`ImportWorker.py`**: QThread worker for image import operations
+  - Inherits from `AbstractWorker` for common functionality
+  - Manages crop and registration operations
+- **`ImportProcess.py`**: Process function for import operations
+  - Function: `processImports(conn, import_jobs)`
+  - Handles batch import with progress tracking
+  - Crop + optional registration sequentially per image
+
+**Benefits of Two-Level Pattern**:
+- True parallelism for CPU-intensive operations
+- Proper isolation of external tool execution
+- Clean cancellation via process termination
+- Cross-platform compatibility ensured
 
 #### Utils (`ciclone/utils/`)
 General-purpose utility functions.
@@ -355,6 +491,30 @@ Configuration files and electrode definitions.
 - **View Delegate**: UI business logic abstraction
 - **Processing Services**: External tool integration abstraction
 
+### 6. Template Method Pattern
+- **Abstract Worker Controller**: Base class defining worker lifecycle
+  - Common workflow: `run_operation()` → `_create_worker_instance()` → `_get_operation_name()`
+  - Subclasses (`ProcessingController`, `ImportController`) implement specific hooks
+  - Eliminates code duplication across worker-based controllers
+- **Abstract Worker**: Base QThread class for background processing
+  - Template methods: `_get_process_function()`, `_get_process_args()`, `_get_progress_signal_params()`
+  - Subclasses (`ImageProcessingWorker`, `ImportWorker`) provide specific implementations
+
+### 7. Factory Pattern
+- **Subject Data Factory**: Encapsulates subject data construction logic
+  - Centralizes complex subject data creation
+  - Provides consistent interface for subject instantiation
+- **Parameter Widget Factory**: Dynamic UI generation from operation schemas
+  - Creates appropriate widgets based on parameter types
+  - Enables configuration-driven UI construction
+
+### 8. Transaction Pattern
+- **Config Transaction Manager**: ACID-like properties for configuration editing
+  - **Atomicity**: All changes commit together or none do
+  - **Consistency**: Maintains valid configuration state throughout
+  - **Isolation**: Working configs separate from original until commit
+  - **Durability**: Changes persisted only on successful commit
+
 ## Data Flow
 
 CiCLONE implements sophisticated data flow patterns across its two main UI components. For detailed data flow examples specific to each component, see:
@@ -373,9 +533,24 @@ User Interaction → View → Controller → Model/Service → External Tools/St
 ### Cross-Component Integration
 
 1. **MainWindow → ImagesViewer**: Subject creation triggers medical image viewer for NIFTI files
-2. **Processing Pipeline**: Coordinates between subject management and medical image processing
-3. **Service Layer**: Shared services (DialogService, Processing Services) coordinate across components
-4. **Configuration**: Central ApplicationModel provides configuration to all components
+2. **Import Pipeline**: Image import workflow with crop and optional registration
+   - `SubjectFormController` collects `ImageEntry` objects
+   - `ImportController` creates `ImportJob` instances
+   - `RegistrationTargetResolver` resolves target image references
+   - `ImportWorker` executes crop/registration in background
+   - Results imported to appropriate subject directories
+3. **Processing Pipeline**: Coordinates between subject management and medical image processing
+   - `ProcessingController` manages pipeline execution
+   - `ImageProcessingWorker` runs FSL/FreeSurfer operations
+   - Progress updates flow back to MainWindow for user feedback
+4. **Configuration Editing**: Transactional pipeline configuration management
+   - `ConfigDialogController` uses `ConfigTransactionManager`
+   - Changes tracked hierarchically with dirty state indicators
+   - Atomic save/discard operations ensure consistency
+5. **Service Layer**: Shared services coordinate across components
+   - DialogService, Processing Services, Naming Service
+   - Registration Target Resolver bridges import and subject directories
+6. **Central Configuration**: ApplicationModel provides configuration to all components
 
 ## Dependency Management Strategy
 
