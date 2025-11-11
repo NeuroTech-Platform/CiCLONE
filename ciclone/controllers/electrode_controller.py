@@ -395,6 +395,19 @@ class ElectrodeController:
         """Get all electrode structures including tail information for display purposes."""
         return self.electrode_model.get_all_electrode_structures()
     
+    def get_contact_coordinates_by_index(self, electrode_name: str, contact_index: int) -> Optional[Tuple[int, int, int]]:
+        """
+        Get coordinates for a specific contact by index.
+        
+        Args:
+            electrode_name: Name of the electrode
+            contact_index: Index of the contact (0-based)
+            
+        Returns:
+            Tuple of (x, y, z) coordinates or None if not found
+        """
+        return self.electrode_model.get_contact_coordinates(electrode_name, contact_index)
+    
     def create_tree_item(self, electrode: Electrode) -> QTreeWidgetItem:
         """Create a tree widget item for an electrode."""
         return self._electrode_view_delegate.create_tree_item(electrode)

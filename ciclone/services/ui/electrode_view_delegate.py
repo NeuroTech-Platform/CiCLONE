@@ -72,7 +72,7 @@ class ElectrodeViewDelegate:
         item.setIcon(0, colored_icon)
         
         # Add contact sub-items
-        for contact in electrode.contacts:
+        for contact_index, contact in enumerate(electrode.contacts):
             contact_item = QTreeWidgetItem(item)
             contact_item.setText(0, contact.label)
             contact_item.setText(1, str(int(contact.x)))
@@ -82,5 +82,8 @@ class ElectrodeViewDelegate:
             contact_item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
             contact_item.setTextAlignment(2, Qt.AlignmentFlag.AlignCenter)
             contact_item.setTextAlignment(3, Qt.AlignmentFlag.AlignCenter)
+            
+            # Store metadata for click navigation (electrode_name, contact_index)
+            contact_item.setData(0, Qt.ItemDataRole.UserRole, (electrode.name, contact_index))
         
         return item

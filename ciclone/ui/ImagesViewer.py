@@ -724,6 +724,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.ElectrodeTreeWidget.customContextMenuRequested.connect(self.on_electrode_context_menu_requested)
         self.DataTreeWidget.customContextMenuRequested.connect(self.on_data_tree_context_menu_requested)
 
+        # Electrode tree item selection (handles both click and keyboard navigation)
+        self.ElectrodeTreeWidget.currentItemChanged.connect(self.on_electrode_selection_changed)
+
         # Crosshair action from toolbar
         self.actionCrosshairs.triggered.connect(self.toggle_crosshairs)
         
@@ -1117,6 +1120,54 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                 item = self.electrode_controller.create_tree_item(electrode)
                 self.ElectrodeTreeWidget.addTopLevelItem(item)
                 QMessageBox.information(self, "Success", f"Electrode '{name}' of type '{electrode_type}' created successfully.")
+
+    def on_electrode_selection_changed(self, current_item, _previous_item):
+        """Handle electrode tree selection changes (click or keyboard navigation)."""
+        self._handle_electrode_navigation(current_item)
+
+    def _handle_electrode_navigation(self, item):
+        """Handle navigation for electrode/contact selection (click or keyboard)."""
+        if item is None:
+            return
+        
+        parent_item = item.parent()
+        
+        if parent_item is None:
+            # Top-level electrode - navigate to first contact
+            electrode_name = item.text(0)
+            coordinates = self.electrode_controller.get_contact_coordinates_by_index(electrode_name, 0)
+            if coordinates:
+                self._navigate_to_coordinates(coordinates)
+        else:
+            # Contact - navigate to this specific contact
+            contact_data = item.data(0, Qt.ItemDataRole.UserRole)
+            if contact_data:
+                electrode_name, contact_index = contact_data
+                coordinates = self.electrode_controller.get_contact_coordinates_by_index(electrode_name, contact_index)
+                if coordinates:
+                    self._navigate_to_coordinates(coordinates)
+
+    def _navigate_to_coordinates(self, coordinates: Tuple[int, int, int]):
+        """
+        Navigate the three image views to show the specified 3D coordinates.
+        
+        Args:
+            coordinates: (x, y, z) tuple representing the voxel coordinates
+        """
+        if not self.image_controller.is_image_loaded():
+            return
+        
+        # Ensure coordinates are integers (model may return floats)
+        x, y, z = int(coordinates[0]), int(coordinates[1]), int(coordinates[2])
+        
+        # Update sliders to navigate to the coordinates
+        # Coordinate mapping: x=sagittal, y=coronal, z=axial
+        self.Sagittal_horizontalSlider.setValue(x)
+        self.Coronal_horizontalSlider.setValue(y)
+        self.Axial_horizontalSlider.setValue(z)
+        
+        # The slice displays will automatically update via existing signals
+        self.show_status_message(f"Navigated to coordinates: ({x}, {y}, {z})", 2000)
 
     def on_load_electrodes_clicked(self):
         """Handle load electrodes button click."""
