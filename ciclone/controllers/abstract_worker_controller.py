@@ -255,14 +255,19 @@ class AbstractWorkerController(QObject):
         # Mark worker as stopped and reset progress
         self.application_model.set_worker_stopped()
 
-        # Call completion callback if set
+        # Call completion callback if set, then clear it to avoid stale callbacks
         if self._completion_callback:
-            self._completion_callback(success_count, error_count)
+            callback = self._completion_callback
+            self._completion_callback = None  # Clear before calling to prevent re-use
+            callback(success_count, error_count)
 
     def _on_worker_error(self, error_message: str):
         """Handle fatal worker errors."""
         operation_name = self._get_operation_name()
         self._log_message("error", f"{operation_name.capitalize()} worker error: {error_message}")
+        
+        # Clear completion callback on error to avoid stale callbacks
+        self._completion_callback = None
 
     def stop_operation(self) -> bool:
         """
@@ -296,11 +301,17 @@ class AbstractWorkerController(QObject):
                 # Declare success after all cleanup is complete
                 self._log_message("success", f"✅ {operation_name.capitalize()} stopped successfully")
                 self.application_model.set_worker_stopped()
+                
+                # Clear completion callback when operation is manually stopped
+                self._completion_callback = None
+                
                 return True
 
             except Exception as e:
                 operation_name = self._get_operation_name()
                 self._log_message("error", f"Failed to stop {operation_name}: {str(e)}")
+                # Clear callback even on stop failure to prevent stale state
+                self._completion_callback = None
                 return False
         else:
             operation_name = self._get_operation_name()

@@ -345,17 +345,27 @@ class DialogService:
         if success:
             if operation == "Import":
                 message = f"Subject '{subject_name}' has been imported successfully!"
+            elif operation == "Create":
+                message = f"Subject '{subject_name}' has been created successfully!"
+            elif operation == "Add Files":
+                message = f"Files have been added to subject '{subject_name}' successfully!"
             elif operation == "Rename":
                 # For rename, subject_name should be "old_name' has been renamed to 'new_name"
                 message = f"Subject {subject_name}"
             elif operation == "Delete":
-                message = f"Subject '{subject_name}' has been deleted successfully."
+                message = f"Subject '{subject_name}' has been deleted successfully!"
             else:
-                message = f"{operation} of subject '{subject_name}' completed successfully."
+                # Fallback for any other operation type
+                message = f"Subject '{subject_name}' {operation.lower()} completed successfully!"
             
             self.show_information(f"{operation} Successful", message)
         else:
-            base_message = f"Failed to {operation.lower()} subject '{subject_name}'."
+            # Handle failure messages with proper grammar for each operation type
+            if operation == "Add Files":
+                base_message = f"Failed to add files to subject '{subject_name}'."
+            else:
+                base_message = f"Failed to {operation.lower()} subject '{subject_name}'."
+            
             if error_details:
                 message = f"{base_message}\n\n{error_details}"
             else:

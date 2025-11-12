@@ -322,7 +322,7 @@ class MainController(QObject):
         return self.processing_controller.is_processing_running()
 
     # Import Management (delegated)
-    def run_import(self, import_jobs: List) -> bool:
+    def run_import(self, import_jobs: List, completion_callback: Optional[Callable[[int, int], None]] = None) -> bool:
         """
         Run unified import workflow (crop + optional registration).
 
@@ -331,10 +331,15 @@ class MainController(QObject):
 
         Args:
             import_jobs: List of ImportJob objects to process
+            completion_callback: Optional callback function(success_count, error_count) to call when imports complete
 
         Returns:
             bool: True if import started successfully, False otherwise
         """
+        # Set completion callback if provided
+        if completion_callback:
+            self.import_controller.set_completion_callback(completion_callback)
+        
         return self.import_controller.run_imports(import_jobs)
 
     def stop_import(self) -> bool:
