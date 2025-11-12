@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QLabel, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QMenu, QGraphicsEllipseItem
+from PyQt6.QtWidgets import QLabel, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QMenu, QGraphicsEllipseItem, QToolTip
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPointF, QPoint
 from PyQt6.QtGui import QPixmap, QWheelEvent, QMouseEvent, QPainter, QTransform, QKeySequence, QAction, QPen, QBrush, QColor
 
@@ -76,6 +76,10 @@ class ClickableImageLabel(QGraphicsView):
         # Track crosshair elements separately
         self.crosshair_horizontal = None
         self.crosshair_vertical = None
+        
+        # Track current hovered marker for tooltip display
+        self.hovered_marker = None
+        self.tooltip_tolerance = 5  # pixels - tolerance for hover detection
     
     def setPixmap(self, pixmap: QPixmap):
         """Set the pixmap to display."""
@@ -385,6 +389,25 @@ class ClickableImageLabel(QGraphicsView):
             self.drag_start_pos = None
             self.drag_offset = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
+        else:
+            # Handle tooltip display when not in drag mode
+            scene_pos = self.mapToScene(event.position().toPoint())
+            
+            # Check if mouse is near a marker
+            nearby_marker = self.get_marker_at_position(scene_pos, self.tooltip_tolerance)
+            
+            if nearby_marker and nearby_marker in self.marker_data:
+                # Mouse is hovering over a marker
+                if self.hovered_marker != nearby_marker:
+                    # New marker hovered
+                    self.hovered_marker = nearby_marker
+                    self._show_marker_tooltip(event.globalPosition().toPoint())
+            else:
+                # Mouse is not over any marker
+                if self.hovered_marker is not None:
+                    # Just left a marker
+                    self.hovered_marker = None
+                    QToolTip.hideText()
         
         # No need to track mouse position here since _apply_zoom gets it directly
         super().mouseMoveEvent(event)
@@ -485,7 +508,7 @@ class ClickableImageLabel(QGraphicsView):
             # Exit fitted mode - this is a manual 1:1 zoom
             self._is_fitted_mode = False
     
-    def add_marker(self, x, y, color=QColor(255, 0, 0), radius=3, electrode_name=None, coord_type=None, contact_index=-1):
+    def add_marker(self, x, y, color=QColor(255, 0, 0), radius=3, electrode_name=None, coord_type=None, contact_index=-1, contact_label=None):
         """Add a marker at the specified image coordinates without affecting the image."""
         if not self.pixmap_item:
             return None
@@ -512,7 +535,8 @@ class ClickableImageLabel(QGraphicsView):
                 'electrode_name': electrode_name,
                 'coord_type': coord_type,
                 'contact_index': contact_index,
-                'original_radius': radius
+                'original_radius': radius,
+                'contact_label': contact_label
             }
         
         return marker
@@ -710,3 +734,33 @@ class ClickableImageLabel(QGraphicsView):
     def has_crosshairs(self):
         """Check if crosshairs are currently displayed."""
         return self.crosshair_horizontal is not None and self.crosshair_vertical is not None
+    
+    def _show_marker_tooltip(self, global_pos):
+        """Show a tooltip for the currently hovered marker."""
+        if self.hovered_marker is None or self.hovered_marker not in self.marker_data:
+            return
+        
+        marker_data = self.marker_data[self.hovered_marker]
+        
+        # Get tooltip text based on marker type
+        contact_label = marker_data.get('contact_label')
+        if contact_label:
+            # Use the provided contact label
+            tooltip_text = contact_label
+        else:
+            # Fallback: generate label from available data
+            electrode_name = marker_data.get('electrode_name', 'Unknown')
+            coord_type = marker_data.get('coord_type', '')
+            contact_index = marker_data.get('contact_index', -1)
+            
+            if coord_type == 'contact' and contact_index >= 0:
+                tooltip_text = f"{electrode_name}{contact_index + 1}"
+            elif coord_type == 'tip':
+                # Tip is contact 1
+                tooltip_text = f"{electrode_name}1"
+            else:
+                # For entry or unknown types, just show electrode name
+                tooltip_text = f"{electrode_name}"
+        
+        # Show the tooltip at the cursor position
+        QToolTip.showText(global_pos, tooltip_text, self)

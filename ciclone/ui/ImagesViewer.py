@@ -1725,6 +1725,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             electrode_color = QColor()
             electrode_color.setHsv(hue, 200, 255, 180)
             
+            # Get number of contacts for this electrode to label entry as contact N
+            num_contacts = len(processed_contacts.get(electrode_name, []))
+            
             for point_type, point in points.items():
                 if self.image_controller.is_point_visible_on_slice(point, orientation, current_slices):
                     pixel_coords = self.image_controller.convert_3d_to_pixel_coords(
@@ -1732,10 +1735,20 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     )
                     if pixel_coords:
                         x, y = pixel_coords
+                        # Generate label: tip=contact 1, entry=contact N
+                        if point_type == 'tip':
+                            contact_label = f"{electrode_name}1"
+                        elif point_type == 'entry' and num_contacts > 0:
+                            contact_label = f"{electrode_name}{num_contacts}"
+                        else:
+                            # Fallback for unprocessed electrodes
+                            contact_label = electrode_name
+                        
                         label.add_marker(x, y, electrode_color, radius=0.5, 
                                        electrode_name=electrode_name, 
                                        coord_type=point_type, 
-                                       contact_index=-1)
+                                       contact_index=-1,
+                                       contact_label=contact_label)
         
         # Add processed contact markers
         for electrode_name, contacts in processed_contacts.items():
@@ -1751,10 +1764,14 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
                     )
                     if pixel_coords:
                         x, y = pixel_coords
+                        # Generate contact label (1-based numbering)
+                        contact_label = f"{electrode_name}{contact_index + 1}"
+                        
                         label.add_marker(x, y, contact_color, radius=1,
                                        electrode_name=electrode_name,
                                        coord_type='contact',
-                                       contact_index=contact_index)
+                                       contact_index=contact_index,
+                                       contact_label=contact_label)
         
         # Add electrode tail visualization
         for electrode_name, structure in electrode_structures.items():
