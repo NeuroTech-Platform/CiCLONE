@@ -124,7 +124,13 @@ class SubjectFormController(QObject):
             success = self.main_controller.create_subject_from_form_data(form_data)
             
             if success:
-                self._log_message("success", f"Subject '{form_data['name']}' created successfully")
+                # Check if there are images to import
+                has_images = form_data.get('images') and len(form_data['images']) > 0
+                if has_images:
+                    self._log_message("info", f"Subject '{form_data['name']}' directory created, importing files...")
+                else:
+                    self._log_message("info", f"Subject '{form_data['name']}' directory created")
+                
                 self.reset_form()
                 self.form_submission_complete.emit(True)
             else:
