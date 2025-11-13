@@ -122,9 +122,11 @@ class SubjectController:
             if subject_exists:
                 self.subject_model.refresh_subject_data(subject_data.name)
 
-            # Show success feedback to user
-            if self._dialog_service:
-                operation = "Add Files" if subject_exists else "Create"
+            # Determine operation type once (used for dialogs and callbacks)
+            operation = "Add Files" if subject_exists else "Create"
+
+            # Show success feedback to user (only if no import jobs - otherwise defer until import completes)
+            if self._dialog_service and not import_jobs:
                 self._dialog_service.show_subject_operation_result(
                     operation, subject_data.name, True
                 )
@@ -141,7 +143,29 @@ class SubjectController:
                     self._log_message("info", f"Starting import of {job_count} file(s) ({registration_count} with coregistration)")
                 else:
                     self._log_message("info", f"Starting import of {job_count} file(s)")
-                self._import_callback(import_jobs)
+                
+                # Create completion callback using closure to capture context at call time
+                # This avoids race conditions from multiple concurrent subject creations
+                subject_name = subject_data.name
+                dialog_service = self._dialog_service
+                
+                def on_import_completed(success_count: int, error_count: int):
+                    """Show deferred success dialog when import completes."""
+                    if success_count > 0 and dialog_service:
+                        dialog_service.show_subject_operation_result(
+                            operation, subject_name, True
+                        )
+                
+                # Trigger import with completion callback
+                import_started = self._import_callback(import_jobs, on_import_completed)
+                
+                # If import failed to start (e.g., another operation running), show dialog immediately
+                if not import_started:
+                    self._log_message("warning", f"Subject '{subject_data.name}' created but imports could not start. Try importing manually.")
+                    if dialog_service:
+                        dialog_service.show_subject_operation_result(
+                            operation, subject_name, True
+                        )
             else:
                 # No import jobs means schema-only or legacy format
                 self._log_message("success", f"Subject '{subject_data.name}' ready for use")
