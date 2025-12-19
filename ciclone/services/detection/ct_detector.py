@@ -44,13 +44,17 @@ class CTElectrodeDetector(BaseElectrodeDetector):
     """
     
     # Default configuration
+    # Updated based on artifact analysis (Dec 2024):
+    # - Increased min_contacts_per_electrode from 4 to 6 (41% of artifacts had <= 5 contacts)
+    # - Increased linearity_threshold from 0.80 to 0.85 for initial filtering
+    # - Added skull base filtering to remove bright bone artifacts at bottom of skull
     DEFAULT_CONFIG = {
         "threshold": 1400,           # Intensity threshold for local maxima
         "min_contact_size": 5,       # Minimum voxels for a valid contact
         "max_contact_size": 500,     # Maximum voxels (filter large artifacts)
-        "min_contacts_per_electrode": 4,  # Minimum contacts to form electrode
+        "min_contacts_per_electrode": 6,  # Minimum contacts to form electrode (was 4)
         "clustering_eps": 15.0,      # Max distance between contacts (voxels)
-        "linearity_threshold": 0.80, # PCA linearity filter
+        "linearity_threshold": 0.85, # PCA linearity filter (was 0.80)
         "morphology_iterations": 1,  # Morphological cleanup iterations
         "use_adaptive_threshold": True,  # Adapt threshold based on histogram
         "preprocessed_ct": False,    # Set True for _CT_Electrodes type images
@@ -60,6 +64,11 @@ class CTElectrodeDetector(BaseElectrodeDetector):
         "electrode_spacings_mm": [3.5, 4.3, 4.6, 4.9, 6.5],
         "spacing_tolerance_mm": 1.5,  # Tolerance around expected spacing
         "voxel_size_mm": 0.55,       # Default voxel size (will be overridden if provided)
+        # Skull base filtering - exclude detections near bottom of volume
+        "skull_base_filter_enabled": True,  # Enable skull base artifact filtering
+        "skull_base_margin_percent": 15,    # Exclude bottom X% of Z-axis (skull base)
+        # Maximum contacts per electrode (prevent over-grouping)
+        "max_contacts_per_electrode": 18,   # Max contacts known from electrode definitions
     }
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -141,6 +150,20 @@ class CTElectrodeDetector(BaseElectrodeDetector):
         if len(centroids) < params["min_contacts_per_electrode"]:
             return []
         
+        # Step 2.5: Filter out skull base artifacts
+        # The skull base (bottom of volume) often has bright bone artifacts
+        if params.get("skull_base_filter_enabled", True):
+            margin_pct = params.get("skull_base_margin_percent", 15)
+            z_dim = volume_data.shape[2]
+            min_z = int(z_dim * margin_pct / 100)
+            
+            # Filter centroids below min_z
+            valid_mask = centroids[:, 2] >= min_z
+            centroids = centroids[valid_mask]
+            
+            if len(centroids) < params["min_contacts_per_electrode"]:
+                return []
+        
         # Step 3: Find chains using multiple spacing ranges
         voxel_size = params.get("voxel_size_mm", 0.55)
         tolerance = params.get("spacing_tolerance_mm", 1.5)
@@ -182,31 +205,31 @@ class CTElectrodeDetector(BaseElectrodeDetector):
         # Step 4: Build electrode objects
         electrodes = []
         existing_names = []
-        
+
         for chain in unique_chains:
             points = chain['points']
-            
+
             # Fit axis and order contacts
             tip, entry, ordered_contacts = fit_electrode_axis(
                 points, return_ordered=True
             )
-            
+
             # Estimate spacing
             mean_dist, std_dist = estimate_inter_contact_distance(ordered_contacts)
-            
+
             # Calculate confidence
             confidence = self._calculate_confidence(
                 ordered_contacts, mean_dist, std_dist
             )
-            
+
             # Suggest name and type
             name = suggest_electrode_name(tip, volume_data.shape, existing_names)
             existing_names.append(name)
-            
+
             electrode_type = self._infer_electrode_type(
                 len(ordered_contacts), mean_dist * voxel_size
             )
-            
+
             electrode = DetectedElectrode(
                 tip=tip,
                 entry=entry,
@@ -316,10 +339,23 @@ class CTElectrodeDetector(BaseElectrodeDetector):
             params["min_contact_size"],
             params["max_contact_size"]
         )
-        
+
         if len(centroids) < params["min_contacts_per_electrode"]:
             return []
-        
+
+        # Step 5.5: Filter out skull base artifacts
+        if params.get("skull_base_filter_enabled", True):
+            margin_pct = params.get("skull_base_margin_percent", 15)
+            z_dim = volume_data.shape[2]
+            min_z = int(z_dim * margin_pct / 100)
+            
+            # Filter centroids below min_z
+            valid_mask = centroids[:, 2] >= min_z
+            centroids = centroids[valid_mask]
+            
+            if len(centroids) < params["min_contacts_per_electrode"]:
+                return []
+
         # Step 6: Cluster centroids into electrode groups
         labels = cluster_contacts(
             centroids,
