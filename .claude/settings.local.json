@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/fl6985/Documents/Repository/HIP/app-in-browser/**)"
+      "Read(//Users/fl6985/Documents/Repository/HIP/app-in-browser/**)",
+      "Bash(ls:*)",
+      "Bash(python3:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

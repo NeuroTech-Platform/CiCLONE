@@ -9,6 +9,9 @@ Welcome to the CiCLONE architecture documentation. This directory contains compr
 - **[mainwindow.md](./mainwindow.md)** - MainWindow component architecture and controller relationships
 - **[imagesviewer.md](./imagesviewer.md)** - ImagesViewer component architecture and MVC coordination
 
+### Feature Documentation
+- **[electrode-auto-detection.md](./electrode-auto-detection.md)** - Automatic electrode detection algorithm and implementation
+
 ### Quick Navigation
 
 #### 🏗️ For New Developers
@@ -34,6 +37,7 @@ Welcome to the CiCLONE architecture documentation. This directory contains compr
 |-----------|----------------|-----------------|---------------|
 | **MainWindow** | Application entry point, subject management, processing pipeline | MainController, SubjectController, ProcessingController | [mainwindow.md](./mainwindow.md) |
 | **ImagesViewer** | Medical image display, electrode localization, coordinate management | ImageController, ElectrodeController, CrosshairController | [imagesviewer.md](./imagesviewer.md) |
+| **Auto-Detection** | Automatic electrode contact detection from CT images | CTElectrodeDetector, DetectionService | [electrode-auto-detection.md](./electrode-auto-detection.md) |
 
 ### Architecture Patterns
 

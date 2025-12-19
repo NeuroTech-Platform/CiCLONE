@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple, Dict, Callable
 from PyQt6.QtWidgets import QMessageBox, QTreeWidgetItem
 from PyQt6.QtCore import QObject, pyqtSignal
 import numpy as np
@@ -11,6 +11,7 @@ from ciclone.interfaces.view_interfaces import IImageView
 from ciclone.services.io.slicer_file import SlicerFile
 from ciclone.services.ui.electrode_view_delegate import ElectrodeViewDelegate
 from ciclone.services.ui.dialog_service import DialogService
+from ciclone.services.detection import DetectionService, DetectedElectrode
 
 
 class ElectrodeController:
@@ -313,6 +314,190 @@ class ElectrodeController:
         except Exception as e:
             print(f"Failed to import electrode {electrode_data.get('name', 'Unknown')}: {str(e)}")
             return False
+    
+    # =========================================================================
+    # AUTOMATIC ELECTRODE DETECTION
+    # =========================================================================
+    
+    def auto_detect_electrodes(
+        self,
+        volume_data: np.ndarray,
+        modality: str = "auto",
+        method: str = "auto",
+        progress_callback: Optional[Callable[[str, int], None]] = None
+    ) -> Tuple[int, int]:
+        """
+        Automatically detect electrodes in the image volume.
+        
+        Uses classical CV for CT images and SAM-based methods for MRI.
+        Detected electrodes are imported into the model and displayed.
+        
+        Args:
+            volume_data: 3D numpy array of image intensities
+            modality: Image modality ('CT', 'MRI', or 'auto' for detection)
+            method: Detection method ('ct', 'sam', or 'auto')
+            progress_callback: Optional callback(message, percentage) for progress updates
+            
+        Returns:
+            Tuple of (imported_count, total_detected)
+        """
+        if volume_data is None or volume_data.size == 0:
+            self._show_warning("No image data available for detection.")
+            return (0, 0)
+        
+        if progress_callback:
+            progress_callback("Initializing detection service...", 5)
+        
+        # Create detection service
+        detection_service = DetectionService()
+        
+        if progress_callback:
+            progress_callback("Detecting electrodes...", 20)
+        
+        try:
+            # Run detection
+            detected_electrodes = detection_service.detect(
+                volume_data,
+                modality=modality,
+                method=method
+            )
+            
+            if not detected_electrodes:
+                self._show_info("No electrodes detected in the image.")
+                return (0, 0)
+            
+            if progress_callback:
+                progress_callback(f"Found {len(detected_electrodes)} electrodes. Importing...", 60)
+            
+            # Import detected electrodes
+            imported_count = 0
+            for i, detected in enumerate(detected_electrodes):
+                if progress_callback:
+                    pct = 60 + int(35 * (i + 1) / len(detected_electrodes))
+                    progress_callback(f"Importing electrode {i+1}/{len(detected_electrodes)}...", pct)
+                
+                success = self._import_detected_electrode(detected)
+                if success:
+                    imported_count += 1
+            
+            if progress_callback:
+                progress_callback("Updating display...", 95)
+            
+            # Update UI
+            if imported_count > 0 and self._view:
+                self._view.refresh_electrode_list()
+                self._view.rebuild_electrode_tree()
+                self._view.refresh_coordinate_display()
+                self._view.refresh_image_display()
+            
+            if progress_callback:
+                progress_callback("Detection complete.", 100)
+            
+            # Show result summary
+            if imported_count > 0:
+                self._show_info(
+                    f"Successfully detected and imported {imported_count} electrode(s).\n\n"
+                    "Please review and adjust the detected positions if needed."
+                )
+            else:
+                self._show_warning(
+                    f"Detected {len(detected_electrodes)} electrode(s) but failed to import.\n"
+                    "Please try manual detection."
+                )
+            
+            return (imported_count, len(detected_electrodes))
+            
+        except Exception as e:
+            self._show_error(f"Detection failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return (0, 0)
+    
+    def _import_detected_electrode(self, detected: DetectedElectrode) -> bool:
+        """
+        Import a single detected electrode into the model.
+        
+        Args:
+            detected: DetectedElectrode object from detection service
+            
+        Returns:
+            True if import successful
+        """
+        try:
+            # Determine electrode name (use suggested or generate one)
+            base_name = detected.suggested_name or "Auto"
+            name = base_name
+            counter = 1
+            while self.electrode_model.electrode_exists(name):
+                counter += 1
+                name = f"{base_name}_{counter}"
+            
+            # Determine electrode type
+            electrode_type = detected.electrode_type
+            if not electrode_type:
+                # Use first available type as fallback
+                available_types = self.electrode_model.get_available_electrode_types()
+                electrode_type = available_types[0] if available_types else "Unknown"
+            elif electrode_type not in self.electrode_model.get_available_electrode_types():
+                # Use closest matching type
+                available_types = self.electrode_model.get_available_electrode_types()
+                electrode_type = available_types[0] if available_types else electrode_type
+            
+            # Create electrode in model
+            if not self.electrode_model.add_electrode(name, electrode_type):
+                return False
+            
+            # Set tip and entry coordinates
+            self.coordinate_model.set_tip_point(name, detected.tip)
+            self.coordinate_model.set_entry_point(name, detected.entry)
+            
+            # If we have detected contacts, import them directly
+            if detected.contacts:
+                electrode = self.electrode_model.get_electrode(name)
+                if electrode:
+                    electrode.contacts.clear()
+                    for i, contact_coords in enumerate(detected.contacts):
+                        int_coords = (
+                            int(round(contact_coords[0])),
+                            int(round(contact_coords[1])),
+                            int(round(contact_coords[2]))
+                        )
+                        contact_label = f"{name}{i+1}"
+                        electrode.add_contact(
+                            contact_label,
+                            int_coords[0],
+                            int_coords[1],
+                            int_coords[2]
+                        )
+                    
+                    # Store in processed contacts
+                    self.electrode_model._processed_contacts[name] = [
+                        (int(round(c[0])), int(round(c[1])), int(round(c[2])))
+                        for c in detected.contacts
+                    ]
+            else:
+                # Process contacts using electrode definition
+                self.electrode_model.process_electrode_contacts(
+                    name,
+                    detected.tip,
+                    detected.entry
+                )
+            
+            return True
+            
+        except Exception as e:
+            print(f"Failed to import detected electrode: {str(e)}")
+            return False
+    
+    def get_detection_info(self) -> Dict[str, any]:
+        """
+        Get information about available detection methods.
+        
+        Returns:
+            Dict with detector availability and capabilities
+        """
+        detection_service = DetectionService()
+        return detection_service.get_detector_info()
     
     def set_entry_coordinate(self, electrode_name: str, coordinates: Tuple[int, int, int]) -> bool:
         """Set tip coordinates for an electrode."""

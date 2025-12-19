@@ -112,6 +112,9 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Setup opacity controls near image sliders
         self.setup_image_opacity_controls()
         
+        # Add Auto-Detect button to the electrode tools section
+        self._setup_auto_detect_button()
+        
         # Configure column sizing for ElectrodeTreeWidget
         # Add the Move column header
         self.ElectrodeTreeWidget.setHeaderLabels(["Name", "X", "Y", "Z", "Move"])
@@ -257,10 +260,55 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             
             # Add the horizontal layout to the vertical layout
             layout.insertLayout(0, slider_layout)
-        
+
         # Initialize all menus with the overlay controls
         self.rebuild_all_overlay_menus()
     
+    def _setup_auto_detect_button(self):
+        """Add Auto-Detect Electrodes button to the electrode tools section."""
+        # Create the Auto-Detect button with distinctive styling
+        self.AutoDetectPushButton = QPushButton("🔍 Auto-Detect Electrodes")
+        self.AutoDetectPushButton.setToolTip(
+            "Automatically detect electrode positions using image analysis.\n"
+            "Works best with CT images. For MRI, SAM-based detection is used if available."
+        )
+        self.AutoDetectPushButton.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: 1px solid #1976D2;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+            QPushButton:disabled {
+                background-color: #BDBDBD;
+                border: 1px solid #9E9E9E;
+            }
+        """)
+        
+        # Find the layout containing LoadElectrodesPushButton and insert after it
+        # The button is in verticalLayout_3 which is in the toolbox
+        if hasattr(self, 'verticalLayout_3'):
+            # Insert after LoadElectrodesPushButton (index 0)
+            self.verticalLayout_3.insertWidget(1, self.AutoDetectPushButton)
+        else:
+            # Fallback: find the LoadElectrodesPushButton's parent layout
+            parent_layout = self.LoadElectrodesPushButton.parent().layout()
+            if parent_layout:
+                # Find the index of LoadElectrodesPushButton
+                for i in range(parent_layout.count()):
+                    item = parent_layout.itemAt(i)
+                    if item.widget() == self.LoadElectrodesPushButton:
+                        parent_layout.insertWidget(i + 1, self.AutoDetectPushButton)
+                        break
+
     def rebuild_all_overlay_menus(self):
         """Rebuild all overlay control menus with the current two-image system."""
         from PyQt6.QtWidgets import QWidgetAction, QComboBox
@@ -712,6 +760,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Button signals
         self.AddElectrodePushButton.clicked.connect(self.on_add_electrode_clicked)
         self.LoadElectrodesPushButton.clicked.connect(self.on_load_electrodes_clicked)
+        self.AutoDetectPushButton.clicked.connect(self.on_auto_detect_clicked)
         self.Viewer3dButton.clicked.connect(self.on_viewer3d_clicked)
         self.ProcessCoordinatesPushButton.clicked.connect(self.on_process_coordinates_clicked)
         self.SaveFilePushButton.clicked.connect(self.on_save_file_clicked)
@@ -1208,6 +1257,84 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             self.refresh_electrode_list()
             # Update coordinate display to show entry/output coordinates for loaded electrodes
             self.refresh_coordinate_display()
+
+    def on_auto_detect_clicked(self):
+        """Handle auto-detect electrodes button click."""
+        # Check if an image is loaded
+        if not self.image_controller.is_image_loaded():
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "Please load an image first. Auto-detection requires image data."
+            )
+            return
+        
+        # Get detection method info
+        detection_info = self.electrode_controller.get_detection_info()
+        
+        # Show confirmation dialog with detection method info
+        ct_available = detection_info.get("ct_detector", {}).get("available", False)
+        sam_available = detection_info.get("sam_detector", {}).get("available", False)
+        
+        method_info = "Detection methods available:\n"
+        if ct_available:
+            method_info += "• CT Detector (classical CV) - Fast, works well for CT images\n"
+        if sam_available:
+            method_info += "• SAM Detector (ML-based) - Better for MRI images\n"
+        else:
+            method_info += "• SAM Detector - Not available (install torch and segment-anything)\n"
+        
+        reply = QMessageBox.question(
+            self,
+            "Auto-Detect Electrodes",
+            f"This will automatically detect electrodes in the loaded image.\n\n"
+            f"{method_info}\n"
+            f"Existing electrodes will be preserved. Proceed?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Disable button during detection
+        self.AutoDetectPushButton.setEnabled(False)
+        self.AutoDetectPushButton.setText("🔄 Detecting...")
+        
+        # Force UI update
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
+        try:
+            # Get volume data
+            volume_data = self.image_controller.get_volume_data()
+            
+            if volume_data is None:
+                QMessageBox.warning(self, "Warning", "Could not access image volume data.")
+                return
+            
+            # Run auto-detection
+            imported, total = self.electrode_controller.auto_detect_electrodes(
+                volume_data,
+                modality="auto",
+                method="auto"
+            )
+            
+            # The controller already shows result messages
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self, 
+                "Error", 
+                f"Auto-detection failed: {str(e)}"
+            )
+            import traceback
+            traceback.print_exc()
+            
+        finally:
+            # Re-enable button
+            self.AutoDetectPushButton.setEnabled(True)
+            self.AutoDetectPushButton.setText("🔍 Auto-Detect Electrodes")
 
     def on_viewer3d_clicked(self):
         """Handle 3D viewer button click."""
