@@ -10,14 +10,35 @@ from ciclone.services.io.electrode_file_service import ElectrodeFileService
 
 class ElectrodeModel:
     """Model for managing electrode data and business logic."""
-    
+
     def __init__(self, electrode_file_service: ElectrodeFileService = None):
         self._electrodes: Dict[str, Electrode] = {}
         self._processed_contacts: Dict[str, List[Tuple[int, int, int]]] = {}
         self._electrode_structures: Dict[str, ElectrodeStructure] = {}
         self._electrode_file_service = electrode_file_service or ElectrodeFileService()
-    
-    
+
+    def _compute_mm_per_voxel(self, direction_voxel: np.ndarray,
+                              voxel_spacing: Tuple[float, float, float]) -> float:
+        """Compute the mm-per-voxel scaling factor for a direction vector.
+
+        This accounts for anisotropic voxel spacing by converting the direction
+        from voxel space to physical space and computing the magnitude.
+
+        Args:
+            direction_voxel: Normalized direction vector in voxel space
+            voxel_spacing: Voxel dimensions in mm (x, y, z)
+
+        Returns:
+            The physical length (in mm) per unit length in voxel space along this direction
+        """
+        vx, vy, vz = voxel_spacing
+        direction_physical = np.array([
+            direction_voxel[0] * vx,
+            direction_voxel[1] * vy,
+            direction_voxel[2] * vz
+        ])
+        return np.linalg.norm(direction_physical)
+
     def add_electrode(self, name: str, electrode_type: str) -> bool:
         """Add a new electrode to the model."""
         if name in self._electrodes:
@@ -83,16 +104,23 @@ class ElectrodeModel:
         """Get list of available electrode types."""
         return self._electrode_file_service.list_available_electrode_types()
     
-    def process_electrode_contacts(self, 
-                                 electrode_name: str, 
-                                 tip_point: Tuple[int, int, int], 
-                                 entry_point: Tuple[int, int, int]) -> bool:
+    def process_electrode_contacts(self,
+                                 electrode_name: str,
+                                 tip_point: Tuple[int, int, int],
+                                 entry_point: Tuple[int, int, int],
+                                 voxel_spacing: Tuple[float, float, float] = None) -> bool:
         """Process coordinates for an electrode and calculate contact positions with tail information.
-        
+
+        Uses anatomical positioning: starts from the tip point (innermost brain point) and places
+        contacts at their physical distances as defined in the electrode definition file. The entry
+        point is only used to determine the electrode direction, not the total length - this ensures
+        accurate contact placement even if the user's outer click is imprecise.
+
         Args:
             electrode_name: Name of the electrode
             tip_point: Electrode tip (deepest point in brain)
-            entry_point: Electrode entry point (where electrode enters skull)
+            entry_point: Electrode entry point (where electrode enters skull), used for direction only
+            voxel_spacing: Voxel dimensions in mm (x, y, z). If None, falls back to proportional spacing.
         """
         electrode = self.get_electrode(electrode_name)
         if not electrode:
@@ -139,69 +167,79 @@ class ElectrodeModel:
             # Sort plots by z-position
             plot_positions.sort(key=lambda x: x[1][2])
             
-            # Calculate direction vector
-            tip_array = np.array(tip_point)
-            entry_array = np.array(entry_point)
-            direction = entry_array - tip_array
-            direction_norm = np.linalg.norm(direction)
-            
+            # Calculate direction vector (from tip toward entry, in voxel space)
+            tip_array = np.array(tip_point, dtype=float)
+            entry_array = np.array(entry_point, dtype=float)
+            direction_voxel = entry_array - tip_array
+            direction_norm = np.linalg.norm(direction_voxel)
+
             if direction_norm == 0:
                 return False
-            
-            direction = direction / direction_norm
-            
-            # Calculate contact positions
+
+            direction_voxel = direction_voxel / direction_norm
+
+            # Get the minimum z-position (tip offset in mm from elecdef)
             min_z = min(pos[1][2] for pos in plot_positions)
             max_z = max(pos[1][2] for pos in plot_positions)
             z_span = max_z - min_z
-            
+
             if z_span == 0:
                 return False
-            
-            tip_entry_distance = np.linalg.norm(entry_array - tip_array)
+
             contacts = []
-            
-            for plot_name, plot_pos in plot_positions:
-                relative_pos = (plot_pos[2] - min_z) / z_span
-                contact_pos = tip_array + relative_pos * direction * tip_entry_distance
-                contacts.append(tuple(np.round(contact_pos).astype(int)))
+
+            if voxel_spacing is not None:
+                # Anatomical positioning: use actual mm distances from elecdef
+                mm_per_voxel = self._compute_mm_per_voxel(direction_voxel, voxel_spacing)
+                if mm_per_voxel == 0:
+                    return False
+
+                for plot_name, plot_pos in plot_positions:
+                    # plot_pos[2] is the distance in mm from the electrode tip
+                    distance_mm = plot_pos[2] - min_z
+                    distance_voxels = distance_mm / mm_per_voxel
+                    contact_pos = tip_array + direction_voxel * distance_voxels
+                    contacts.append(tuple(np.round(contact_pos).astype(int)))
+            else:
+                # Fallback: proportional spacing (legacy behavior)
+                tip_entry_distance = np.linalg.norm(entry_array - tip_array)
+                for plot_name, plot_pos in plot_positions:
+                    relative_pos = (plot_pos[2] - min_z) / z_span
+                    contact_pos = tip_array + relative_pos * direction_voxel * tip_entry_distance
+                    contacts.append(tuple(np.round(contact_pos).astype(int)))
             
             # Store contacts
             self._processed_contacts[electrode_name] = contacts
             
             # Calculate tail endpoint if tail element exists
             tail_endpoint = None
-            if tail_element:
-                # Electrode positioning:
-                # - tip_point: Deepest point in brain (electrode tip)
-                # - entry_point: Where electrode enters skull
-                # - Tail extends outward from entry_point away from brain center
-                
-                # Insertion direction: from entry (skull) toward tip (brain center)
-                insertion_direction = tip_array - entry_array
-                insertion_direction = insertion_direction / np.linalg.norm(insertion_direction)
-                
-                # Tail direction: opposite to insertion (away from brain center)
-                tail_direction = -insertion_direction
-                
-                # Calculate proper scaling
-                # The contacts span z_span mm in the electrode definition and 
-                # tip_entry_distance pixels in the image
-                image_pixels_per_mm = tip_entry_distance / z_span
-                
-                # Scale the tail length, but cap it to a reasonable proportion
-                # Medical reality: electrode tails are typically 0.5x to 1.5x the implanted portion
-                # Some definitions have unrealistic tail lengths (6x contact span) that dominate the view
+            if tail_element and contacts:
+                # Tail extends outward from the last (outermost) contact
+                # Tail direction: same as electrode direction (from tip toward entry and beyond)
+                tail_direction = direction_voxel
+
+                # Get the outermost contact position as the tail starting point
+                last_contact = np.array(contacts[-1], dtype=float)
+
+                # Cap the tail length to a reasonable proportion
                 tail_length_mm = tail_element.length
                 max_reasonable_tail_mm = z_span * 0.8  # Cap at 0.8x the contact array span
                 tail_length_capped_mm = min(tail_length_mm, max_reasonable_tail_mm)
-                
-                # Apply scaling to the capped length
-                tail_length_scaled = tail_length_capped_mm * image_pixels_per_mm
-                
-                # Tail starts at entry point (skull) and extends outward
-                tail_endpoint = entry_array + tail_direction * tail_length_scaled
-                tail_endpoint = tuple(np.round(tail_endpoint).astype(int))
+
+                if voxel_spacing is not None:
+                    # Anatomical positioning: use actual mm distances
+                    mm_per_voxel = self._compute_mm_per_voxel(tail_direction, voxel_spacing)
+                    if mm_per_voxel > 0:
+                        tail_length_voxels = tail_length_capped_mm / mm_per_voxel
+                        tail_endpoint = last_contact + tail_direction * tail_length_voxels
+                        tail_endpoint = tuple(np.round(tail_endpoint).astype(int))
+                else:
+                    # Fallback: proportional scaling (legacy behavior)
+                    tip_entry_distance = np.linalg.norm(entry_array - tip_array)
+                    image_pixels_per_mm = tip_entry_distance / z_span
+                    tail_length_scaled = tail_length_capped_mm * image_pixels_per_mm
+                    tail_endpoint = last_contact + tail_direction * tail_length_scaled
+                    tail_endpoint = tuple(np.round(tail_endpoint).astype(int))
             
             # Create and store electrode structure
             electrode_structure = ElectrodeStructure(
@@ -211,9 +249,10 @@ class ElectrodeModel:
                 tail_element=tail_element,
                 elements=elements
             )
-            # Add calculated tail endpoint to structure
-            if tail_endpoint:
+            # Add calculated tail points to structure
+            if tail_endpoint and contacts:
                 electrode_structure.tail_endpoint = tail_endpoint
+                electrode_structure.tail_start_point = contacts[-1]  # Tail starts at last contact
             
             self._electrode_structures[electrode_name] = electrode_structure
             

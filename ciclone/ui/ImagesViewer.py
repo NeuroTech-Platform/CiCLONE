@@ -84,14 +84,15 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.crosshair_model = CrosshairModel()
         
         # Initialize controllers
-        self.electrode_controller = ElectrodeController(
-            self.electrode_model, self.coordinate_model
-        )
         self.image_controller = ImageController(self.image_model)
+        self.electrode_controller = ElectrodeController(
+            self.electrode_model, self.coordinate_model,
+            image_controller=self.image_controller
+        )
         self.crosshair_controller = CrosshairController(
             self.crosshair_model, self.image_controller
         )
-        
+
         # Set view references in controllers
         self.electrode_controller.set_view(self)
         self.image_controller.set_view(self)
@@ -1776,32 +1777,35 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Add electrode tail visualization
         for electrode_name, structure in electrode_structures.items():
             if structure.has_tail and structure.tail_endpoint:
-                # Get output point from electrode points (tail extends outward from output point)
-                # output_point = "Electrode Entry Point" (where electrode enters skull, tail starts here)
-                if electrode_name in electrode_points and 'entry' in electrode_points[electrode_name]:
+                # Tail extends outward from the last contact (tail_start_point)
+                # Use tail_start_point if available, otherwise fall back to entry point
+                tail_start = structure.tail_start_point
+                if tail_start is None and electrode_name in electrode_points and 'entry' in electrode_points[electrode_name]:
+                    tail_start = electrode_points[electrode_name]['entry']
+
+                if tail_start:
                     hue = abs(hash(electrode_name)) % 360
                     tail_color = QColor()
                     tail_color.setHsv(hue, 150, 200, 120)  # Slightly more transparent/muted than contacts
-                    
-                    entry_point = electrode_points[electrode_name]['entry']
+
                     tail_endpoint = structure.tail_endpoint
-                    
+
                     # Check if either point is visible on this slice
-                    if (self.image_controller.is_point_visible_on_slice(entry_point, orientation, current_slices) or
+                    if (self.image_controller.is_point_visible_on_slice(tail_start, orientation, current_slices) or
                         self.image_controller.is_point_visible_on_slice(tail_endpoint, orientation, current_slices)):
-                        
+
                         # Convert to pixel coordinates
-                        entry_point_pixel = self.image_controller.convert_3d_to_pixel_coords(
-                            entry_point, orientation, scaled_width, scaled_height
+                        tail_start_pixel = self.image_controller.convert_3d_to_pixel_coords(
+                            tail_start, orientation, scaled_width, scaled_height
                         )
                         tail_endpoint_pixel = self.image_controller.convert_3d_to_pixel_coords(
                             tail_endpoint, orientation, scaled_width, scaled_height
                         )
-                        
-                        if entry_point_pixel and tail_endpoint_pixel:
-                            # Add line segment for tail (from entry point outward toward skull exterior)
+
+                        if tail_start_pixel and tail_endpoint_pixel:
+                            # Add line segment for tail (from last contact outward)
                             label.add_line(
-                                entry_point_pixel[0], entry_point_pixel[1],
+                                tail_start_pixel[0], tail_start_pixel[1],
                                 tail_endpoint_pixel[0], tail_endpoint_pixel[1],
                                 tail_color, width=3,
                                 electrode_name=electrode_name,

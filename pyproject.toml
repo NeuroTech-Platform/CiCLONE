@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ciclone"
-version = "2.0.0"
+version = "2.0.1"
 description = "Cico Cardinale's Localization Of Neuro-electrodes"
 authors = ["Florian Sipp <florian.sipp@chuv.ch>"]
 license = "Apache 2.0"
