@@ -22,7 +22,7 @@ class ElectrodeElement:
         """
         return self.type.lower() == 'tube' and self.length > 20.0  # Threshold for tail detection
 
-@dataclass 
+@dataclass
 class ElectrodeStructure:
     """
     Represents the complete physical structure of an electrode including contacts and tail.
@@ -33,6 +33,7 @@ class ElectrodeStructure:
     tail_element: Optional[ElectrodeElement] = None
     elements: List[ElectrodeElement] = None
     tail_endpoint: Optional[Tuple[float, float, float]] = None
+    tail_start_point: Optional[Tuple[float, float, float]] = None  # Where the tail begins (last contact)
     
     @property
     def has_tail(self) -> bool:

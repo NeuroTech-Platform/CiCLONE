@@ -15,14 +15,47 @@ from ciclone.services.ui.dialog_service import DialogService
 
 class ElectrodeController:
     """Controller for managing electrode operations and coordinating between models and views."""
-    
-    def __init__(self, electrode_model: ElectrodeModel, coordinate_model: CoordinateModel, dialog_service: DialogService = None):
+
+    def __init__(self, electrode_model: ElectrodeModel, coordinate_model: CoordinateModel,
+                 image_controller=None, dialog_service: DialogService = None):
         self.electrode_model = electrode_model
         self.coordinate_model = coordinate_model
+        self._image_controller = image_controller
         self._view = None
         self._electrode_view_delegate = ElectrodeViewDelegate()
         self._dialog_service = dialog_service
-    
+
+    def set_image_controller(self, image_controller):
+        """Set the image controller reference for voxel spacing access."""
+        self._image_controller = image_controller
+
+    def _get_voxel_spacing(self) -> Optional[Tuple[float, float, float]]:
+        """Get voxel spacing from the current image."""
+        if self._image_controller is None:
+            return None
+        nifti_img = self._image_controller.get_current_nifti_image()
+        if nifti_img is None:
+            return None
+        pixdim = nifti_img.header.get_zooms()
+        if len(pixdim) >= 3:
+            return (float(pixdim[0]), float(pixdim[1]), float(pixdim[2]))
+        return None
+
+    def _sync_coordinates_with_contacts(self, electrode_name: str,
+                                        contacts: List[Tuple[int, int, int]]) -> None:
+        """Sync tip and entry points with the first and last contact positions.
+
+        After processing, the user's original click points are updated to match
+        the actual contact positions, ensuring markers align with contacts.
+
+        Args:
+            electrode_name: Name of the electrode
+            contacts: List of processed contact positions
+        """
+        if contacts:
+            self.coordinate_model.set_tip_point(electrode_name, contacts[0])
+            self.coordinate_model.set_entry_point(electrode_name, contacts[-1])
+
     def set_view(self, view: IImageView):
         """Set the view reference for UI updates."""
         self._view = view
@@ -287,24 +320,12 @@ class ElectrodeController:
                     float(contact_coords[2])
                 )
             
-            # Store the processed contacts in the model
-            self.electrode_model._processed_contacts[name] = contacts
-            
-            # Derive tip and entry coordinates from the contacts
-            if len(contacts) >= 2:
-                # First contact is the electrode tip (deepest in brain)
-                # Last contact is the skull entry point
-                tip_point = tuple(int(coord) for coord in contacts[0])
-                entry_point = tuple(int(coord) for coord in contacts[-1])
-                
-                # Set the derived coordinates in the coordinate model
-                self.coordinate_model.set_tip_point(name, tip_point)
-                self.coordinate_model.set_entry_point(name, entry_point)
-            elif len(contacts) == 1:
-                # Single contact electrode - use the same point for both tip and entry
-                single_point = tuple(int(coord) for coord in contacts[0])
-                self.coordinate_model.set_tip_point(name, single_point)
-                self.coordinate_model.set_entry_point(name, single_point)
+            # Store the processed contacts in the model (convert to int tuples)
+            int_contacts = [tuple(int(coord) for coord in c) for c in contacts]
+            self.electrode_model._processed_contacts[name] = int_contacts
+
+            # Sync tip and entry coordinates with contact positions
+            self._sync_coordinates_with_contacts(name, int_contacts)
             
             # Tree widget will be updated by the view's refresh methods
             
@@ -339,36 +360,50 @@ class ElectrodeController:
         return True
     
     def process_electrode_coordinates(self, electrode_name: str) -> bool:
-        """Process coordinates to generate electrode contacts."""
+        """Process coordinates to generate electrode contacts.
+
+        Uses anatomical positioning when voxel spacing is available, placing contacts
+        at their physical distances from the tip point as defined in the electrode
+        definition file. The entry point only determines direction, not total length.
+        """
         if not electrode_name:
             self._show_warning("Please select an electrode first.")
             return False
-        
+
         electrode = self.electrode_model.get_electrode(electrode_name)
         if not electrode:
             self._show_warning(f"Electrode {electrode_name} not found.")
             return False
-        
+
         coordinates = self.coordinate_model.get_coordinates(electrode_name)
         if not coordinates or 'tip' not in coordinates or 'entry' not in coordinates:
             self._show_warning("Please set both tip and entry coordinates first.")
             return False
-        
-        # Process coordinates using the electrode model
+
+        # Get voxel spacing for anatomical positioning
+        voxel_spacing = self._get_voxel_spacing()
+
+        # Process coordinates using the electrode model with anatomical positioning
         success = self.electrode_model.process_electrode_contacts(
-            electrode_name, 
-            coordinates['tip'], 
-            coordinates['entry']
+            electrode_name,
+            coordinates['tip'],
+            coordinates['entry'],
+            voxel_spacing
         )
         
         if success:
+            # Sync tip and entry points with actual contact positions
+            processed_contacts = self.electrode_model.get_processed_contacts(electrode_name)
+            self._sync_coordinates_with_contacts(electrode_name, processed_contacts)
+
             if self._view:
                 self._view.refresh_electrode_tree(electrode_name)
+                self._view.refresh_coordinate_display()
                 self._view.refresh_image_display()
             self._show_info(f"Successfully processed contacts for electrode {electrode_name}.")
         else:
             self._show_warning(f"Failed to process coordinates for electrode {electrode_name}.")
-        
+
         return success
     
     def get_electrode_names(self) -> List[str]:
@@ -463,20 +498,25 @@ class ElectrodeController:
             success = self.coordinate_model.move_entry_point(electrode_name, new_coordinates)
         
         if success:
-            # If both tip and entry points exist, reprocess contacts
+            # If both tip and entry points exist, reprocess contacts with anatomical positioning
             coordinates = self.coordinate_model.get_coordinates(electrode_name)
             if 'tip' in coordinates and 'entry' in coordinates:
+                voxel_spacing = self._get_voxel_spacing()
                 self.electrode_model.process_electrode_contacts(
-                    electrode_name, 
-                    coordinates['tip'], 
-                    coordinates['entry']
+                    electrode_name,
+                    coordinates['tip'],
+                    coordinates['entry'],
+                    voxel_spacing
                 )
-            
+                # Sync tip and entry points with actual contact positions
+                processed_contacts = self.electrode_model.get_processed_contacts(electrode_name)
+                self._sync_coordinates_with_contacts(electrode_name, processed_contacts)
+
             if self._view:
                 self._view.refresh_coordinate_display()
-                self._view.refresh_electrode_tree(electrode_name)  # Update tree widget to show new contacts
+                self._view.refresh_electrode_tree(electrode_name)
                 self._view.refresh_image_display()
-        
+
         return success
     
     def move_contact_coordinate(self, electrode_name: str, contact_index: int, new_coordinates: Tuple[int, int, int]) -> bool:
