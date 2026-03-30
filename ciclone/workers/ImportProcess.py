@@ -6,6 +6,7 @@ This module provides the process function that executes image import operations
 during long-running FSL operations.
 """
 
+import os
 import signal
 import sys
 import traceback
@@ -226,3 +227,7 @@ def processImports(conn: Connection, import_jobs: List[Dict[str, Any]]) -> None:
 
     finally:
         conn.close()
+        # Use os._exit() to skip Python/Qt cleanup in the forked child process.
+        # Without this, the child inherits Qt state from the parent and tries to
+        # destroy QThread objects during normal exit, causing a SIGSEGV (exit 139).
+        os._exit(0)

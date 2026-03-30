@@ -92,3 +92,8 @@ def processImagesAnalysis(conn, output_directory: str, subject_list: list, confi
     # Send completion signal
     conn.send({"type": "log", "level": "success", "message": "All processing completed successfully."})
     conn.send({"type": "progress", "value": 100})  # Indicate success
+
+    # Use os._exit() to skip Python/Qt cleanup in the forked child process.
+    # Without this, the child inherits Qt state from the parent and tries to
+    # destroy QThread objects during normal exit, causing a SIGSEGV (exit 139).
+    os._exit(0)

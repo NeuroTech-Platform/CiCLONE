@@ -7,7 +7,7 @@ from .ImageProcessingProcess import processImagesAnalysis
 class ImageProcessingWorker(QThread):
     update_progress_signal = pyqtSignal(int)
     log_signal = pyqtSignal(str, str)  # level, message
-    finished = pyqtSignal()
+    # Note: uses QThread's built-in 'finished' signal (emitted after run() returns)
 
     def __init__(self, output_directory: str, subject_list: list, config_data: dict):
         super().__init__()
@@ -56,7 +56,7 @@ class ImageProcessingWorker(QThread):
                 if self.process.is_alive():
                     self.process.terminate()
             
-        self.finished.emit()
+        # QThread.finished is emitted automatically after run() returns
     
     def terminate(self):
         """Override QThread.terminate() to also stop subprocesses."""
