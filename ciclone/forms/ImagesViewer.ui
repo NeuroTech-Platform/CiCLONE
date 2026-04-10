@@ -452,6 +452,26 @@
              </widget>
             </item>
             <item>
+             <widget class="QPushButton" name="LookupAtlasLabelsPushButton">
+              <property name="text">
+               <string>Lookup Atlas Labels</string>
+              </property>
+              <property name="toolTip">
+               <string>Look up anatomical labels for electrode contacts using FreeSurfer atlases</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="ExportElectrodesPushButton">
+              <property name="text">
+               <string>Export Electrodes (CSV)</string>
+              </property>
+              <property name="toolTip">
+               <string>Export electrode contacts with atlas labels to CSV file</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QPushButton" name="Viewer3dButton">
               <property name="text">
                <string>3DViewer</string>

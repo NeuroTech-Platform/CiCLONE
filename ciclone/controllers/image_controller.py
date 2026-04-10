@@ -94,7 +94,11 @@ class ImageController:
     def get_volume_data(self):
         """Get the current volume data."""
         return self.image_model.get_volume_data()
-    
+
+    def get_current_file_path(self):
+        """Get the file path of the currently loaded primary image."""
+        return self.image_model.get_current_path()
+
     def remove_image(self, file_path: str) -> bool:
         """Remove an image from the model."""
         success = self.image_model.remove_image(file_path)

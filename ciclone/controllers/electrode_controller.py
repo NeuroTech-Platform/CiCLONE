@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 from PyQt6.QtWidgets import QMessageBox, QTreeWidgetItem
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -5,12 +6,14 @@ import numpy as np
 
 from ciclone.models.electrode_model import ElectrodeModel
 from ciclone.models.coordinate_model import CoordinateModel
+from ciclone.models.atlas_model import AtlasType, AtlasLabel
 from ciclone.domain.electrodes import Electrode
 from ciclone.domain.electrode_element import ElectrodeStructure
 from ciclone.interfaces.view_interfaces import IImageView
 from ciclone.services.io.slicer_file import SlicerFile
 from ciclone.services.ui.electrode_view_delegate import ElectrodeViewDelegate
 from ciclone.services.ui.dialog_service import DialogService
+from ciclone.services.atlas.atlas_lookup_service import AtlasLookupService, detect_freesurfer_directory
 
 
 class ElectrodeController:
@@ -542,7 +545,204 @@ class ElectrodeController:
             self._view.refresh_image_display()
         
         return success
-    
+
+    # ==================== Atlas Lookup Methods ====================
+
+    def lookup_atlas_labels(self,
+                            subject_dir: Path,
+                            atlas_types: Optional[List[AtlasType]] = None) -> bool:
+        """
+        Look up anatomical labels for all electrode contacts using FreeSurfer atlases.
+
+        Args:
+            subject_dir: Path to the CiCLONE subject directory
+            atlas_types: List of atlas types to query (default: all available)
+
+        Returns:
+            True if lookup was successful, False otherwise
+        """
+        # Detect FreeSurfer directory
+        fs_dir = detect_freesurfer_directory(subject_dir)
+        if fs_dir is None:
+            self._show_warning(
+                "FreeSurfer directory not found.\n"
+                "Run cortical reconstruction first to enable atlas labeling."
+            )
+            return False
+
+        # Create atlas lookup service
+        atlas_service = AtlasLookupService(fs_dir)
+        if not atlas_service.is_valid():
+            self._show_warning(
+                "FreeSurfer atlas files not found.\n"
+                "Ensure recon-all completed successfully."
+            )
+            return False
+
+        # Get T1 affine from current image
+        t1_affine = self._get_t1_affine()
+        if t1_affine is None:
+            self._show_warning(
+                "No image loaded. Please load a T1 image first."
+            )
+            return False
+
+        # Determine which atlases to use
+        if atlas_types is None:
+            atlas_types = atlas_service.get_available_atlases()
+
+        if not atlas_types:
+            self._show_warning("No atlas files available in FreeSurfer directory.")
+            return False
+
+        # Look up labels for all electrodes with processed contacts
+        electrodes_with_contacts = self.electrode_model.get_electrodes_with_contacts()
+        if not electrodes_with_contacts:
+            self._show_warning("No electrodes with processed contacts found.")
+            return False
+
+        labels_found = 0
+        for electrode in electrodes_with_contacts:
+            # Get processed contacts for this electrode
+            for contact in electrode.contacts:
+                voxel_coord = contact.coordinates
+
+                # Look up labels from all requested atlases
+                labels = atlas_service.get_labels_for_coordinate(
+                    voxel_coord, t1_affine, atlas_types
+                )
+
+                # Store labels in the contact
+                contact.clear_atlas_labels()
+                for atlas_type_str, atlas_label in labels.items():
+                    if atlas_label.label_id != 0:  # Skip "Unknown" labels
+                        contact.set_atlas_label(atlas_type_str, atlas_label.display_name)
+                        labels_found += 1
+
+        # Refresh the UI
+        if self._view:
+            self._view.rebuild_electrode_tree()
+            self._view.refresh_image_display()
+
+        if labels_found > 0:
+            self._show_info(f"Atlas labels assigned to {labels_found} contact locations.")
+        else:
+            self._show_warning("No valid atlas labels found for electrode contacts.")
+
+        return labels_found > 0
+
+    def _get_t1_affine(self) -> Optional[np.ndarray]:
+        """
+        Get the affine transformation matrix from the current T1 image.
+
+        Returns:
+            4x4 affine matrix, or None if no image is loaded
+        """
+        if self._image_controller is None:
+            return None
+
+        nifti_img = self._image_controller.get_current_nifti_image()
+        if nifti_img is None:
+            return None
+
+        return nifti_img.affine
+
+    def get_available_atlas_types(self, subject_dir: Path) -> List[AtlasType]:
+        """
+        Get list of available atlas types for a subject.
+
+        Args:
+            subject_dir: Path to the CiCLONE subject directory
+
+        Returns:
+            List of available AtlasType values
+        """
+        fs_dir = detect_freesurfer_directory(subject_dir)
+        if fs_dir is None:
+            return []
+
+        atlas_service = AtlasLookupService(fs_dir)
+        return atlas_service.get_available_atlases()
+
+    def has_atlas_labels(self) -> bool:
+        """
+        Check if any electrodes have atlas labels assigned.
+
+        Returns:
+            True if at least one contact has atlas labels
+        """
+        electrodes = self.electrode_model.get_electrodes_with_contacts()
+        for electrode in electrodes:
+            for contact in electrode.contacts:
+                if contact.atlas_labels:
+                    return True
+        return False
+
+    def clear_all_atlas_labels(self) -> None:
+        """Clear atlas labels from all electrode contacts."""
+        electrodes = self.electrode_model.get_electrodes_with_contacts()
+        for electrode in electrodes:
+            for contact in electrode.contacts:
+                contact.clear_atlas_labels()
+
+        if self._view:
+            self._view.rebuild_electrode_tree()
+
+    def export_electrodes_with_labels(self, file_path: str) -> bool:
+        """
+        Export electrodes with atlas labels to CSV file.
+
+        Args:
+            file_path: Path to the output CSV file
+
+        Returns:
+            True if export was successful, False otherwise
+        """
+        electrodes = self.electrode_model.get_electrodes_with_contacts()
+        if not electrodes:
+            self._show_warning("No electrodes with contacts to export.")
+            return False
+
+        # Collect all unique atlas types used
+        atlas_types_used = set()
+        for electrode in electrodes:
+            for contact in electrode.contacts:
+                atlas_types_used.update(contact.atlas_labels.keys())
+
+        atlas_types_list = sorted(atlas_types_used)
+
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                # Write header
+                header = ['electrode', 'contact', 'x', 'y', 'z'] + atlas_types_list
+                f.write(','.join(header) + '\n')
+
+                # Write data
+                for electrode in electrodes:
+                    for contact in electrode.contacts:
+                        row = [
+                            electrode.name,
+                            contact.label,
+                            str(int(contact.x)),
+                            str(int(contact.y)),
+                            str(int(contact.z))
+                        ]
+                        # Add atlas labels
+                        for atlas_type in atlas_types_list:
+                            label = contact.atlas_labels.get(atlas_type, '')
+                            # Escape commas in label names
+                            if ',' in label:
+                                label = f'"{label}"'
+                            row.append(label)
+                        f.write(','.join(row) + '\n')
+
+            self._show_info(f"Electrodes exported to {file_path}")
+            return True
+
+        except Exception as e:
+            self._show_error(f"Failed to export electrodes: {str(e)}")
+            return False
+
     def _show_error(self, message: str):
         """Show error message to user."""
         if self._dialog_service:

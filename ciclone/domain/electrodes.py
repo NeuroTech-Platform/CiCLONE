@@ -1,5 +1,5 @@
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
 
 
@@ -7,16 +7,51 @@ from typing import List, Dict, Tuple, Optional
 class Contact:
     """
     Represents a single electrode contact with 3D coordinates.
+
+    Attributes:
+        label: Contact label (e.g., "LA1", "LA2")
+        x: X coordinate in voxel space
+        y: Y coordinate in voxel space
+        z: Z coordinate in voxel space
+        atlas_labels: Dictionary mapping atlas type to anatomical label name
+                     (e.g., {"aparc+aseg": "Left-Hippocampus", "aseg": "Left-Hippocampus"})
     """
     label: str
     x: float
     y: float
     z: float
-    
+    atlas_labels: Dict[str, str] = field(default_factory=dict)
+
     @property
     def coordinates(self) -> Tuple[float, float, float]:
         """Return the coordinates as a tuple."""
         return (self.x, self.y, self.z)
+
+    def get_atlas_label(self, atlas_type: str = "aparc+aseg") -> str:
+        """
+        Get the anatomical label for a specific atlas type.
+
+        Args:
+            atlas_type: Atlas type string (e.g., "aparc+aseg", "aseg")
+
+        Returns:
+            Anatomical label name, or empty string if not available
+        """
+        return self.atlas_labels.get(atlas_type, "")
+
+    def set_atlas_label(self, atlas_type: str, label_name: str) -> None:
+        """
+        Set the anatomical label for a specific atlas type.
+
+        Args:
+            atlas_type: Atlas type string (e.g., "aparc+aseg", "aseg")
+            label_name: Anatomical label name
+        """
+        self.atlas_labels[atlas_type] = label_name
+
+    def clear_atlas_labels(self) -> None:
+        """Clear all atlas labels."""
+        self.atlas_labels.clear()
 
 
 class Electrode:
@@ -35,17 +70,22 @@ class Electrode:
         self.electrode_type = electrode_type
         self.contacts: List[Contact] = []
     
-    def add_contact(self, label: str, x: float, y: float, z: float) -> None:
+    def add_contact(self, label: str, x: float, y: float, z: float,
+                    atlas_labels: Optional[Dict[str, str]] = None) -> None:
         """
         Add a contact to the electrode.
-        
+
         Args:
-            label (str): Label for the contact
-            x (float): X coordinate
-            y (float): Y coordinate
-            z (float): Z coordinate
-        """        
-        self.contacts.append(Contact(label=label, x=x, y=y, z=z))
+            label: Label for the contact
+            x: X coordinate
+            y: Y coordinate
+            z: Z coordinate
+            atlas_labels: Optional dictionary mapping atlas types to label names
+        """
+        contact = Contact(label=label, x=x, y=y, z=z)
+        if atlas_labels:
+            contact.atlas_labels = atlas_labels
+        self.contacts.append(contact)
     
     def get_contact(self, index: int) -> Optional[Contact]:
         """

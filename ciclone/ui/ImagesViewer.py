@@ -114,19 +114,20 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         self.setup_image_opacity_controls()
         
         # Configure column sizing for ElectrodeTreeWidget
-        # Add the Move column header
-        self.ElectrodeTreeWidget.setHeaderLabels(["Name", "X", "Y", "Z", "Move"])
-        
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.ElectrodeTreeWidget.header().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        self.ElectrodeTreeWidget.setColumnWidth(0, 80)
-        self.ElectrodeTreeWidget.setColumnWidth(1, 80)
-        self.ElectrodeTreeWidget.setColumnWidth(2, 70)
-        self.ElectrodeTreeWidget.setColumnWidth(3, 70)
-        self.ElectrodeTreeWidget.setColumnWidth(4, 60)  # Fixed width for toggle button
+        # Columns: Name, X, Y, Z, Atlas, Move
+        self.ElectrodeTreeWidget.setColumnCount(6)
+        self.ElectrodeTreeWidget.setHeaderLabels(["Name", "X", "Y", "Z", "Atlas", "Move"])
+
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Name adapts to content
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Atlas adapts to content
+        self.ElectrodeTreeWidget.header().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
+        self.ElectrodeTreeWidget.setColumnWidth(1, 45)
+        self.ElectrodeTreeWidget.setColumnWidth(2, 45)
+        self.ElectrodeTreeWidget.setColumnWidth(3, 45)
+        self.ElectrodeTreeWidget.setColumnWidth(5, 60)  # Fixed width for toggle button
 
         # Enable context menu for ElectrodeTreeWidget
         self.ElectrodeTreeWidget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -713,6 +714,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Button signals
         self.AddElectrodePushButton.clicked.connect(self.on_add_electrode_clicked)
         self.LoadElectrodesPushButton.clicked.connect(self.on_load_electrodes_clicked)
+        self.LookupAtlasLabelsPushButton.clicked.connect(self.on_lookup_atlas_labels_clicked)
+        self.ExportElectrodesPushButton.clicked.connect(self.on_export_electrodes_clicked)
         self.Viewer3dButton.clicked.connect(self.on_viewer3d_clicked)
         self.ProcessCoordinatesPushButton.clicked.connect(self.on_process_coordinates_clicked)
         self.SaveFilePushButton.clicked.connect(self.on_save_file_clicked)
@@ -794,24 +797,37 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
 
     def rebuild_electrode_tree(self):
         """Rebuild the entire electrode tree widget with all electrodes."""
-        # Get all existing electrode names in the tree
-        existing_names = set()
+        # Store expansion and movement states for existing electrodes
+        expansion_states = {}
+        movement_states = {}
         root = self.ElectrodeTreeWidget.invisibleRootItem()
         for i in range(root.childCount()):
             item = root.child(i)
-            existing_names.add(item.text(0))
-        
-        # Add any missing electrodes from the model
+            electrode_name = item.text(0)
+            expansion_states[electrode_name] = item.isExpanded()
+            if self.electrode_controller:
+                movement_states[electrode_name] = self.electrode_controller.is_electrode_movement_enabled(electrode_name)
+
+        # Clear the tree widget
+        self.ElectrodeTreeWidget.clear()
+
+        # Rebuild all electrodes from the model
         for electrode_name in self.electrode_controller.get_electrode_names():
-            if electrode_name not in existing_names:
-                electrode = self.electrode_controller.get_electrode(electrode_name)
-                if electrode:
-                    tree_item = self.electrode_controller.create_tree_item(electrode)
-                    self.ElectrodeTreeWidget.addTopLevelItem(tree_item)
-                    tree_item.setExpanded(True)  # Expand to show contacts
-                    
-                    # Add movement toggle button
-                    self.add_movement_toggle_button(tree_item, electrode_name)
+            electrode = self.electrode_controller.get_electrode(electrode_name)
+            if electrode:
+                tree_item = self.electrode_controller.create_tree_item(electrode)
+                self.ElectrodeTreeWidget.addTopLevelItem(tree_item)
+
+                # Restore expansion state (default to expanded for new electrodes)
+                was_expanded = expansion_states.get(electrode_name, True)
+                tree_item.setExpanded(was_expanded)
+
+                # Add movement toggle button
+                self.add_movement_toggle_button(tree_item, electrode_name)
+
+                # Restore movement state
+                if movement_states.get(electrode_name, False):
+                    self.update_electrode_movement_state(electrode_name, True)
 
     def update_electrode_tree_item(self, old_name: str, new_name: str):
         """Update a specific electrode tree item after rename."""
@@ -852,8 +868,8 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         # Connect button to handler
         button.clicked.connect(lambda checked, name=electrode_name: self.on_movement_toggle_clicked(name, checked))
         
-        # Add button to tree widget
-        self.ElectrodeTreeWidget.setItemWidget(tree_item, 4, button)
+        # Add button to tree widget (column 5 = Move column)
+        self.ElectrodeTreeWidget.setItemWidget(tree_item, 5, button)
     
     def update_toggle_button_appearance(self, button, enabled):
         """Update the appearance of a movement toggle button."""
@@ -905,7 +921,7 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
         for i in range(root.childCount()):
             item = root.child(i)
             if item.text(0) == electrode_name:
-                return self.ElectrodeTreeWidget.itemWidget(item, 4)
+                return self.ElectrodeTreeWidget.itemWidget(item, 5)  # Column 5 = Move column
         return None
     
     def update_electrode_movement_state(self, electrode_name, enabled):
@@ -1209,6 +1225,87 @@ class ImagesViewer(QMainWindow, Ui_ImagesViewer):
             self.refresh_electrode_list()
             # Update coordinate display to show entry/output coordinates for loaded electrodes
             self.refresh_coordinate_display()
+
+    def on_lookup_atlas_labels_clicked(self):
+        """Handle lookup atlas labels button click."""
+        # Check if an image is loaded
+        if not self.image_controller.is_image_loaded():
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "Please load an image first."
+            )
+            return
+
+        # Check if there are electrodes with processed contacts
+        if not self.electrode_controller.has_processed_contacts():
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "No electrodes with processed contacts found.\n"
+                "Process electrode coordinates first."
+            )
+            return
+
+        # Get subject directory from the loaded image path
+        subject_dir = self._get_subject_directory_from_image()
+        if subject_dir is None:
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "Could not determine subject directory from loaded image."
+            )
+            return
+
+        # Lookup atlas labels using the controller
+        self.electrode_controller.lookup_atlas_labels(subject_dir)
+
+    def on_export_electrodes_clicked(self):
+        """Handle export electrodes button click."""
+        # Check if there are electrodes to export
+        if not self.electrode_controller.has_processed_contacts():
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "No electrodes with contacts to export."
+            )
+            return
+
+        # Open file dialog to select output location
+        default_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Electrodes with Atlas Labels",
+            default_dir + "/electrodes_atlas_labels.csv",
+            "CSV Files (*.csv);;All Files (*)"
+        )
+
+        if not file_path:
+            return  # User cancelled
+
+        # Export using the controller
+        self.electrode_controller.export_electrodes_with_labels(file_path)
+
+    def _get_subject_directory_from_image(self) -> Optional[Path]:
+        """
+        Get the subject directory from the currently loaded image path.
+
+        Returns:
+            Path to subject directory, or None if not found
+        """
+        current_file = self.image_controller.get_current_file_path()
+        if current_file is None:
+            return None
+
+        current_path = Path(current_file)
+
+        # Walk up the directory tree looking for a subject directory
+        # A subject directory contains images/ and processed_tmp/ subdirectories
+        for parent in current_path.parents:
+            if (parent / "images").exists() and (parent / "processed_tmp").exists():
+                return parent
+
+        return None
 
     def on_viewer3d_clicked(self):
         """Handle 3D viewer button click."""
